@@ -1,0 +1,9 @@
+{
+  "chainSelectorName": "ethereum-testnet-sepolia",
+  "vaultAddresses": ["0x0000000000000000000000000000000000000000"],
+  "verificationUrl": "https://example.com/verify",
+  "secretId": "VERIFICATION_API_TOKEN",
+  "responseConfirmedPath": "verified",
+  "confirmationConsumerAddress": "0x0000000000000000000000000000000000000000",
+  "gasLimitWei": 500000
+}

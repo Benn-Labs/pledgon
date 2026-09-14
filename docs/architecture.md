@@ -14,8 +14,8 @@ transaction plumbing with Solidity contracts and DON-verified confidential workf
 | DEEDS feature | Maps to | Status |
 |---|---|---|
 | Marketplace (listings, transfers) | Plain Solidity — CRE doesn't do much here | Not started |
-| Escrow + DON confirmation | Confidential workflow verifies an off-chain condition (title recorded, payment cleared) → signed report → escrow contract checks it before releasing funds | Pattern proven twice: `RwaOracleConsumer` and `AuditFirewallConsumer` (both "verify confidentially → DON-signed verdict → consumer contract acts on it") |
-| Milestone escrows | Same pattern, repeated per milestone. Better triggered by an EVM log trigger (fires when a milestone is claimed) than cron polling | Straightforward extension |
+| Escrow + DON confirmation | Confidential workflow verifies an off-chain condition (title recorded, payment cleared) → signed report → escrow contract checks it before releasing funds | **Built**: `EscrowVault`/`EscrowFactory`/`EscrowConfirmationConsumer` (Solidity, 50 tests) + `escrow-confirmation` workflow (Go, 18 tests) |
+| Milestone escrows | Same pattern, repeated per milestone. Triggered by an EVM log trigger (fires when a milestone is claimed via `submitMilestoneDocs`) rather than cron polling | Built as part of the row above — `DocsSubmitted` is the claim event |
 | Compliance layer (confidentiality) | KYC/AML/sanctions API called inside the enclave — PII and the provider's credentials never leave it, only `compliant: true/false` crosses out | Textbook Confidential Workflows use case |
 | Lending/borrowing | Its own large protocol: collateral valuation (the RWA oracle feeds this directly), liquidation logic | `automated-liquidation-protection` template is a real starting point, not from scratch |
 
@@ -74,3 +74,16 @@ deeds/
   `RwaOracleConsumer` *contract shape* (feedId-keyed round store) is still the
   right pattern to copy; it's the deployment and producing workflow that stay
   separate.
+
+## Known limitation: per-vault log triggers don't scale automatically
+
+The pinned SDK's EVM log trigger (`evm.LogTrigger`, in `capabilities/blockchain/evm`
+— there is no separate `triggers/evmlogtrigger` package at this SDK version,
+despite some generic docs suggesting one) takes a list of contract addresses to
+watch (`FilterLogTriggerRequest.Addresses [][]byte`), not a wildcard. Since
+`EscrowFactory` deploys a new vault per trade, the `escrow-confirmation` workflow's
+`vaultAddresses` config has to be updated — a config update and workflow
+redeploy, not a code change — every time a new trade is created. This is a real
+operational cost worth automating later (e.g. a small service that watches
+`EscrowFactory`'s `VaultCreated` event and pushes config updates), not something
+to solve by re-architecting the trigger right now.
