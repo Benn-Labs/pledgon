@@ -1,0 +1,21 @@
+# ==========================================================================
+# CRE PROJECT SETTINGS FILE
+# ==========================================================================
+# ethereum-mainnet is required by the CLI to validate Vault DON gateway
+# responses (encryption key + DON signatures). The public endpoint is
+# read-only and needs no key.
+# ==========================================================================
+staging-settings:
+  rpcs:
+    - chain-name: ethereum-testnet-sepolia
+      url: ${CRE_RPC_SEPOLIA}
+    - chain-name: ethereum-mainnet
+      url: https://ethereum-rpc.publicnode.com
+
+# ==========================================================================
+production-settings:
+  rpcs:
+    - chain-name: ethereum-testnet-sepolia
+      url: ${CRE_RPC_SEPOLIA}
+    - chain-name: ethereum-mainnet
+      url: https://ethereum-rpc.publicnode.com

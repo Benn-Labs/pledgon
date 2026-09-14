@@ -1,0 +1,17 @@
+*.env
+
+# CRE build artifacts
+binary.wasm
+binary.wasm.br.b64
+
+# Local override for testing against an unreleased SDK checkout
+go.work
+go.work.sum
+go.work.disabled
+
+# Solidity
+contracts/evm/out/
+contracts/evm/cache/
+contracts/evm/broadcast/
+
+node_modules/
