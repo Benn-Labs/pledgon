@@ -16,7 +16,7 @@ transaction plumbing with Solidity contracts and DON-verified confidential workf
 | Marketplace (listings, transfers) | Plain Solidity — CRE doesn't do much here | Not started |
 | Escrow + DON confirmation | Confidential workflow verifies an off-chain condition (title recorded, payment cleared) → signed report → escrow contract checks it before releasing funds | **Built**: `EscrowVault`/`EscrowFactory`/`EscrowConfirmationConsumer` (Solidity, 50 tests) + `escrow-confirmation` workflow (Go, 18 tests) |
 | Milestone escrows | Same pattern, repeated per milestone. Triggered by an EVM log trigger (fires when a milestone is claimed via `submitMilestoneDocs`) rather than cron polling | Built as part of the row above — `DocsSubmitted` is the claim event |
-| Compliance layer (confidentiality) | KYC/AML/sanctions API called inside the enclave — PII and the provider's credentials never leave it, only `compliant: true/false` crosses out | Textbook Confidential Workflows use case |
+| Compliance layer (confidentiality) | KYC/AML/sanctions API called inside the enclave — PII and the provider's credentials never leave it, only `compliant: true/false` crosses out | **Built**: `compliance-check` workflow (Go, 16 tests), writes to the already-built `ComplianceConsumer` |
 | Lending/borrowing | Its own large protocol: collateral valuation (the RWA oracle feeds this directly), liquidation logic | `automated-liquidation-protection` template is a real starting point, not from scratch |
 
 ## Prior art (source material, not yet ported)
@@ -87,3 +87,30 @@ redeploy, not a code change — every time a new trade is created. This is a rea
 operational cost worth automating later (e.g. a small service that watches
 `EscrowFactory`'s `VaultCreated` event and pushes config updates), not something
 to solve by re-architecting the trigger right now.
+
+## Known limitation: HTTP trigger delivery is not confidential
+
+Confirmed against the confidentiality-boundary docs before building
+`compliance-check`: trigger delivery — cron, EVM log, or HTTP/webhook alike —
+always runs on Workflow DON nodes, never inside the enclave. Only the code
+*after* the `HandlerInTee` callback starts is confidential. A webhook carrying
+raw PII (name, date of birth, ID number) in its request body would leak that PII
+to node operators at delivery time, before the enclave ever runs — defeating the
+entire point of using a Confidential Workflow for KYC.
+
+`compliance-check`'s webhook payload is therefore just `{subject, caseId}` — no
+PII. `caseId` is an opaque reference issued by the KYC provider when the subject
+completed verification directly with that provider, out of band. The enclave uses
+it to fetch the provider's verdict (the provider looks up the PII server-side);
+only the resulting `compliant: true/false` ever crosses `UsingTheDons()`. This
+means DEEDS' frontend needs a direct integration with the KYC provider to obtain
+`caseId` before calling this workflow — not yet built, and out of scope for the
+workflow itself.
+
+Also unresolved: the webhook's `authorizedKeys` field takes a raw ECDSA public
+key per the SDK's proto definition, but some docs describe it as an address.
+Config ships with `authorizedKeys: []` for staging (simulation only — accepts any
+caller) and an obviously-fake placeholder for production (fails closed — accepts
+no caller — until replaced with a real key). Confirm the exact key encoding CRE
+expects against `cre workflow simulate` output before deploying with a real
+signer.
