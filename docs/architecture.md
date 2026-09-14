@@ -13,7 +13,7 @@ transaction plumbing with Solidity contracts and DON-verified confidential workf
 
 | DEEDS feature | Maps to | Status |
 |---|---|---|
-| Marketplace (listings, transfers) | Plain Solidity — CRE doesn't do much here | Not started |
+| Marketplace (listings, transfers) | Plain Solidity — CRE doesn't do much here | **Built**: `Marketplace` (Solidity, 16 tests) |
 | Escrow + DON confirmation | Confidential workflow verifies an off-chain condition (title recorded, payment cleared) → signed report → escrow contract checks it before releasing funds | **Built**: `EscrowVault`/`EscrowFactory`/`EscrowConfirmationConsumer` (Solidity, 50 tests) + `escrow-confirmation` workflow (Go, 18 tests) |
 | Milestone escrows | Same pattern, repeated per milestone. Triggered by an EVM log trigger (fires when a milestone is claimed via `submitMilestoneDocs`) rather than cron polling | Built as part of the row above — `DocsSubmitted` is the claim event |
 | Compliance layer (confidentiality) | KYC/AML/sanctions API called inside the enclave — PII and the provider's credentials never leave it, only `compliant: true/false` crosses out | **Built**: `compliance-check` workflow (Go, 16 tests), writes to the already-built `ComplianceConsumer` |
@@ -41,7 +41,7 @@ deeds/
   project.yaml, go.mod, secrets.yaml   CRE project settings (mirrors benn-cre)
   contracts/evm/src/
     keystone/        IReceiver / IERC165 — copied from benn-cre, needed by every consumer
-    marketplace/      listings, transfers (plain Solidity)
+    marketplace/      Marketplace.sol — listings, purchase() opens an escrow trade
     escrow/            milestone escrow, DON-verified release
     compliance/        receives compliant:true/false reports
     lending/           collateral, borrowing, liquidation
@@ -114,3 +114,26 @@ caller) and an obviously-fake placeholder for production (fails closed — accep
 no caller — until replaced with a real key). Confirm the exact key encoding CRE
 expects against `cre workflow simulate` output before deploying with a real
 signer.
+
+## Marketplace ↔ escrow integration
+
+`Marketplace.purchase()` needs to open an escrow trade where the real buyer is
+whoever called `purchase()`, not the `Marketplace` contract itself. `EscrowFactory
+.createTrade()` hard-codes `buyer = msg.sender`, which would have made
+`Marketplace` the buyer on every trade it orchestrates — breaking `fund()`'s
+`onlyBuyer` gate for the actual purchaser. Resolved by adding
+`createTradeFor(address buyer, ...)` alongside the original `createTrade()`
+(now both call a shared private `_createTrade`), rather than changing
+`createTrade`'s own semantics or bypassing the buyer gate. `createTradeFor` is
+left permissionless: `fund()` on the resulting vault still requires the named
+buyer's own token approval, so naming an arbitrary buyer can't move anyone's
+funds without their consent — it only decides who the vault will later require
+to fund and confirm it. `EscrowFactory` and its existing 50 tests already had to
+be touched for this (now 69 across the three Solidity test files); flagging it
+here since it's a change to previously-shipped, tested code rather than
+purely-additive work.
+
+Listings are one-shot (unique items/services, matching the RWA/"deed" theme):
+once `purchase()`d, a listing can't be bought again. `purchase()` does not move
+funds — it only creates the vault; the buyer still calls `fund()` and the seller
+`depositBond()` afterward, same as calling `EscrowFactory` directly.

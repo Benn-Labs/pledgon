@@ -146,4 +146,37 @@ contract EscrowFactoryTest is Test {
         vm.expectRevert(EscrowVault.ZeroAddress.selector);
         factory.createTrade(seller, address(0), IERC20(address(token)), 0, _amounts(100e6, 0));
     }
+
+    // ─── createTradeFor ─────────────────────────────────────────
+
+    /// @dev The whole point of createTradeFor: an orchestrator (e.g. Marketplace)
+    /// can be msg.sender while the vault's real buyer is whoever it names.
+    function test_CreateTradeFor_SetsNamedBuyerNotCaller() public {
+        address orchestrator = makeAddr("orchestrator");
+        address realBuyer = makeAddr("realBuyer");
+
+        vm.prank(orchestrator);
+        address vault =
+            factory.createTradeFor(realBuyer, seller, arbiter, IERC20(address(token)), 0, _amounts(100e6, 0));
+
+        assertEq(EscrowVault(vault).buyer(), realBuyer);
+        assertNotEq(EscrowVault(vault).buyer(), orchestrator);
+    }
+
+    function test_CreateTradeFor_RecordsUnderNamedBuyer() public {
+        address orchestrator = makeAddr("orchestrator");
+        address realBuyer = makeAddr("realBuyer");
+
+        vm.prank(orchestrator);
+        address vault =
+            factory.createTradeFor(realBuyer, seller, arbiter, IERC20(address(token)), 0, _amounts(100e6, 0));
+
+        assertEq(factory.vaultsByBuyer(realBuyer, 0), vault);
+        assertEq(factory.vaultCount(), 1);
+    }
+
+    function test_CreateTradeFor_RevertsIfBuyerIsZero() public {
+        vm.expectRevert(EscrowVault.ZeroAddress.selector);
+        factory.createTradeFor(address(0), seller, arbiter, IERC20(address(token)), 0, _amounts(100e6, 0));
+    }
 }

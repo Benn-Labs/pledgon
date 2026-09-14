@@ -45,8 +45,8 @@ contract EscrowFactory {
         complianceConsumer = _complianceConsumer;
     }
 
-    /// @notice Creates a trade with the caller as buyer. Seller must still call
-    /// `depositBond()` and the caller must call `fund()` on the returned vault.
+    /// @notice Creates a trade with the caller as buyer. The caller must still
+    /// call `fund()` (and the seller `depositBond()`) on the returned vault.
     function createTrade(
         address seller,
         address arbiter,
@@ -54,11 +54,40 @@ contract EscrowFactory {
         uint256 bondAmount,
         uint256[] calldata milestoneAmounts
     ) external returns (address vault) {
+        return _createTrade(msg.sender, seller, arbiter, token, bondAmount, milestoneAmounts);
+    }
+
+    /// @notice Creates a trade on `buyer`'s behalf. For an orchestrator (e.g. a
+    /// Marketplace matching a purchaser to a listing) that already knows the real
+    /// buyer's identity and isn't the one funding the trade. Safe to leave
+    /// permissionless: `fund()` on the resulting vault still requires `buyer`'s
+    /// own token approval, so calling this cannot move anyone's funds without
+    /// their consent — it only decides who the vault will later require to fund
+    /// and confirm it.
+    function createTradeFor(
+        address buyer,
+        address seller,
+        address arbiter,
+        IERC20 token,
+        uint256 bondAmount,
+        uint256[] calldata milestoneAmounts
+    ) external returns (address vault) {
+        return _createTrade(buyer, seller, arbiter, token, bondAmount, milestoneAmounts);
+    }
+
+    function _createTrade(
+        address buyer,
+        address seller,
+        address arbiter,
+        IERC20 token,
+        uint256 bondAmount,
+        uint256[] calldata milestoneAmounts
+    ) private returns (address vault) {
         uint256 complianceThreshold = COMPLIANCE_THRESHOLD_USD * (10 ** token.decimals());
 
         vault = address(
             new EscrowVault(
-                msg.sender,
+                buyer,
                 seller,
                 arbiter,
                 token,
@@ -71,10 +100,10 @@ contract EscrowFactory {
         );
 
         allVaults.push(vault);
-        vaultsByBuyer[msg.sender].push(vault);
+        vaultsByBuyer[buyer].push(vault);
         vaultsBySeller[seller].push(vault);
 
-        emit VaultCreated(vault, msg.sender, seller, arbiter, address(token), bondAmount);
+        emit VaultCreated(vault, buyer, seller, arbiter, address(token), bondAmount);
     }
 
     function vaultCount() external view returns (uint256) {
