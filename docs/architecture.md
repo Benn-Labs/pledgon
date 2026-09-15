@@ -124,9 +124,23 @@ both token addresses are configured, since that pairing isn't decided yet for
 any real network. One run targets one chain (one `FORWARDER_ADDRESS`, since a
 chain's `KeystoneForwarder` is shared by every consumer on it). Every address
 is written to `deployments/<chainId>.json`, which needs `fs_permissions` in
-`foundry.toml` (write access is denied by default) — the values there still
-have to be copied into each workflow's `config.*.json` by hand; nothing wires
-them together automatically yet.
+`foundry.toml` (write access is denied by default).
+
+`cmd/wire-config` (`go run ./cmd/wire-config --chain-id <id> --target staging`)
+then copies the relevant addresses from that record into each workflow's
+`config.<target>.json` — `confirmationConsumerAddress`,
+`consumerAddress` (compliance-check and liquidation-protection each have their
+own), `lendingPoolAddress`. It's a narrow, explicit field-by-field mapping
+(`wirings` in `cmd/wire-config/main.go`), not a generic JSON merge: it edits
+the raw file bytes with a targeted regex substitution rather than
+unmarshal/remarshal, specifically so it doesn't reorder keys or reformat
+anything else in the file — a real deployment's diff should be exactly the
+address lines that changed, nothing more. Fields a deployment record can't
+supply (`vaultAddresses`, `borrower` — per-trade and per-position values, not
+system addresses) are left untouched by construction: they're simply not in
+the `wirings` table. A deployment field that's still the zero address
+(lending, when it wasn't deployed) is skipped with a logged reason rather than
+overwriting the config's existing placeholder.
 
 ## Marketplace ↔ escrow integration
 

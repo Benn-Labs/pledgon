@@ -19,6 +19,16 @@ Escrow, compliance, and the marketplace always deploy. Lending deploys too if
 `script/Deploy.s.sol`'s doc comment for the full env var list and defaults).
 Omit `--private-key`/`--broadcast` for a dry run against a local simulated chain.
 
-Every deployed address is written to `contracts/evm/deployments/<chainId>.json`
-— copy the relevant ones into the matching workflow's `config.*.json`
-(`confirmationConsumerAddress`, `consumerAddress`, `lendingPoolAddress`, etc.).
+Every deployed address is written to `contracts/evm/deployments/<chainId>.json`.
+Wire the relevant ones into each workflow's `config.<target>.json`
+(`confirmationConsumerAddress`, `consumerAddress`, `lendingPoolAddress`) with:
+
+```bash
+go run ./cmd/wire-config --chain-id <chainId> --target staging   # or production
+```
+
+This only ever touches those specific address fields — `vaultAddresses`,
+`borrower`, secret IDs, URLs, and everything else in each config are left
+exactly as they were, since a deployment record can't supply them. A field
+whose deployment address is the zero address (lending, when it wasn't
+deployed) is skipped rather than overwritten with a placeholder.
