@@ -115,6 +115,19 @@ no caller — until replaced with a real key). Confirm the exact key encoding CR
 expects against `cre workflow simulate` output before deploying with a real
 signer.
 
+## Deployment
+
+`contracts/evm/script/Deploy.s.sol` (Foundry script) deploys the system
+contracts — see the [README](../README.md#deploying-the-contracts) for the
+command. Escrow/compliance/marketplace always deploy; lending deploys only if
+both token addresses are configured, since that pairing isn't decided yet for
+any real network. One run targets one chain (one `FORWARDER_ADDRESS`, since a
+chain's `KeystoneForwarder` is shared by every consumer on it). Every address
+is written to `deployments/<chainId>.json`, which needs `fs_permissions` in
+`foundry.toml` (write access is denied by default) — the values there still
+have to be copied into each workflow's `config.*.json` by hand; nothing wires
+them together automatically yet.
+
 ## Marketplace ↔ escrow integration
 
 `Marketplace.purchase()` needs to open an escrow trade where the real buyer is
