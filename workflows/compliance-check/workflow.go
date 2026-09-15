@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"math/big"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -33,7 +34,7 @@ type Config struct {
 	// carries, since the request never includes raw PII (see CaseID below).
 	VerificationURLTemplate string `json:"verificationUrlTemplate"` // e.g. "https://kyc-provider.example.com/cases/{caseId}/verdict"
 	SecretID                string `json:"secretId"`                // Vault DON secret id, mapped in secrets.yaml
-	ResponseCompliantPath   string `json:"responseCompliantPath"`   // dot-path to a boolean, e.g. "compliant"
+	ResponseTierPath        string `json:"responseTierPath"`        // dot-path to an integer 0-2, e.g. "tier"
 
 	// On-chain delivery. Leave ConsumerAddress as the zero address to stop after
 	// GenerateReport (useful for simulating before it's deployed).
@@ -54,10 +55,14 @@ type ComplianceRequest struct {
 	CaseID  string `json:"caseId"`  // opaque KYC/case reference — never raw PII
 }
 
+// maxTier mirrors ComplianceConsumer.sol's MAX_TIER: 0 = unverified,
+// 1 = basic KYC, 2 = enhanced KYC/KYB.
+const maxTier = 2
+
 // ─── Verdict source ───────────────────────────────────────
 // Runs inside the enclave. The provider's response — which may itself carry PII
 // (matched name, sanctions hits, etc.) — never crosses UsingTheDons(); only the
-// derived boolean does.
+// derived tier does.
 
 func buildCaseVerdictURL(template, caseID string) (string, error) {
 	if !strings.Contains(template, "{caseId}") {
@@ -71,44 +76,52 @@ func buildCaseVerdictURL(template, caseID string) (string, error) {
 	return u.String(), nil
 }
 
-// extractBool walks a dot-separated path into a JSON object and returns the leaf
-// as a bool.
-func extractBool(body []byte, path string) (bool, error) {
+// extractTier walks a dot-separated path into a JSON object and returns the
+// leaf as a tier (an integer in [0, maxTier]).
+func extractTier(body []byte, path string) (uint8, error) {
 	dec := json.NewDecoder(bytes.NewReader(body))
+	dec.UseNumber()
 
 	var root any
 	if err := dec.Decode(&root); err != nil {
-		return false, fmt.Errorf("decode JSON body: %w", err)
+		return 0, fmt.Errorf("decode JSON body: %w", err)
 	}
 
 	cur := root
 	for _, seg := range strings.Split(path, ".") {
 		obj, ok := cur.(map[string]any)
 		if !ok {
-			return false, fmt.Errorf("path %q: %q is not an object", path, seg)
+			return 0, fmt.Errorf("path %q: %q is not an object", path, seg)
 		}
 		next, ok := obj[seg]
 		if !ok {
-			return false, fmt.Errorf("path %q: key %q not found", path, seg)
+			return 0, fmt.Errorf("path %q: key %q not found", path, seg)
 		}
 		cur = next
 	}
 
-	b, ok := cur.(bool)
+	num, ok := cur.(json.Number)
 	if !ok {
-		return false, fmt.Errorf("path %q: leaf is %T, want bool", path, cur)
+		return 0, fmt.Errorf("path %q: leaf is %T, want a number", path, cur)
 	}
-	return b, nil
+	tier, err := strconv.ParseUint(num.String(), 10, 8)
+	if err != nil {
+		return 0, fmt.Errorf("path %q: %q is not a valid tier: %w", path, num.String(), err)
+	}
+	if tier > maxTier {
+		return 0, fmt.Errorf("path %q: tier %d exceeds max tier %d", path, tier, maxTier)
+	}
+	return uint8(tier), nil
 }
 
-// complianceReportArgs is (address subject, bool compliant, uint256 verifiedAt).
+// complianceReportArgs is (address subject, uint8 tier, uint256 verifiedAt).
 // ComplianceConsumer.sol decodes the report with these exact types.
 func complianceReportArgs() (abi.Arguments, error) {
 	addrType, err := abi.NewType("address", "", nil)
 	if err != nil {
 		return nil, err
 	}
-	boolType, err := abi.NewType("bool", "", nil)
+	uint8Type, err := abi.NewType("uint8", "", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -116,15 +129,15 @@ func complianceReportArgs() (abi.Arguments, error) {
 	if err != nil {
 		return nil, err
 	}
-	return abi.Arguments{{Type: addrType}, {Type: boolType}, {Type: u256Type}}, nil
+	return abi.Arguments{{Type: addrType}, {Type: uint8Type}, {Type: u256Type}}, nil
 }
 
-func encodeComplianceReport(subject common.Address, compliant bool, verifiedAt int64) ([]byte, error) {
+func encodeComplianceReport(subject common.Address, tier uint8, verifiedAt int64) ([]byte, error) {
 	args, err := complianceReportArgs()
 	if err != nil {
 		return nil, err
 	}
-	return args.Pack(subject, compliant, big.NewInt(verifiedAt))
+	return args.Pack(subject, tier, big.NewInt(verifiedAt))
 }
 
 func isZeroAddress(addr string) bool {
@@ -175,21 +188,21 @@ func onComplianceRequested(config *Config, runtime cre.TeeRuntime, trigger *http
 		return "", fmt.Errorf("confidential verification request failed with status: %d", response.StatusCode)
 	}
 
-	compliant, err := extractBool(response.Body, config.ResponseCompliantPath)
+	tier, err := extractTier(response.Body, config.ResponseTierPath)
 	if err != nil {
-		return "", fmt.Errorf("extract compliance verdict: %w", err)
+		return "", fmt.Errorf("extract compliance tier: %w", err)
 	}
 
 	// ── Cross back to the DON ──
-	// Only the boolean verdict and the subject address cross out. The provider
-	// credential and the raw response body — which may carry PII — do not.
+	// Only the tier and the subject address cross out. The provider credential
+	// and the raw response body — which may carry PII — do not.
 	donRuntime := runtime.UsingTheDons()
 	verifiedAt := donRuntime.Now().Unix()
 
-	// Unlike a one-off confirmation, a compliant:false verdict is recorded too —
-	// "checked and failed" must overwrite a stale "checked and passed", and the
-	// vault's isCompliant() read needs the current answer either way.
-	encoded, err := encodeComplianceReport(subject, compliant, verifiedAt)
+	// Unlike a one-off confirmation, a tier-0 verdict is recorded too —
+	// "checked and downgraded" must overwrite a stale higher tier, and
+	// ComplianceConsumer.tierOf() needs the current answer either way.
+	encoded, err := encodeComplianceReport(subject, tier, verifiedAt)
 	if err != nil {
 		return "", fmt.Errorf("encode report payload: %w", err)
 	}
@@ -206,7 +219,7 @@ func onComplianceRequested(config *Config, runtime cre.TeeRuntime, trigger *http
 
 	// ── Deliver on-chain (skipped when no consumer is configured) ──
 	if isZeroAddress(config.ConsumerAddress) {
-		return fmt.Sprintf("subject %s compliant=%t (no consumer configured, write skipped)", subject.Hex(), compliant), nil
+		return fmt.Sprintf("subject %s tier=%d (no consumer configured, write skipped)", subject.Hex(), tier), nil
 	}
 
 	chainSelector, err := evm.ChainSelectorFromName(config.ChainSelectorName)
@@ -228,7 +241,7 @@ func onComplianceRequested(config *Config, runtime cre.TeeRuntime, trigger *http
 	}
 
 	txHash := common.BytesToHash(reply.TxHash).Hex()
-	return fmt.Sprintf("subject %s compliant=%t, tx %s", subject.Hex(), compliant, txHash), nil
+	return fmt.Sprintf("subject %s tier=%d, tx %s", subject.Hex(), tier, txHash), nil
 }
 
 // ─── Workflow Init ──────────────────────────────────────────

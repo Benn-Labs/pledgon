@@ -36,6 +36,15 @@ import {LendingPool} from "../src/lending/LendingPool.sol";
 ///                               LendingOracleConsumer keys its price by
 ///   LIQUIDATION_THRESHOLD_BPS   default 8000 (80% LTV)
 ///
+/// Optional env vars for compliance (see ComplianceConsumer.sol / EscrowFactory
+/// .sol for what these mean):
+///   COMPLIANCE_MAX_VALIDITY_DAYS   default 180 — how long a KYC verdict stays
+///                                   valid before tierOf() reads it back as 0
+///   TIER0_CAP_USD                  default 999 — rolling volume a buyer may
+///                                   move with no compliance report at all
+///   TIER1_CAP_USD                  default 10000 — cap once tier-1 (basic KYC)
+///                                   verified; tier 2 (enhanced) is uncapped
+///
 /// Usage:
 ///   forge script script/Deploy.s.sol --rpc-url <url> --private-key $PRIVATE_KEY --broadcast
 ///
@@ -46,11 +55,15 @@ contract Deploy is Script {
     function run() external {
         address forwarder = vm.envAddress("FORWARDER_ADDRESS");
 
+        uint256 maxValidity = vm.envOr("COMPLIANCE_MAX_VALIDITY_DAYS", uint256(180)) * 1 days;
+        uint256 tier0CapUsd = vm.envOr("TIER0_CAP_USD", uint256(999));
+        uint256 tier1CapUsd = vm.envOr("TIER1_CAP_USD", uint256(10_000));
+
         vm.startBroadcast();
 
         EscrowConfirmationConsumer confirmationConsumer = new EscrowConfirmationConsumer(forwarder);
-        ComplianceConsumer complianceConsumer = new ComplianceConsumer(forwarder);
-        EscrowFactory factory = new EscrowFactory(confirmationConsumer, complianceConsumer);
+        ComplianceConsumer complianceConsumer = new ComplianceConsumer(forwarder, maxValidity);
+        EscrowFactory factory = new EscrowFactory(confirmationConsumer, complianceConsumer, tier0CapUsd, tier1CapUsd);
         Marketplace marketplace = new Marketplace(factory);
 
         console.log("EscrowConfirmationConsumer:", address(confirmationConsumer));

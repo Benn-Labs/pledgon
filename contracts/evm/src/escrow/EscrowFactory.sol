@@ -12,19 +12,39 @@ import {ComplianceConsumer} from "../compliance/ComplianceConsumer.sol";
 /// trust relationship is configured once instead of per trade — lower complexity
 /// than giving each vault its own forwarder wiring.
 ///
-/// The $999 compliance threshold assumes `token` is a stablecoin pegged ~1:1 to
-/// USD: it's computed from the token's `decimals()`, not a price feed. A trade in
-/// a non-stablecoin token needs its own USD-conversion step before this threshold
-/// is meaningful.
+/// Also the shared home for per-buyer trading volume: EscrowVault.fund() calls
+/// back into `recordVolume` before deciding whether the buyer's compliance tier
+/// covers the trade, so a buyer can't evade the tier cap by splitting one large
+/// purchase into several trades that are each individually small (structuring).
+/// Volume resets in fixed `VOLUME_WINDOW`-sized calendar buckets rather than a
+/// continuously-rolling window — far cheaper on-chain, at the cost of a real
+/// edge case: a buyer can still move up to ~2x a tier's cap by timing trades
+/// across a bucket boundary. Tightening that would mean a true rolling window
+/// (a timestamped ring buffer, summed at read time) — a real improvement, left
+/// for when structuring at the bucket boundary is an actual observed problem
+/// rather than a theoretical one.
+///
+/// Tier caps assume `token` is a stablecoin pegged ~1:1 to USD: they're computed
+/// from the token's `decimals()`, not a price feed. A trade in a non-stablecoin
+/// token needs its own USD-conversion step before these caps are meaningful.
 contract EscrowFactory {
-    uint256 public constant COMPLIANCE_THRESHOLD_USD = 999;
+    uint256 public constant VOLUME_WINDOW = 30 days;
+
+    /// @notice USD-equivalent cap (before decimal scaling) per compliance tier:
+    /// index 0 is the tier-0 (unverified) cap — trades whose buyer's rolling
+    /// volume stays under this never need a compliance report at all — index 1
+    /// is the tier-1 (basic KYC) cap. Tier 2 (enhanced) is uncapped.
+    uint256 public immutable tier0CapUsd;
+    uint256 public immutable tier1CapUsd;
 
     EscrowConfirmationConsumer public immutable confirmationConsumer;
     ComplianceConsumer public immutable complianceConsumer;
 
     address[] public allVaults;
+    mapping(address => bool) public isVault;
     mapping(address => address[]) public vaultsByBuyer;
     mapping(address => address[]) public vaultsBySeller;
+    mapping(address => mapping(uint256 => uint256)) private _volumeByPeriod;
 
     event VaultCreated(
         address indexed vault,
@@ -36,13 +56,24 @@ contract EscrowFactory {
     );
 
     error ZeroAddress();
+    error NotAVault(address caller);
+    error InvalidTierCaps(uint256 tier0CapUsd, uint256 tier1CapUsd);
 
-    constructor(EscrowConfirmationConsumer _confirmationConsumer, ComplianceConsumer _complianceConsumer) {
+    constructor(
+        EscrowConfirmationConsumer _confirmationConsumer,
+        ComplianceConsumer _complianceConsumer,
+        uint256 _tier0CapUsd,
+        uint256 _tier1CapUsd
+    ) {
         if (address(_confirmationConsumer) == address(0) || address(_complianceConsumer) == address(0)) {
             revert ZeroAddress();
         }
+        if (_tier1CapUsd < _tier0CapUsd) revert InvalidTierCaps(_tier0CapUsd, _tier1CapUsd);
+
         confirmationConsumer = _confirmationConsumer;
         complianceConsumer = _complianceConsumer;
+        tier0CapUsd = _tier0CapUsd;
+        tier1CapUsd = _tier1CapUsd;
     }
 
     /// @notice Creates a trade with the caller as buyer. The caller must still
@@ -75,6 +106,20 @@ contract EscrowFactory {
         return _createTrade(buyer, seller, arbiter, token, bondAmount, milestoneAmounts);
     }
 
+    /// @notice Adds `amount` to `buyer`'s volume for the current period.
+    /// Callable only by a vault this factory deployed — see EscrowVault.fund().
+    function recordVolume(address buyer, uint256 amount) external returns (uint256 periodVolume) {
+        if (!isVault[msg.sender]) revert NotAVault(msg.sender);
+        uint256 period = block.timestamp / VOLUME_WINDOW;
+        periodVolume = _volumeByPeriod[buyer][period] + amount;
+        _volumeByPeriod[buyer][period] = periodVolume;
+    }
+
+    /// @notice `buyer`'s recorded volume in the current period.
+    function currentPeriodVolume(address buyer) external view returns (uint256) {
+        return _volumeByPeriod[buyer][block.timestamp / VOLUME_WINDOW];
+    }
+
     function _createTrade(
         address buyer,
         address seller,
@@ -83,7 +128,7 @@ contract EscrowFactory {
         uint256 bondAmount,
         uint256[] calldata milestoneAmounts
     ) private returns (address vault) {
-        uint256 complianceThreshold = COMPLIANCE_THRESHOLD_USD * (10 ** token.decimals());
+        uint256 scale = 10 ** token.decimals();
 
         vault = address(
             new EscrowVault(
@@ -93,13 +138,15 @@ contract EscrowFactory {
                 token,
                 bondAmount,
                 milestoneAmounts,
-                complianceThreshold,
+                tier0CapUsd * scale,
+                tier1CapUsd * scale,
                 confirmationConsumer,
                 complianceConsumer
             )
         );
 
         allVaults.push(vault);
+        isVault[vault] = true;
         vaultsByBuyer[buyer].push(vault);
         vaultsBySeller[seller].push(vault);
 

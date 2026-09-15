@@ -14,9 +14,9 @@ transaction plumbing with Solidity contracts and DON-verified confidential workf
 | DEEDS feature | Maps to | Status |
 |---|---|---|
 | Marketplace (listings, transfers) | Plain Solidity — CRE doesn't do much here | **Built**: `Marketplace` (Solidity, 16 tests) |
-| Escrow + DON confirmation | Confidential workflow verifies an off-chain condition (title recorded, payment cleared) → signed report → escrow contract checks it before releasing funds | **Built**: `EscrowVault`/`EscrowFactory`/`EscrowConfirmationConsumer` (Solidity, 50 tests) + `escrow-confirmation` workflow (Go, 18 tests) |
+| Escrow + DON confirmation | Confidential workflow verifies an off-chain condition (title recorded, payment cleared) → signed report → escrow contract checks it before releasing funds | **Built**: `EscrowVault`/`EscrowFactory`/`EscrowConfirmationConsumer` (Solidity, 66 tests) + `escrow-confirmation` workflow (Go, 18 tests) |
 | Milestone escrows | Same pattern, repeated per milestone. Triggered by an EVM log trigger (fires when a milestone is claimed via `submitMilestoneDocs`) rather than cron polling | Built as part of the row above — `DocsSubmitted` is the claim event |
-| Compliance layer (confidentiality) | KYC/AML/sanctions API called inside the enclave — PII and the provider's credentials never leave it, only `compliant: true/false` crosses out | **Built**: `compliance-check` workflow (Go, 16 tests), writes to the already-built `ComplianceConsumer` |
+| Compliance layer (confidentiality) | KYC/AML/sanctions API called inside the enclave — PII and the provider's credentials never leave it, only a tier (0/1/2) crosses out | **Built**: `compliance-check` workflow (Go, 16 tests), writes to `ComplianceConsumer` (Solidity, 16 tests) — rolling-volume + tiering + expiry, see "Compliance hardening" below |
 | Lending/borrowing | Its own large protocol: collateral valuation (the RWA oracle feeds this directly), liquidation logic | **Built (minimal substrate)**: `LendingPool`/`LendingOracleConsumer`/`LiquidationConsumer` (Solidity, 20 tests) + `liquidation-protection` workflow (Go, 16 tests). Deliberately not a production money market — see below |
 
 ## Prior art (source material, not yet ported)
@@ -57,11 +57,9 @@ deeds/
   (`escrow_factory.tact` + `escrow_vault.tact`) and keeps each trade's state and
   balance isolated — lower complexity than a single contract with a milestone array
   across all trades.
-- **Compliance gates by transaction value.** Any transaction ≤ $999 (equivalent)
-  proceeds without a compliance check. Above $999, escrow funding requires a
-  `compliant: true` verdict from the compliance-check confidential workflow
-  (KYC/KYB) before funds move. Threshold is enforced in the escrow vault at fund-in,
-  not at marketplace listing time.
+- **Compliance gates by rolling volume and tier, not a single per-trade check.**
+  See "Compliance hardening" below — the original $999 flat threshold was
+  reviewed and replaced.
 - **Lending gets its own RWA oracle DON, separate from escrow's.** Reusing the
   escrow `RwaOracleConsumer` deployment was considered and rejected: its producing
   workflow (`benn-cre/hello-confidential/workflow.go`) is cron-triggered, has no
@@ -102,10 +100,10 @@ entire point of using a Confidential Workflow for KYC.
 PII. `caseId` is an opaque reference issued by the KYC provider when the subject
 completed verification directly with that provider, out of band. The enclave uses
 it to fetch the provider's verdict (the provider looks up the PII server-side);
-only the resulting `compliant: true/false` ever crosses `UsingTheDons()`. This
-means DEEDS' frontend needs a direct integration with the KYC provider to obtain
-`caseId` before calling this workflow — not yet built, and out of scope for the
-workflow itself.
+only the resulting tier (see "Compliance hardening" below) ever crosses
+`UsingTheDons()`. This means DEEDS' frontend needs a direct integration with the
+KYC provider to obtain `caseId` before calling this workflow — not yet built,
+and out of scope for the workflow itself.
 
 Also unresolved: the webhook's `authorizedKeys` field takes a raw ECDSA public
 key per the SDK's proto definition, but some docs describe it as an address.
@@ -114,6 +112,76 @@ caller) and an obviously-fake placeholder for production (fails closed — accep
 no caller — until replaced with a real key). Confirm the exact key encoding CRE
 expects against `cre workflow simulate` output before deploying with a real
 signer.
+
+## Compliance hardening: rolling volume, tiers, expiry
+
+The original design — a flat $999 per-trade threshold, `compliant: true/false`
+that never expired — was reviewed and found to have one real gap and two
+lower-urgency ones:
+
+1. **Stateless per trade.** A buyer could structure a $5,000 purchase as six
+   $900 trades and never trigger KYC — classic structuring, the first thing an
+   actual AML review would flag.
+2. **No expiry.** `compliant: true` was permanent once set — a buyer who
+   passed a one-time small-trade check stayed "compliant" forever, including
+   for arbitrarily large future trades, even after e.g. landing on a sanctions
+   list later.
+3. **Binary, not tiered.** No distinction between a lightly-verified buyer and
+   an enhanced-KYC/KYB one — real compliance regimes usually grade this.
+
+All three are now addressed together, since the fix for (1) turned out to
+subsume (3) naturally:
+
+- **`ComplianceConsumer` reports a tier (0/1/2), not a bool.** 0 = unverified,
+  1 = basic KYC, 2 = enhanced KYC/KYB. `tierOf(subject)` is the only way callers
+  read it — never the raw stored struct — so expiry enforcement can't be
+  bypassed by reading the wrong field. `verifiedAt` older than `maxValidity`
+  (a constructor param, default 180 days) makes `tierOf` read back 0 regardless
+  of what tier was actually stored, addressing (2). A tier-0 report is a real,
+  intentional verdict (e.g. an explicit revocation) and is written and read
+  like any other — not treated as "no change."
+- **`EscrowFactory` tracks rolling per-buyer volume**, addressing (1). Every
+  `EscrowVault.fund()` calls back into `EscrowFactory.recordVolume(buyer,
+  amount)` before deciding whether the trade needs compliance — so the check
+  is against the buyer's *cumulative* volume for the period, not just this
+  trade's amount. Each tier has its own volume cap (`tier0CapUsd`/
+  `tier1CapUsd`, constructor params on `EscrowFactory`; tier 2 is uncapped) —
+  which is what actually resolves (3): a trade that pushes a buyer's rolling
+  total past their tier's cap is what requires the next tier up, not a single
+  static number.
+- **Volume resets in fixed 30-day calendar buckets** (`EscrowFactory
+  .VOLUME_WINDOW`), not a continuously-rolling window — an intentional
+  cost/precision tradeoff. A true rolling window needs a timestamped ring
+  buffer summed at read time; real gas cost for a real edge case (a buyer can
+  still move up to ~2x a tier's cap by timing trades across a bucket
+  boundary). Worth revisiting if that boundary-timing gap is ever an actual
+  observed problem rather than a theoretical one.
+- **`EscrowVault` calls back into its deploying `EscrowFactory`** via a
+  minimal `IEscrowFactory` interface (one function: `recordVolume`) rather
+  than importing the full factory contract — avoids an import cycle (the
+  factory already imports `EscrowVault` to `new` it) and keeps the coupling to
+  exactly the one call the vault actually needs. The vault never receives the
+  factory's address as a constructor argument either: it captures `msg.sender`
+  at construction, which is always the factory, since the factory is the only
+  thing that ever deploys an `EscrowVault`.
+
+**A real bug the new `ComplianceConsumer.t.sol` test suite caught before it
+shipped**: `tierOf` computes `block.timestamp - verifiedAt`. A `verifiedAt` in
+the future — from a malicious or simply buggy DON report — would underflow
+that subtraction and revert *every subsequent `tierOf` read for that subject*
+until real time caught up, effectively bricking their compliance status. Fixed
+by rejecting any report whose `verifiedAt` exceeds `block.timestamp` at
+`onReport` time (`ComplianceConsumer.FutureVerifiedAt`). The test that
+surfaced this (`test_OnReport_NewerReportOverwritesTier`, originally written
+with unrealistic literal timestamps that were "in the future" relative to
+Foundry's default test-chain clock) is kept, fixed, alongside a dedicated
+regression test for the guard itself.
+
+Still open, deliberately not solved here: `maxValidity` and the tier caps are
+set once at deploy time (constructor params, not owner-adjustable) — changing
+them means a new `EscrowFactory`/`ComplianceConsumer` deployment. Given
+neither contract has any other admin/owner concept, adding one just for this
+felt like solving a problem DEEDS doesn't have yet.
 
 ## Deployment
 

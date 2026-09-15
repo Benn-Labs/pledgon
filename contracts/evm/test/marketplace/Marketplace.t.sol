@@ -22,8 +22,8 @@ contract MarketplaceTest is Test {
 
     function setUp() public {
         EscrowConfirmationConsumer confirmationConsumer = new EscrowConfirmationConsumer(forwarder);
-        ComplianceConsumer complianceConsumer = new ComplianceConsumer(forwarder);
-        factory = new EscrowFactory(confirmationConsumer, complianceConsumer);
+        ComplianceConsumer complianceConsumer = new ComplianceConsumer(forwarder, 180 days);
+        factory = new EscrowFactory(confirmationConsumer, complianceConsumer, 999, 10_000);
         marketplace = new Marketplace(factory);
         token = new MockERC20(6);
     }

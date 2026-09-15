@@ -4,6 +4,7 @@ pragma solidity 0.8.24;
 import {IERC20} from "../interfaces/IERC20.sol";
 import {EscrowConfirmationConsumer} from "./EscrowConfirmationConsumer.sol";
 import {ComplianceConsumer} from "../compliance/ComplianceConsumer.sol";
+import {IEscrowFactory} from "./IEscrowFactory.sol";
 
 /// @title EscrowVault
 /// @notice One vault per trade, deployed by EscrowFactory. Holds a seller
@@ -31,7 +32,14 @@ contract EscrowVault {
     address public immutable arbiter;
     IERC20 public immutable token;
     uint256 public immutable bondAmount;
-    uint256 public immutable complianceThreshold;
+    /// @notice Tier-0 (unverified) and tier-1 (basic KYC) volume caps, already
+    /// scaled to `token`'s decimals. Tier 2 (enhanced) is uncapped.
+    uint256 public immutable tier0Cap;
+    uint256 public immutable tier1Cap;
+    /// @notice The EscrowFactory that deployed this vault — always msg.sender
+    /// during construction, since EscrowFactory is the only deployer. Used to
+    /// record this vault's funding volume against the buyer's rolling total.
+    IEscrowFactory public immutable factory;
     EscrowConfirmationConsumer public immutable confirmationConsumer;
     ComplianceConsumer public immutable complianceConsumer;
 
@@ -57,7 +65,7 @@ contract EscrowVault {
     error BondNotDeposited();
     error AlreadyFunded();
     error NotFunded();
-    error ComplianceRequired(address buyer, uint256 totalAmount);
+    error ComplianceRequired(address buyer, uint256 periodVolume, uint256 cap);
     error InvalidMilestoneIndex(uint256 index);
     error InvalidMilestoneStatus(uint256 index, MilestoneStatus actual);
     error DonNotConfirmed(uint256 index);
@@ -87,7 +95,8 @@ contract EscrowVault {
         IERC20 _token,
         uint256 _bondAmount,
         uint256[] memory _milestoneAmounts,
-        uint256 _complianceThreshold,
+        uint256 _tier0Cap,
+        uint256 _tier1Cap,
         EscrowConfirmationConsumer _confirmationConsumer,
         ComplianceConsumer _complianceConsumer
     ) {
@@ -102,7 +111,9 @@ contract EscrowVault {
         arbiter = _arbiter;
         token = _token;
         bondAmount = _bondAmount;
-        complianceThreshold = _complianceThreshold;
+        tier0Cap = _tier0Cap;
+        tier1Cap = _tier1Cap;
+        factory = IEscrowFactory(msg.sender);
         confirmationConsumer = _confirmationConsumer;
         complianceConsumer = _complianceConsumer;
 
@@ -123,17 +134,18 @@ contract EscrowVault {
         emit BondDeposited(bondAmount);
     }
 
-    /// @notice Buyer funds all milestones in one transfer. Trades above the
-    /// $999-equivalent compliance threshold require a prior `compliant: true`
-    /// verdict for the buyer from the compliance-check workflow.
+    /// @notice Buyer funds all milestones in one transfer. Requires the buyer's
+    /// rolling trading volume (this trade included) to stay within their
+    /// compliance tier's cap — see EscrowFactory for how that volume is tracked
+    /// and ComplianceConsumer for how the tier is determined.
     function fund() external onlyBuyer {
         if (bondAmount > 0 && !bondDeposited) revert BondNotDeposited();
         if (funded) revert AlreadyFunded();
 
         uint256 total = totalAmount();
-        if (total > complianceThreshold && !complianceConsumer.isCompliant(buyer)) {
-            revert ComplianceRequired(buyer, total);
-        }
+        uint256 periodVolume = factory.recordVolume(buyer, total);
+        uint256 cap = _capForTier(complianceConsumer.tierOf(buyer));
+        if (periodVolume > cap) revert ComplianceRequired(buyer, periodVolume, cap);
 
         funded = true;
         _safeTransferFrom(buyer, address(this), total);
@@ -240,6 +252,12 @@ contract EscrowVault {
     function _milestone(uint256 index) private view returns (Milestone storage) {
         if (index >= milestones.length) revert InvalidMilestoneIndex(index);
         return milestones[index];
+    }
+
+    function _capForTier(uint8 tier) private view returns (uint256) {
+        if (tier == 0) return tier0Cap;
+        if (tier == 1) return tier1Cap;
+        return type(uint256).max;
     }
 
     function _safeTransfer(address to, uint256 amount) private {

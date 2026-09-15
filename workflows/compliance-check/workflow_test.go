@@ -32,7 +32,7 @@ func testConfig() *Config {
 		AuthorizedKeys:          nil,
 		VerificationURLTemplate: "https://example.com/kyc/cases/{caseId}/verdict",
 		SecretID:                "COMPLIANCE_API_TOKEN",
-		ResponseCompliantPath:   "compliant",
+		ResponseTierPath:        "tier",
 		ChainSelectorName:       sepoliaChainName,
 		ConsumerAddress:         "0x0000000000000000000000000000000000000000",
 		GasLimitWei:             500000,
@@ -113,26 +113,40 @@ func TestBuildCaseVerdictURL(t *testing.T) {
 	})
 }
 
-func TestExtractBool(t *testing.T) {
-	t.Run("top-level bool", func(t *testing.T) {
-		b, err := extractBool([]byte(`{"compliant": true}`), "compliant")
+func TestExtractTier(t *testing.T) {
+	t.Run("top-level tier", func(t *testing.T) {
+		tier, err := extractTier([]byte(`{"tier": 2}`), "tier")
 		require.NoError(t, err)
-		assert.True(t, b)
+		assert.Equal(t, uint8(2), tier)
 	})
-	t.Run("nested bool", func(t *testing.T) {
-		b, err := extractBool([]byte(`{"data":{"compliant": false}}`), "data.compliant")
+	t.Run("nested tier", func(t *testing.T) {
+		tier, err := extractTier([]byte(`{"data":{"tier": 0}}`), "data.tier")
 		require.NoError(t, err)
-		assert.False(t, b)
+		assert.Equal(t, uint8(0), tier)
 	})
 	t.Run("missing key", func(t *testing.T) {
-		_, err := extractBool([]byte(`{}`), "compliant")
+		_, err := extractTier([]byte(`{}`), "tier")
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), `key "compliant" not found`)
+		assert.Contains(t, err.Error(), `key "tier" not found`)
+	})
+	t.Run("non-numeric leaf", func(t *testing.T) {
+		_, err := extractTier([]byte(`{"tier": "high"}`), "tier")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "want a number")
+	})
+	t.Run("rejects tier above max", func(t *testing.T) {
+		_, err := extractTier([]byte(`{"tier": 3}`), "tier")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "exceeds max tier")
+	})
+	t.Run("rejects negative tier", func(t *testing.T) {
+		_, err := extractTier([]byte(`{"tier": -1}`), "tier")
+		require.Error(t, err)
 	})
 }
 
 func TestEncodeComplianceReportRoundTrips(t *testing.T) {
-	encoded, err := encodeComplianceReport(subjectAddress, true, 1_700_000_000)
+	encoded, err := encodeComplianceReport(subjectAddress, 2, 1_700_000_000)
 	require.NoError(t, err)
 
 	args, err := complianceReportArgs()
@@ -142,7 +156,7 @@ func TestEncodeComplianceReportRoundTrips(t *testing.T) {
 	require.Len(t, vals, 3)
 
 	assert.Equal(t, subjectAddress, vals[0].(common.Address))
-	assert.Equal(t, true, vals[1].(bool))
+	assert.Equal(t, uint8(2), vals[1].(uint8))
 	assert.Equal(t, int64(1_700_000_000), vals[2].(*big.Int).Int64())
 }
 
@@ -156,7 +170,7 @@ func TestIsZeroAddress(t *testing.T) {
 
 func TestOnComplianceRequested_InjectsEnclaveFetchedSecret(t *testing.T) {
 	payload := requestPayload(t, subjectAddress, "case-001")
-	_, authHeaders := stubHTTP(t, 200, `{"compliant": true}`)
+	_, authHeaders := stubHTTP(t, 200, `{"tier": 1}`)
 	runtime := testutils.NewTeeRuntime(t, testSecrets())
 
 	_, err := onComplianceRequested(testConfig(), runtime, payload)
@@ -167,7 +181,7 @@ func TestOnComplianceRequested_InjectsEnclaveFetchedSecret(t *testing.T) {
 
 func TestOnComplianceRequested_QueriesCaseSpecificURL(t *testing.T) {
 	payload := requestPayload(t, subjectAddress, "case-42")
-	urls, _ := stubHTTP(t, 200, `{"compliant": true}`)
+	urls, _ := stubHTTP(t, 200, `{"tier": 1}`)
 	runtime := testutils.NewTeeRuntime(t, testSecrets())
 
 	_, err := onComplianceRequested(testConfig(), runtime, payload)
@@ -195,21 +209,31 @@ func TestOnComplianceRequested_RevertsOnMissingCaseID(t *testing.T) {
 	assert.Contains(t, err.Error(), "caseId is required")
 }
 
+func TestOnComplianceRequested_RevertsOnTierAboveMax(t *testing.T) {
+	payload := requestPayload(t, subjectAddress, "case-1")
+	stubHTTP(t, 200, `{"tier": 5}`)
+	runtime := testutils.NewTeeRuntime(t, testSecrets())
+
+	_, err := onComplianceRequested(testConfig(), runtime, payload)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "exceeds max tier")
+}
+
 func TestOnComplianceRequested_SkipsWriteWhenNoConsumer(t *testing.T) {
 	payload := requestPayload(t, subjectAddress, "case-1")
-	stubHTTP(t, 200, `{"compliant": true}`)
+	stubHTTP(t, 200, `{"tier": 1}`)
 	runtime := testutils.NewTeeRuntime(t, testSecrets())
 
 	result, err := onComplianceRequested(testConfig(), runtime, payload)
 	require.NoError(t, err)
 
-	assert.Contains(t, result, "compliant=true")
+	assert.Contains(t, result, "tier=1")
 	assert.Contains(t, result, "no consumer configured")
 }
 
-func TestOnComplianceRequested_WritesTrueVerdictOnChain(t *testing.T) {
+func TestOnComplianceRequested_WritesTierOnChain(t *testing.T) {
 	payload := requestPayload(t, subjectAddress, "case-1")
-	stubHTTP(t, 200, `{"compliant": true}`)
+	stubHTTP(t, 200, `{"tier": 2}`)
 	captured := stubEVMWrite(t, evm.TxStatus_TX_STATUS_SUCCESS)
 	runtime := testutils.NewTeeRuntime(t, testSecrets())
 
@@ -218,40 +242,40 @@ func TestOnComplianceRequested_WritesTrueVerdictOnChain(t *testing.T) {
 	require.NotNil(t, *captured)
 
 	assert.Equal(t, common.HexToAddress(consumerAddress).Bytes(), (*captured).Receiver)
-	assert.Contains(t, result, "compliant=true, tx")
+	assert.Contains(t, result, "tier=2, tx")
 
 	args, err := complianceReportArgs()
 	require.NoError(t, err)
 	vals, err := args.Unpack((*captured).Report.RawReport[cre.ReportMetadataHeaderLength:])
 	require.NoError(t, err)
 	assert.Equal(t, subjectAddress, vals[0].(common.Address))
-	assert.Equal(t, true, vals[1].(bool))
+	assert.Equal(t, uint8(2), vals[1].(uint8))
 }
 
-// A compliant:false verdict must still be written on-chain — it's the mechanism
-// that overwrites a stale earlier compliant:true, unlike escrow-confirmation's
+// A tier-0 verdict must still be written on-chain — it's the mechanism that
+// overwrites a stale earlier higher tier, unlike escrow-confirmation's
 // not-confirmed case, which skips the write entirely.
-func TestOnComplianceRequested_WritesFalseVerdictOnChainToo(t *testing.T) {
+func TestOnComplianceRequested_WritesTierZeroOnChainToo(t *testing.T) {
 	payload := requestPayload(t, subjectAddress, "case-1")
-	stubHTTP(t, 200, `{"compliant": false}`)
+	stubHTTP(t, 200, `{"tier": 0}`)
 	captured := stubEVMWrite(t, evm.TxStatus_TX_STATUS_SUCCESS)
 	runtime := testutils.NewTeeRuntime(t, testSecrets())
 
 	result, err := onComplianceRequested(configWithConsumer(), runtime, payload)
 	require.NoError(t, err)
-	require.NotNil(t, *captured, "a false verdict must still be written on-chain")
-	assert.Contains(t, result, "compliant=false, tx")
+	require.NotNil(t, *captured, "a tier-0 verdict must still be written on-chain")
+	assert.Contains(t, result, "tier=0, tx")
 
 	args, err := complianceReportArgs()
 	require.NoError(t, err)
 	vals, err := args.Unpack((*captured).Report.RawReport[cre.ReportMetadataHeaderLength:])
 	require.NoError(t, err)
-	assert.Equal(t, false, vals[1].(bool))
+	assert.Equal(t, uint8(0), vals[1].(uint8))
 }
 
 func TestOnComplianceRequested_ErrorsWhenWriteReverts(t *testing.T) {
 	payload := requestPayload(t, subjectAddress, "case-1")
-	stubHTTP(t, 200, `{"compliant": true}`)
+	stubHTTP(t, 200, `{"tier": 1}`)
 	stubEVMWrite(t, evm.TxStatus_TX_STATUS_REVERTED)
 	runtime := testutils.NewTeeRuntime(t, testSecrets())
 
@@ -273,7 +297,7 @@ func TestOnComplianceRequested_ErrorsOnNon2xx(t *testing.T) {
 func TestOnComplianceRequested_DoesNotLogSecretOrResponseBody(t *testing.T) {
 	payload := requestPayload(t, subjectAddress, "case-1")
 	const sensitiveField = "sensitive-pii-detail-xyz"
-	stubHTTP(t, 200, `{"compliant": true, "matchedName": "`+sensitiveField+`"}`)
+	stubHTTP(t, 200, `{"tier": 1, "matchedName": "`+sensitiveField+`"}`)
 	runtime := testutils.NewTeeRuntime(t, testSecrets())
 
 	_, err := onComplianceRequested(testConfig(), runtime, payload)

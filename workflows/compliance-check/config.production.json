@@ -2,7 +2,7 @@
   "authorizedKeys": ["REPLACE_WITH_PRODUCTION_SIGNER_PUBLIC_KEY"],
   "verificationUrlTemplate": "https://example.com/kyc/cases/{caseId}/verdict",
   "secretId": "COMPLIANCE_API_TOKEN",
-  "responseCompliantPath": "compliant",
+  "responseTierPath": "tier",
   "chainSelectorName": "ethereum-testnet-sepolia",
   "consumerAddress": "0x0000000000000000000000000000000000000000",
   "gasLimitWei": 500000

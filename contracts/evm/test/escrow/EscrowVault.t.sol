@@ -3,18 +3,29 @@ pragma solidity 0.8.24;
 
 import {Test} from "forge-std/Test.sol";
 import {EscrowVault} from "../../src/escrow/EscrowVault.sol";
+import {IEscrowFactory} from "../../src/escrow/IEscrowFactory.sol";
 import {EscrowConfirmationConsumer} from "../../src/escrow/EscrowConfirmationConsumer.sol";
 import {ComplianceConsumer} from "../../src/compliance/ComplianceConsumer.sol";
 import {IERC20} from "../../src/interfaces/IERC20.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 
-contract EscrowVaultTest is Test {
+/// @dev The test contract itself plays EscrowFactory's part of IEscrowFactory:
+/// EscrowVault captures msg.sender as `factory` at construction, so deploying a
+/// vault directly from here (as every test does) makes this contract that
+/// vault's factory. Volume tracking here is a plain running total per buyer —
+/// no period bucketing — since bucket-window behavior belongs to
+/// EscrowFactory.t.sol, not vault-level tests.
+contract EscrowVaultTest is Test, IEscrowFactory {
     uint8 constant DECIMALS = 6;
-    uint256 constant THRESHOLD = 999 * 10 ** DECIMALS;
+    uint256 constant TIER0_CAP = 999 * 10 ** DECIMALS;
+    uint256 constant TIER1_CAP = 10_000 * 10 ** DECIMALS;
+    uint256 constant MAX_VALIDITY = 180 days;
 
     MockERC20 token;
     EscrowConfirmationConsumer confirmationConsumer;
     ComplianceConsumer complianceConsumer;
+
+    mapping(address => uint256) public recordedVolume;
 
     address forwarder = makeAddr("forwarder");
     address buyer = makeAddr("buyer");
@@ -25,14 +36,30 @@ contract EscrowVaultTest is Test {
     function setUp() public {
         token = new MockERC20(DECIMALS);
         confirmationConsumer = new EscrowConfirmationConsumer(forwarder);
-        complianceConsumer = new ComplianceConsumer(forwarder);
+        complianceConsumer = new ComplianceConsumer(forwarder, MAX_VALIDITY);
+    }
+
+    // ─── IEscrowFactory (this contract stands in for the factory) ──
+
+    function recordVolume(address account, uint256 amount) external returns (uint256 periodVolume) {
+        periodVolume = recordedVolume[account] + amount;
+        recordedVolume[account] = periodVolume;
     }
 
     // ─── Helpers ──────────────────────────────────────────────
 
     function _newVault(uint256[] memory amounts, uint256 bondAmount) internal returns (EscrowVault vault) {
         vault = new EscrowVault(
-            buyer, seller, arbiter, IERC20(address(token)), bondAmount, amounts, THRESHOLD, confirmationConsumer, complianceConsumer
+            buyer,
+            seller,
+            arbiter,
+            IERC20(address(token)),
+            bondAmount,
+            amounts,
+            TIER0_CAP,
+            TIER1_CAP,
+            confirmationConsumer,
+            complianceConsumer
         );
     }
 
@@ -59,9 +86,9 @@ contract EscrowVaultTest is Test {
         vault.fund();
     }
 
-    function _setCompliant(address subject, bool compliant) internal {
+    function _setTier(address subject, uint8 tier) internal {
         vm.prank(forwarder);
-        complianceConsumer.onReport("", abi.encode(subject, compliant, block.timestamp));
+        complianceConsumer.onReport("", abi.encode(subject, tier, block.timestamp));
     }
 
     function _setDonConfirmed(EscrowVault vault, uint256 index) internal {
@@ -80,14 +107,32 @@ contract EscrowVaultTest is Test {
     function test_Constructor_RevertsOnZeroBuyer() public {
         vm.expectRevert(EscrowVault.ZeroAddress.selector);
         new EscrowVault(
-            address(0), seller, arbiter, IERC20(address(token)), 0, _singleMilestone(100), THRESHOLD, confirmationConsumer, complianceConsumer
+            address(0),
+            seller,
+            arbiter,
+            IERC20(address(token)),
+            0,
+            _singleMilestone(100),
+            TIER0_CAP,
+            TIER1_CAP,
+            confirmationConsumer,
+            complianceConsumer
         );
     }
 
     function test_Constructor_RevertsOnZeroToken() public {
         vm.expectRevert(EscrowVault.ZeroAddress.selector);
         new EscrowVault(
-            buyer, seller, arbiter, IERC20(address(0)), 0, _singleMilestone(100), THRESHOLD, confirmationConsumer, complianceConsumer
+            buyer,
+            seller,
+            arbiter,
+            IERC20(address(0)),
+            0,
+            _singleMilestone(100),
+            TIER0_CAP,
+            TIER1_CAP,
+            confirmationConsumer,
+            complianceConsumer
         );
     }
 
@@ -98,6 +143,11 @@ contract EscrowVaultTest is Test {
         EscrowVault vault = _newVault(amounts, 0);
         assertEq(vault.totalAmount(), 350);
         assertEq(vault.milestoneCount(), 2);
+    }
+
+    function test_Constructor_CapturesDeployerAsFactory() public {
+        EscrowVault vault = _newVault(_singleMilestone(100), 0);
+        assertEq(address(vault.factory()), address(this));
     }
 
     // ─── depositBond ──────────────────────────────────────────
@@ -178,30 +228,71 @@ contract EscrowVaultTest is Test {
         vault.fund();
     }
 
-    function test_Fund_BelowThreshold_NoComplianceNeeded() public {
-        // 999e6 is not > THRESHOLD (999e6), so no compliance check is triggered.
-        EscrowVault vault = _fundedVault(THRESHOLD, 0);
+    function test_Fund_RecordsVolumeOnFactory() public {
+        _fundedVault(500e6, 0);
+        assertEq(recordedVolume[buyer], 500e6);
+    }
+
+    function test_Fund_Tier0_UnderCap_Succeeds() public {
+        // TIER0_CAP itself is not > TIER0_CAP, so no compliance report needed.
+        EscrowVault vault = _fundedVault(TIER0_CAP, 0);
         assertTrue(vault.funded());
     }
 
-    function test_Fund_AboveThreshold_RevertsWithoutCompliance() public {
-        EscrowVault vault = _newVault(_singleMilestone(THRESHOLD + 1), 0);
-        _mintAndApprove(buyer, vault, THRESHOLD + 1);
+    function test_Fund_Tier0_OverCap_Reverts() public {
+        EscrowVault vault = _newVault(_singleMilestone(TIER0_CAP + 1), 0);
+        _mintAndApprove(buyer, vault, TIER0_CAP + 1);
 
-        vm.expectRevert(abi.encodeWithSelector(EscrowVault.ComplianceRequired.selector, buyer, THRESHOLD + 1));
+        vm.expectRevert(abi.encodeWithSelector(EscrowVault.ComplianceRequired.selector, buyer, TIER0_CAP + 1, TIER0_CAP));
         vm.prank(buyer);
         vault.fund();
     }
 
-    function test_Fund_AboveThreshold_SucceedsWithCompliance() public {
-        EscrowVault vault = _newVault(_singleMilestone(THRESHOLD + 1), 0);
-        _mintAndApprove(buyer, vault, THRESHOLD + 1);
-        _setCompliant(buyer, true);
+    function test_Fund_Tier1_CoversAboveTier0Cap() public {
+        EscrowVault vault = _newVault(_singleMilestone(TIER0_CAP + 1), 0);
+        _mintAndApprove(buyer, vault, TIER0_CAP + 1);
+        _setTier(buyer, 1);
 
         vm.prank(buyer);
         vault.fund();
 
         assertTrue(vault.funded());
+    }
+
+    function test_Fund_Tier1_StillRevertsAboveTier1Cap() public {
+        EscrowVault vault = _newVault(_singleMilestone(TIER1_CAP + 1), 0);
+        _mintAndApprove(buyer, vault, TIER1_CAP + 1);
+        _setTier(buyer, 1);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(EscrowVault.ComplianceRequired.selector, buyer, TIER1_CAP + 1, TIER1_CAP)
+        );
+        vm.prank(buyer);
+        vault.fund();
+    }
+
+    function test_Fund_Tier2_Uncapped() public {
+        uint256 hugeAmount = TIER1_CAP * 1000;
+        EscrowVault vault = _newVault(_singleMilestone(hugeAmount), 0);
+        _mintAndApprove(buyer, vault, hugeAmount);
+        _setTier(buyer, 2);
+
+        vm.prank(buyer);
+        vault.fund();
+
+        assertTrue(vault.funded());
+    }
+
+    function test_Fund_ExpiredTierBackToUnverified_Reverts() public {
+        EscrowVault vault = _newVault(_singleMilestone(TIER0_CAP + 1), 0);
+        _mintAndApprove(buyer, vault, TIER0_CAP + 1);
+        _setTier(buyer, 1);
+
+        vm.warp(block.timestamp + MAX_VALIDITY + 1);
+
+        vm.expectRevert(abi.encodeWithSelector(EscrowVault.ComplianceRequired.selector, buyer, TIER0_CAP + 1, TIER0_CAP));
+        vm.prank(buyer);
+        vault.fund();
     }
 
     // ─── submitMilestoneDocs ──────────────────────────────────
@@ -441,14 +532,14 @@ contract EscrowVaultTest is Test {
     function test_FullLifecycle_TwoMilestones_BondReturnedAtEnd() public {
         uint256[] memory amounts = new uint256[](2);
         amounts[0] = 300e6;
-        amounts[1] = 700e6; // total 1_000e6 > THRESHOLD (999e6): compliance required
+        amounts[1] = 700e6; // total 1_000e6 > TIER0_CAP (999e6): needs tier 1
         EscrowVault vault = _newVault(amounts, 50e6);
 
         _mintAndApprove(seller, vault, 50e6);
         vm.prank(seller);
         vault.depositBond();
 
-        _setCompliant(buyer, true);
+        _setTier(buyer, 1);
         _mintAndApprove(buyer, vault, 1_000e6);
         vm.prank(buyer);
         vault.fund();
