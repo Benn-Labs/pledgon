@@ -1,0 +1,12 @@
+{
+  "schedule": "0 */5 * * * *",
+  "chainSelectorName": "ethereum-testnet-sepolia",
+  "lendingPoolAddress": "0x0000000000000000000000000000000000000000",
+  "borrower": "0x0000000000000000000000000000000000000000",
+  "verificationUrl": "https://example.com/price/collateral",
+  "secretId": "LENDING_PRICE_API_TOKEN",
+  "responsePricePath": "data.price",
+  "priceDecimals": 8,
+  "consumerAddress": "0x0000000000000000000000000000000000000000",
+  "gasLimitWei": 500000
+}

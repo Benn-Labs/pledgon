@@ -17,7 +17,7 @@ transaction plumbing with Solidity contracts and DON-verified confidential workf
 | Escrow + DON confirmation | Confidential workflow verifies an off-chain condition (title recorded, payment cleared) → signed report → escrow contract checks it before releasing funds | **Built**: `EscrowVault`/`EscrowFactory`/`EscrowConfirmationConsumer` (Solidity, 50 tests) + `escrow-confirmation` workflow (Go, 18 tests) |
 | Milestone escrows | Same pattern, repeated per milestone. Triggered by an EVM log trigger (fires when a milestone is claimed via `submitMilestoneDocs`) rather than cron polling | Built as part of the row above — `DocsSubmitted` is the claim event |
 | Compliance layer (confidentiality) | KYC/AML/sanctions API called inside the enclave — PII and the provider's credentials never leave it, only `compliant: true/false` crosses out | **Built**: `compliance-check` workflow (Go, 16 tests), writes to the already-built `ComplianceConsumer` |
-| Lending/borrowing | Its own large protocol: collateral valuation (the RWA oracle feeds this directly), liquidation logic | `automated-liquidation-protection` template is a real starting point, not from scratch |
+| Lending/borrowing | Its own large protocol: collateral valuation (the RWA oracle feeds this directly), liquidation logic | **Built (minimal substrate)**: `LendingPool`/`LendingOracleConsumer`/`LiquidationConsumer` (Solidity, 20 tests) + `liquidation-protection` workflow (Go, 16 tests). Deliberately not a production money market — see below |
 
 ## Prior art (source material, not yet ported)
 
@@ -48,7 +48,7 @@ deeds/
   workflows/
     escrow-confirmation/     confidential workflow: verify milestone condition off-chain
     compliance-check/         confidential workflow: KYC/AML/sanctions in-enclave
-    liquidation-protection/   adapted from the CRE template of the same name
+    liquidation-protection/   confidential workflow: independent price corroboration for liquidation
 ```
 
 ## Decisions
@@ -137,3 +137,64 @@ Listings are one-shot (unique items/services, matching the RWA/"deed" theme):
 once `purchase()`d, a listing can't be bought again. `purchase()` does not move
 funds — it only creates the vault; the buyer still calls `fund()` and the seller
 `depositBond()` afterward, same as calling `EscrowFactory` directly.
+
+## Lending: DON-verified liquidation trigger, not a CEX-funded protection bot
+
+The actual `automated-liquidation-protection` CRE template is a proactive bot:
+it monitors a position on an *existing* lending platform and, before liquidation,
+uses exchange-account credentials (in-enclave) to pull funds and add collateral
+or repay debt. That doesn't fit DEEDS, which has no lending contracts yet and no
+external-exchange custody story. Chose instead to mirror the pattern already
+proven twice (escrow-confirmation, compliance-check): a workflow verifies
+something independently, attests it with a DON-signed report, and a consumer
+contract acts on the verdict.
+
+**Why a DON verdict is needed at all** — a fair question, since Aave/Compound-style
+protocols compute liquidation eligibility entirely on-chain from their own oracle,
+no off-chain attestation involved. `LendingPool.isUndercollateralized()` does
+exactly that here too, and it's real, callable, on-chain. But `liquidate()`
+deliberately does *not* trust that view alone — it additionally requires
+`LiquidationConsumer.isEligible()`, a verdict the workflow only attests after
+fetching an **independent** price from a separate (paid/authenticated) source
+inside the enclave and finding *that* the position is underwater too. This is
+the actual value the confidential workflow adds: protection against a single
+manipulated or stale primary oracle triggering a wrongful liquidation — a real,
+well-known DeFi attack class. `test_Liquidate_RevertsIfNotAttestedEligible` in
+`LendingPool.t.sol` pins down exactly this: it crashes the on-chain price so the
+pool's own view says "liquidatable," and confirms `liquidate()` still refuses
+without the DON's independent corroboration.
+
+**Minimal pool, not a money market.** `LendingPool` is one fixed
+collateral/debt token pair, no interest accrual, no lender shares or utilization
+curve, debt liquidity assumed pre-funded. It exists to make the liquidation
+mechanism real and testable, not to be a production lending product — building
+that is explicitly flagged in the mapping table above as its own large protocol.
+`collateralValueInDebtUnits` also assumes `collateralToken` and `debtToken` share
+the same `decimals()`; a market pairing tokens of different decimals needs that
+conversion added.
+
+**Liquidator incentive**: full liquidation only — repay 100% of the debt, receive
+100% of the collateral. No partial liquidation, no separately-configured bonus
+percentage; the liquidator's profit is whatever gap exists between collateral
+value and debt value at the liquidation threshold. Simple, but means a position
+right at the threshold offers a liquidator very little incentive to act quickly
+— a real money market would want a more deliberate bonus mechanism.
+
+**One workflow deployment per borrower** (like the RWA oracle watching one feed),
+not a list — same shape as `escrow-confirmation`'s original per-vault
+constraint, chosen for the same reason: no proven example of one cron invocation
+safely generating multiple reports in a single execution to build on, so scope
+to what's verified. Multi-borrower monitoring means either multiple deployments
+or a later, carefully-tested extension.
+
+**Confidential-workflow call ordering** — discovered while writing this
+workflow, worth keeping in mind for the next one: every proven example in this
+codebase calls `runtime.UsingTheDons()` exactly once, at the end, after all
+confidential work (`GetSecret`, `SendRequestInTee`) is done, and uses the
+resulting `cre.Runtime` for every chain read/write that follows. `onCronTrigger`
+here does the same — fetches the independent price first, crosses
+once, then does both on-chain `positions()`/`liquidationThresholdBps()` reads and
+the final report write through that one `donRuntime`. Nothing confirms whether
+calling `UsingTheDons()` earlier (e.g. to read on-chain state before the
+confidential leg) is safe, so this stuck to the verified ordering rather than
+assume it.
