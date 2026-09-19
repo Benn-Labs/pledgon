@@ -5,7 +5,9 @@ import { useMyVaults, type VaultCreatedEvent } from "@/hooks/useMyVaults";
 
 const PENDING = 0;
 const DOCS_SUBMITTED = 1;
+const RELEASED = 2;
 const DISPUTED = 3;
+const REFUNDED = 4;
 
 /**
  * "Active" and "needs attention" counts across every trade the connected
@@ -57,11 +59,12 @@ export function useEscrowAttention() {
     query: { enabled: milestoneQueries.length > 0 },
   });
 
-  const attentionCount = useMemo(() => {
-    if (!account) return 0;
+  const { activeCount, attentionCount } = useMemo(() => {
+    if (!account) return { activeCount: 0, attentionCount: 0 };
     const lower = account.toLowerCase();
     let flatIndex = 0;
-    let count = 0;
+    let attention = 0;
+    let active = 0;
 
     for (const { vault, funded, bondDeposited, milestoneCount } of perVaultScalars) {
       const isBuyer = vault.buyer.toLowerCase() === lower;
@@ -74,18 +77,26 @@ export function useEscrowAttention() {
         flatIndex++;
       }
 
-      if (isBuyer && funded === false) count++;
-      if (isBuyer && statuses.includes(DOCS_SUBMITTED)) count++;
-      if (isSeller && bondDeposited === false) count++;
-      if (isSeller && funded === true && statuses.includes(PENDING)) count++;
-      if (isArbiter && statuses.includes(DISPUTED)) count++;
+      // "Active" means not fully wound down yet — every milestone Released
+      // or Refunded is a settled trade, nothing left to do on it. Until we
+      // can positively confirm every status, count it as active rather than
+      // risk undercounting while data is still loading.
+      const allStatusesKnown = statuses.length > 0 && statuses.length === Number(milestoneCount ?? 0n);
+      const isSettled = allStatusesKnown && statuses.every((s) => s === RELEASED || s === REFUNDED);
+      if (!isSettled) active++;
+
+      if (isBuyer && funded === false) attention++;
+      if (isBuyer && statuses.includes(DOCS_SUBMITTED)) attention++;
+      if (isSeller && bondDeposited === false) attention++;
+      if (isSeller && funded === true && statuses.includes(PENDING)) attention++;
+      if (isArbiter && statuses.includes(DISPUTED)) attention++;
     }
 
-    return count;
+    return { activeCount: active, attentionCount: attention };
   }, [account, perVaultScalars, milestoneResults]);
 
   return {
-    activeCount: allMine.length,
+    activeCount,
     attentionCount,
     isLoading: vaultsLoading || scalarLoading || milestonesLoading,
   };
