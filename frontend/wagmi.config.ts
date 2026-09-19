@@ -14,6 +14,9 @@ export default defineConfig({
         "EscrowFactory.sol/**",
         "EscrowVault.sol/**",
         "ComplianceConsumer.sol/**",
+        "LendingPool.sol/**",
+        "LendingOracleConsumer.sol/**",
+        "LiquidationConsumer.sol/**",
       ],
       // No `deployments` here — addresses differ per network and aren't known
       // at codegen time. Wired at runtime from NEXT_PUBLIC_* env vars instead

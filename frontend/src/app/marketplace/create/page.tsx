@@ -30,7 +30,7 @@ export default function CreateListingPage() {
 
   if (isSuccess) {
     toast("Listing created successfully", "success");
-    router.push("/");
+    router.push("/marketplace");
   }
   if (error) {
     toast(error.message, "error");

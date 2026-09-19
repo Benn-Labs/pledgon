@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import type { Address } from "viem";
 import { useAccount, useReadContracts } from "wagmi";
@@ -98,6 +99,13 @@ export default function TradePage() {
 
   return (
     <div className="fade-in max-w-5xl mx-auto">
+      <Link href="/escrow" className="flex items-center gap-2 text-ink-400 hover:text-white mb-6 w-fit">
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+        </svg>
+        Back to Escrow
+      </Link>
+
       <div className="bg-ink-900 border border-ink-800 rounded-xl p-6 mb-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <div>

@@ -1,15 +1,28 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
+import { isLendingConfigured } from "@/lib/addresses";
+import { HomeIcon, MarketplaceIcon, EscrowIcon, LendingIcon } from "@/components/ui/icons";
+import { HeaderComplianceStatus } from "@/components/HeaderComplianceStatus";
+
+const NAV = [
+  { href: "/", label: "Dashboard", icon: HomeIcon },
+  { href: "/marketplace", label: "Marketplace", icon: MarketplaceIcon },
+  { href: "/escrow", label: "Escrow", icon: EscrowIcon },
+  { href: "/lending", label: "Lending", icon: LendingIcon },
+];
 
 export function Header() {
+  const pathname = usePathname();
+
   return (
     <header className="sticky top-0 z-50 border-b border-ink-800 bg-ink-950/80 backdrop-blur-xl">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
-          <Link href="/" className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-trust-500 to-trust-700 flex items-center justify-center shrink-0">
+          <Link href="/" className="flex items-center gap-3 shrink-0">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-trust-500 to-trust-700 flex items-center justify-center">
               <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
                   strokeLinecap="round"
@@ -19,22 +32,34 @@ export function Header() {
                 />
               </svg>
             </div>
-            <div>
-              <span className="text-lg font-bold tracking-tight text-white">DEEDS</span>
-              <span className="ml-2 text-xs text-ink-500 font-mono hidden sm:inline">Milestone Escrow</span>
-            </div>
+            <span className="text-lg font-bold tracking-tight text-white hidden sm:inline">DEEDS</span>
           </Link>
 
-          <nav className="hidden md:flex items-center gap-1">
-            <Link href="/" className="px-3 py-2 rounded-lg text-sm font-medium text-ink-300 hover:text-white hover:bg-ink-800">
-              Marketplace
-            </Link>
-            <Link href="/create" className="px-3 py-2 rounded-lg text-sm font-medium text-ink-300 hover:text-white hover:bg-ink-800">
-              Create Listing
-            </Link>
+          <nav className="flex items-center gap-1 overflow-x-auto">
+            {NAV.map(({ href, label, icon: Icon }) => {
+              const active = href === "/" ? pathname === "/" : pathname?.startsWith(href);
+              const disabled = href === "/lending" && !isLendingConfigured;
+              return (
+                <Link
+                  key={href}
+                  href={disabled ? "/lending" : href}
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap ${
+                    active
+                      ? "bg-ink-800 text-white"
+                      : disabled
+                        ? "text-ink-600"
+                        : "text-ink-300 hover:text-white hover:bg-ink-800"
+                  }`}
+                >
+                  <Icon className="w-4 h-4 shrink-0" />
+                  <span className="hidden md:inline">{label}</span>
+                </Link>
+              );
+            })}
           </nav>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 shrink-0">
+            <HeaderComplianceStatus />
             <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-ink-800 border border-ink-700">
               <div className="w-2 h-2 rounded-full bg-success-500 animate-pulse-subtle" />
               <span className="text-xs font-medium text-ink-300">Sepolia</span>

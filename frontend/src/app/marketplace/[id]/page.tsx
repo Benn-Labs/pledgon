@@ -48,7 +48,7 @@ export default function ListingDetailPage() {
         const decoded = decodeEventLog({ abi: marketplaceAbi, ...log });
         if (decoded.eventName === "ListingPurchased") {
           toast("Escrow vault opened", "success");
-          router.push(`/trade/${decoded.args.vault}`);
+          router.push(`/escrow/${decoded.args.vault}`);
           return;
         }
       } catch {
@@ -71,7 +71,7 @@ export default function ListingDetailPage() {
 
   return (
     <div className="fade-in max-w-4xl mx-auto">
-      <Link href="/" className="flex items-center gap-2 text-ink-400 hover:text-white mb-6 w-fit">
+      <Link href="/marketplace" className="flex items-center gap-2 text-ink-400 hover:text-white mb-6 w-fit">
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
         </svg>
@@ -183,7 +183,7 @@ export default function ListingDetailPage() {
               </>
             ) : vault && vault !== zeroAddress ? (
               <Link
-                href={`/trade/${vault}`}
+                href={`/escrow/${vault}`}
                 className="btn-press block text-center w-full py-3 rounded-lg bg-trust-600 hover:bg-trust-500 text-white font-semibold"
               >
                 View trade →

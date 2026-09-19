@@ -70,7 +70,7 @@ export default function BrowsePage() {
           <p className="text-ink-400 mt-1">Browse active escrow listings with milestone-based payments</p>
         </div>
         <Link
-          href="/create"
+          href="/marketplace/create"
           className="btn-press px-4 py-2.5 rounded-lg bg-trust-600 hover:bg-trust-500 text-white text-sm font-semibold glow-trust flex items-center gap-2 w-fit"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -92,7 +92,7 @@ export default function BrowsePage() {
           const decimals = tokenResults?.[i * 2]?.result as number | undefined;
           const symbol = tokenResults?.[i * 2 + 1]?.result as string | undefined;
           const total = milestones ? sumBigints(milestones) : 0n;
-          const href = status === SOLD && vault !== zeroAddress ? `/trade/${vault}` : `/listing/${id}`;
+          const href = status === SOLD && vault !== zeroAddress ? `/escrow/${vault}` : `/marketplace/${id}`;
 
           return (
             <Link

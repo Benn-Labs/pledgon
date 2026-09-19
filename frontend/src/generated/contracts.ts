@@ -766,6 +766,496 @@ export const escrowVaultAbi = [
 ] as const
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// LendingOracleConsumer
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+export const lendingOracleConsumerAbi = [
+  {
+    type: 'constructor',
+    inputs: [{ name: '_forwarder', internalType: 'address', type: 'address' }],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'label', internalType: 'string', type: 'string' }],
+    name: 'feedIdFor',
+    outputs: [{ name: '', internalType: 'bytes32', type: 'bytes32' }],
+    stateMutability: 'pure',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'forwarder',
+    outputs: [{ name: '', internalType: 'address', type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'feedId', internalType: 'bytes32', type: 'bytes32' }],
+    name: 'latestRound',
+    outputs: [
+      { name: 'value', internalType: 'uint256', type: 'uint256' },
+      { name: 'decimals', internalType: 'uint8', type: 'uint8' },
+      { name: 'updatedAt', internalType: 'uint256', type: 'uint256' },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: '', internalType: 'bytes', type: 'bytes' },
+      { name: 'report', internalType: 'bytes', type: 'bytes' },
+    ],
+    name: 'onReport',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'interfaceId', internalType: 'bytes4', type: 'bytes4' }],
+    name: 'supportsInterface',
+    outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
+    stateMutability: 'pure',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'feedId',
+        internalType: 'bytes32',
+        type: 'bytes32',
+        indexed: true,
+      },
+      {
+        name: 'value',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: false,
+      },
+      {
+        name: 'decimals',
+        internalType: 'uint8',
+        type: 'uint8',
+        indexed: false,
+      },
+      {
+        name: 'updatedAt',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: false,
+      },
+    ],
+    name: 'PriceUpdated',
+  },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'feedId', internalType: 'bytes32', type: 'bytes32' },
+      { name: 'incomingUpdatedAt', internalType: 'uint256', type: 'uint256' },
+      { name: 'storedUpdatedAt', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'StaleReport',
+  },
+  {
+    type: 'error',
+    inputs: [{ name: 'caller', internalType: 'address', type: 'address' }],
+    name: 'UnauthorizedForwarder',
+  },
+  { type: 'error', inputs: [], name: 'ZeroAddress' },
+] as const
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// LendingPool
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+export const lendingPoolAbi = [
+  {
+    type: 'constructor',
+    inputs: [
+      {
+        name: '_collateralToken',
+        internalType: 'contract IERC20',
+        type: 'address',
+      },
+      { name: '_debtToken', internalType: 'contract IERC20', type: 'address' },
+      {
+        name: '_oracleConsumer',
+        internalType: 'contract LendingOracleConsumer',
+        type: 'address',
+      },
+      {
+        name: '_liquidationConsumer',
+        internalType: 'contract LiquidationConsumer',
+        type: 'address',
+      },
+      { name: '_collateralFeedId', internalType: 'bytes32', type: 'bytes32' },
+      {
+        name: '_liquidationThresholdBps',
+        internalType: 'uint256',
+        type: 'uint256',
+      },
+    ],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'BPS_DENOMINATOR',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'amount', internalType: 'uint256', type: 'uint256' }],
+    name: 'borrow',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'collateralFeedId',
+    outputs: [{ name: '', internalType: 'bytes32', type: 'bytes32' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'collateralToken',
+    outputs: [{ name: '', internalType: 'contract IERC20', type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'collateralAmount', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'collateralValueInDebtUnits',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'debtToken',
+    outputs: [{ name: '', internalType: 'contract IERC20', type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'amount', internalType: 'uint256', type: 'uint256' }],
+    name: 'depositCollateral',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'borrower', internalType: 'address', type: 'address' }],
+    name: 'isUndercollateralized',
+    outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'borrower', internalType: 'address', type: 'address' }],
+    name: 'liquidate',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'liquidationConsumer',
+    outputs: [
+      {
+        name: '',
+        internalType: 'contract LiquidationConsumer',
+        type: 'address',
+      },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'liquidationThresholdBps',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'oracleConsumer',
+    outputs: [
+      {
+        name: '',
+        internalType: 'contract LendingOracleConsumer',
+        type: 'address',
+      },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: '', internalType: 'address', type: 'address' }],
+    name: 'positions',
+    outputs: [
+      { name: 'collateralAmount', internalType: 'uint256', type: 'uint256' },
+      { name: 'debtAmount', internalType: 'uint256', type: 'uint256' },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'amount', internalType: 'uint256', type: 'uint256' }],
+    name: 'repay',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'amount', internalType: 'uint256', type: 'uint256' }],
+    name: 'withdrawCollateral',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'borrower',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      {
+        name: 'amount',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: false,
+      },
+    ],
+    name: 'Borrowed',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'borrower',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      {
+        name: 'amount',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: false,
+      },
+    ],
+    name: 'CollateralDeposited',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'borrower',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      {
+        name: 'amount',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: false,
+      },
+    ],
+    name: 'CollateralWithdrawn',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'borrower',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      {
+        name: 'liquidator',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      {
+        name: 'collateralSeized',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: false,
+      },
+      {
+        name: 'debtRepaid',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: false,
+      },
+    ],
+    name: 'Liquidated',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'borrower',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      {
+        name: 'amount',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: false,
+      },
+    ],
+    name: 'Repaid',
+  },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'borrower', internalType: 'address', type: 'address' },
+      { name: 'requested', internalType: 'uint256', type: 'uint256' },
+      { name: 'available', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'InsufficientCollateral',
+  },
+  {
+    type: 'error',
+    inputs: [{ name: 'borrower', internalType: 'address', type: 'address' }],
+    name: 'NoDebt',
+  },
+  {
+    type: 'error',
+    inputs: [{ name: 'borrower', internalType: 'address', type: 'address' }],
+    name: 'PositionNotLiquidatable',
+  },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'borrower', internalType: 'address', type: 'address' },
+      { name: 'requested', internalType: 'uint256', type: 'uint256' },
+      { name: 'owed', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'RepayExceedsDebt',
+  },
+  {
+    type: 'error',
+    inputs: [{ name: 'feedId', internalType: 'bytes32', type: 'bytes32' }],
+    name: 'StalePrice',
+  },
+  { type: 'error', inputs: [], name: 'TransferFailed' },
+  {
+    type: 'error',
+    inputs: [{ name: 'borrower', internalType: 'address', type: 'address' }],
+    name: 'WouldBeUndercollateralized',
+  },
+  { type: 'error', inputs: [], name: 'ZeroAddress' },
+  { type: 'error', inputs: [], name: 'ZeroAmount' },
+] as const
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// LiquidationConsumer
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+export const liquidationConsumerAbi = [
+  {
+    type: 'constructor',
+    inputs: [{ name: '_forwarder', internalType: 'address', type: 'address' }],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'borrower', internalType: 'address', type: 'address' }],
+    name: 'checkedAt',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'forwarder',
+    outputs: [{ name: '', internalType: 'address', type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'borrower', internalType: 'address', type: 'address' }],
+    name: 'isEligible',
+    outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: '', internalType: 'bytes', type: 'bytes' },
+      { name: 'report', internalType: 'bytes', type: 'bytes' },
+    ],
+    name: 'onReport',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'interfaceId', internalType: 'bytes4', type: 'bytes4' }],
+    name: 'supportsInterface',
+    outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
+    stateMutability: 'pure',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'borrower',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      { name: 'eligible', internalType: 'bool', type: 'bool', indexed: false },
+      {
+        name: 'checkedAt',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: false,
+      },
+    ],
+    name: 'VerdictUpdated',
+  },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'borrower', internalType: 'address', type: 'address' },
+      { name: 'incomingCheckedAt', internalType: 'uint256', type: 'uint256' },
+      { name: 'storedCheckedAt', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'StaleReport',
+  },
+  {
+    type: 'error',
+    inputs: [{ name: 'caller', internalType: 'address', type: 'address' }],
+    name: 'UnauthorizedForwarder',
+  },
+  { type: 'error', inputs: [], name: 'ZeroAddress' },
+] as const
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Marketplace
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
