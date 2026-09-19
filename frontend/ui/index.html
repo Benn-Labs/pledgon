@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DEEDS — Milestone Escrow Marketplace</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                    colors: {
+                        ink: {
+                            50: '#f8fafc', 100: '#f1f5f9', 200: '#e2e8f0', 300: '#cbd5e1',
+                            400: '#94a3b8', 500: '#64748b', 600: '#475569', 700: '#334155',
+                            800: '#1e293b', 900: '#0f172a', 950: '#020617',
+                        },
+                        trust: {
+                            50: '#eff6ff', 100: '#dbeafe', 200: '#bfdbfe', 300: '#93c5fd',
+                            400: '#60a5fa', 500: '#3b82f6', 600: '#2563eb', 700: '#1d4ed8',
+                        },
+                        success: {
+                            50: '#f0fdf4', 100: '#dcfce7', 400: '#4ade80',
+                            500: '#22c55e', 600: '#16a34a',
+                        },
+                        warning: {
+                            50: '#fffbeb', 400: '#fbbf24', 500: '#f59e0b', 600: '#d97706',
+                        },
+                        danger: {
+                            50: '#fef2f2', 400: '#f87171', 500: '#ef4444', 600: '#dc2626',
+                        },
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+        * { transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease; }
+        @keyframes pulse-subtle { 0%,100%{opacity:1} 50%{opacity:0.7} }
+        .animate-pulse-subtle { animation: pulse-subtle 2s ease-in-out infinite; }
+        @keyframes fadeIn { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+        .fade-in { animation: fadeIn 0.4s ease-out; }
+        .deal-card { transition: transform 0.2s ease, box-shadow 0.2s ease; }
+        .deal-card:hover { transform: translateY(-2px); box-shadow: 0 10px 40px -10px rgba(0,0,0,0.3); }
+        .btn-press:active { transform: scale(0.98); }
+        .modal-backdrop { backdrop-filter: blur(4px); }
+        .glow-trust { box-shadow: 0 0 20px -5px rgba(59,130,246,0.4); }
+        .addr { font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; }
+        @keyframes shimmer { 0%{background-position:-200px 0} 100%{background-position:200px 0} }
+        .skeleton { background: linear-gradient(90deg,#1e293b 25%,#334155 50%,#1e293b 75%); background-size:400px 100%; animation: shimmer 1.5s infinite; }
+        .grid-pattern { background-image: radial-gradient(circle at 1px 1px, rgba(148,163,184,0.1) 1px, transparent 0); background-size: 24px 24px; }
+    </style>
+<base target="_blank">
+</head>
+<body class="bg-ink-950 text-ink-100 font-sans antialiased">
+    <div id="app" class="min-h-screen flex flex-col">
+        <!-- Header -->
+        <header class="sticky top-0 z-50 border-b border-ink-800 bg-ink-950/80 backdrop-blur-xl">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex items-center justify-between h-16">
+                    <div class="flex items-center gap-3">
+                        <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-trust-500 to-trust-700 flex items-center justify-center">
+                            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+                            </svg>
+                        </div>
+                        <div>
+                            <span class="text-lg font-bold tracking-tight">DEEDS</span>
+                            <span class="ml-2 text-xs text-ink-500 font-mono hidden sm:inline">Milestone Escrow</span>
+                        </div>
+                    </div>
+                    <nav class="hidden md:flex items-center gap-1">
+                        <a href="#" onclick="showPage('marketplace')" class="nav-link px-3 py-2 rounded-lg text-sm font-medium text-ink-300 hover:text-white hover:bg-ink-800" data-page="marketplace">Marketplace</a>
+                        <a href="#" onclick="showPage('dashboard')" class="nav-link px-3 py-2 rounded-lg text-sm font-medium text-ink-300 hover:text-white hover:bg-ink-800" data-page="dashboard">My Trades</a>
+                        <a href="#" onclick="showPage('create')" class="nav-link px-3 py-2 rounded-lg text-sm font-medium text-ink-300 hover:text-white hover:bg-ink-800" data-page="create">Create Listing</a>
+                    </nav>
+                    <div class="flex items-center gap-3">
+                        <div class="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-ink-800 border border-ink-700">
+                            <div class="w-2 h-2 rounded-full bg-success-500 animate-pulse-subtle"></div>
+                            <span class="text-xs font-medium text-ink-300">Sepolia</span>
+                        </div>
+                        <button onclick="toggleWalletModal()" class="btn-press px-4 py-2 rounded-lg bg-trust-600 hover:bg-trust-500 text-white text-sm font-semibold glow-trust">Connect Wallet</button>
+                        <button onclick="toggleTheme()" class="p-2 rounded-lg text-ink-400 hover:text-white hover:bg-ink-800">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </header>
+        <main class="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
+            <div id="page-container"></div>
+        </main>
+        <footer class="border-t border-ink-800 mt-auto">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+                <div class="flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div class="flex items-center gap-2 text-sm text-ink-500">
+                        <span>DEEDS Protocol</span><span class="text-ink-700">•</span><span class="font-mono text-xs">v0.9.0-beta</span>
+                    </div>
+                    <div class="flex items-center gap-4 text-sm text-ink-500">
+                        <a href="#" class="hover:text-ink-300">Docs</a>
+                        <a href="#" class="hover:text-ink-300">GitHub</a>
+                        <a href="#" class="hover:text-ink-300">Audit</a>
+                    </div>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Wallet Modal -->
+    <div id="wallet-modal" class="fixed inset-0 z-[100] hidden">
+        <div class="absolute inset-0 bg-black/60 modal-backdrop" onclick="toggleWalletModal()"></div>
+        <div class="absolute inset-0 flex items-center justify-center p-4">
+            <div class="bg-ink-900 border border-ink-700 rounded-2xl w-full max-w-md fade-in">
+                <div class="p-6 border-b border-ink-800">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-lg font-semibold">Connect Wallet</h3>
+                        <button onclick="toggleWalletModal()" class="text-ink-400 hover:text-white">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="p-4">
+                    <button onclick="connectWallet('metamask')" class="w-full flex items-center gap-4 p-4 rounded-xl hover:bg-ink-800 group">
+                        <div class="w-10 h-10 rounded-lg bg-orange-500/20 flex items-center justify-center">
+                            <svg class="w-6 h-6 text-orange-500" viewBox="0 0 24 24" fill="currentColor"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+                        </div>
+                        <div class="text-left">
+                            <div class="font-semibold group-hover:text-white">MetaMask</div>
+                            <div class="text-sm text-ink-400">Popular browser wallet</div>
+                        </div>
+                    </button>
+                    <button onclick="connectWallet('walletconnect')" class="w-full flex items-center gap-4 p-4 rounded-xl hover:bg-ink-800 group">
+                        <div class="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center">
+                            <svg class="w-6 h-6 text-blue-500" viewBox="0 0 24 24" fill="currentColor"><path d="M6.91 8.89c2.14-2.08 5.61-2.08 7.75 0l.26.25c.11.11.11.29 0 .4l-.9.87c-.05.06-.14.06-.2 0l-.36-.35c-1.49-1.45-3.91-1.45-5.4 0l-.39.38c-.05.05-.14.05-.2 0l-.9-.87c-.11-.11-.11-.29 0-.4l.34-.28zm9.55 1.73l.8.78c.11.11.11.29 0 .4l-3.59 3.5c-.11.11-.29.11-.4 0l-1.61-1.57a.14.14 0 00-.2 0l-1.61 1.57c-.11.11-.29.11-.4 0L6.34 11.8c-.11-.11-.11-.29 0-.4l.8-.78c.11-.11.29-.11.4 0l1.61 1.57c.06.05.15.05.2 0l1.61-1.57c.11-.11.29-.11.4 0l1.61 1.57c.06.05.15.05.2 0l1.61-1.57c.11-.11.29-.11.4 0z"/></svg>
+                        </div>
+                        <div class="text-left">
+                            <div class="font-semibold group-hover:text-white">WalletConnect</div>
+                            <div class="text-sm text-ink-400">Connect mobile wallet</div>
+                        </div>
+                    </button>
+                    <button onclick="connectWallet('coinbase')" class="w-full flex items-center gap-4 p-4 rounded-xl hover:bg-ink-800 group">
+                        <div class="w-10 h-10 rounded-lg bg-blue-600/20 flex items-center justify-center">
+                            <svg class="w-6 h-6 text-blue-400" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z"/></svg>
+                        </div>
+                        <div class="text-left">
+                            <div class="font-semibold group-hover:text-white">Coinbase Wallet</div>
+                            <div class="text-sm text-ink-400">Coinbase's self-custody wallet</div>
+                        </div>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Transaction Modal -->
+    <div id="tx-modal" class="fixed inset-0 z-[100] hidden">
+        <div class="absolute inset-0 bg-black/60 modal-backdrop"></div>
+        <div class="absolute inset-0 flex items-center justify-center p-4">
+            <div class="bg-ink-900 border border-ink-700 rounded-2xl w-full max-w-sm fade-in">
+                <div class="p-6 text-center">
+                    <div id="tx-loading" class="py-4">
+                        <div class="w-16 h-16 mx-auto mb-4 rounded-full border-4 border-ink-700 border-t-trust-500 animate-spin"></div>
+                        <h3 class="text-lg font-semibold mb-2">Waiting for confirmation</h3>
+                        <p class="text-sm text-ink-400 mb-4">Confirm this transaction in your wallet</p>
+                        <div class="text-xs font-mono text-ink-500 bg-ink-800 rounded-lg p-3 break-all" id="tx-hash">0x...</div>
+                    </div>
+                    <div id="tx-success" class="py-4 hidden">
+                        <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-success-500/20 flex items-center justify-center">
+                            <svg class="w-8 h-8 text-success-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                        </div>
+                        <h3 class="text-lg font-semibold mb-2">Transaction confirmed</h3>
+                        <p class="text-sm text-ink-400 mb-4" id="tx-success-msg">Your transaction has been confirmed</p>
+                        <button onclick="closeTxModal()" class="w-full py-2.5 rounded-lg bg-trust-600 hover:bg-trust-500 text-white font-semibold">Done</button>
+                    </div>
+                    <div id="tx-error" class="py-4 hidden">
+                        <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-danger-500/20 flex items-center justify-center">
+                            <svg class="w-8 h-8 text-danger-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                        </div>
+                        <h3 class="text-lg font-semibold mb-2">Transaction failed</h3>
+                        <p class="text-sm text-ink-400 mb-4" id="tx-error-msg">Something went wrong</p>
+                        <button onclick="closeTxModal()" class="w-full py-2.5 rounded-lg bg-ink-800 hover:bg-ink-700 text-white font-semibold">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toast-container" class="fixed bottom-4 right-4 z-[200] flex flex-col gap-2"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>

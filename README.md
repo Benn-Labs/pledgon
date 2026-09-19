@@ -32,3 +32,37 @@ This only ever touches those specific address fields — `vaultAddresses`,
 exactly as they were, since a deployment record can't supply them. A field
 whose deployment address is the zero address (lending, when it wasn't
 deployed) is skipped rather than overwritten with a placeholder.
+
+## Frontend
+
+Next.js + wagmi/viem + RainbowKit app under [`frontend/`](frontend), covering
+the buyer journey against Sepolia: browse listings, purchase (opens an escrow
+vault), the compliance gate on a purchase that exceeds the buyer's tier cap,
+fund, and escrow status (bond, milestone docs, confirm, dispute). Lending has
+no UI yet — separate scope.
+
+```bash
+cd frontend
+npm install
+cp .env.example .env.local   # fill in WalletConnect project id + deployed addresses
+npm run dev
+```
+
+Contract bindings (`frontend/src/generated/contracts.ts`) are generated from
+the Foundry build artifacts in `contracts/evm/out/`, not hand-copied — re-run
+after any contract change (needs `forge` on `PATH`, plus a `forge build` if
+the artifacts are stale):
+
+```bash
+npm run wagmi:generate
+```
+
+**KYC is a UI-only stub this session.** `ComplianceConsumer.onReport` only
+accepts calls relayed by the real `KeystoneForwarder`, so only a live
+`compliance-check` workflow running on an actual CRE DON can change a buyer's
+on-chain tier — no such workflow is registered with a DON here, only the
+contracts are deployed. The "Verify identity" step in the compliance gate
+generates a fake caseId and a mock response to make that step's UX real to
+build against, but it does not change on-chain state. To complete a purchase
+end-to-end on real Sepolia today, keep it under the buyer's tier-0 cap (see
+`EscrowFactory`'s `tier0CapUsd`, default $999).
