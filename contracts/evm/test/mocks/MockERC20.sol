@@ -19,6 +19,14 @@ contract MockERC20 is IERC20 {
         return _decimals;
     }
 
+    function name() external pure returns (string memory) {
+        return "Mock Token";
+    }
+
+    function symbol() external pure returns (string memory) {
+        return "MOCK";
+    }
+
     function mint(address to, uint256 amount) external {
         balanceOf[to] += amount;
     }
