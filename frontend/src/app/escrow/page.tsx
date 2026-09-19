@@ -152,9 +152,20 @@ export default function EscrowListPage() {
 
   return (
     <div className="fade-in">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold tracking-tight text-white">Escrow</h1>
-        <p className="text-ink-400 mt-1">Every trade you&apos;re a party to — as buyer, seller, or arbiter</p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-white">Escrow</h1>
+          <p className="text-ink-400 mt-1">Every trade you&apos;re a party to — as buyer, seller, or arbiter</p>
+        </div>
+        <Link
+          href="/escrow/create"
+          className="btn-press px-4 py-2.5 rounded-lg bg-trust-600 hover:bg-trust-500 text-white text-sm font-semibold glow-trust flex items-center gap-2 w-fit"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+          Create Escrow
+        </Link>
       </div>
 
       {!isConnected ? (

@@ -2,15 +2,18 @@
 
 import Link from "next/link";
 import { useAccount, useReadContract } from "wagmi";
-import { complianceConsumerAbi, escrowFactoryAbi } from "@/generated/contracts";
+import { complianceConsumerAbi, escrowFactoryAbi, marketplaceAbi } from "@/generated/contracts";
 import { addresses, isLendingConfigured } from "@/lib/addresses";
-import { useMyVaults } from "@/hooks/useMyVaults";
+import { useEscrowAttention } from "@/hooks/useEscrowAttention";
+import { useTotalValueLocked } from "@/hooks/useTotalValueLocked";
+import { formatToken } from "@/lib/format";
 import { VerificationBadge } from "@/components/ui/badges";
 import { MarketplaceIcon, EscrowIcon, LendingIcon, ShieldAlertIcon } from "@/components/ui/icons";
 
 export default function DashboardPage() {
   const { address: account, isConnected } = useAccount();
-  const { data: vaults } = useMyVaults();
+  const { activeCount, attentionCount } = useEscrowAttention();
+  const { totals: tvl, isLoading: tvlLoading } = useTotalValueLocked();
 
   const { data: tier } = useReadContract({
     address: addresses.complianceConsumer,
@@ -34,9 +37,12 @@ export default function DashboardPage() {
     query: { enabled: Boolean(addresses.escrowFactory) },
   });
 
-  const buyerCount = vaults?.asBuyer.length ?? 0;
-  const sellerCount = vaults?.asSeller.length ?? 0;
-  const arbiterCount = vaults?.asArbiter.length ?? 0;
+  const { data: listingCount } = useReadContract({
+    address: addresses.marketplace,
+    abi: marketplaceAbi,
+    functionName: "listingCount",
+    query: { enabled: Boolean(addresses.marketplace) },
+  });
 
   if (!isConnected) {
     return (
@@ -62,26 +68,93 @@ export default function DashboardPage() {
 
   return (
     <div className="fade-in">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold tracking-tight text-white">Dashboard</h1>
-        <p className="text-ink-400 mt-1">
-          {account?.slice(0, 6)}…{account?.slice(-4)}
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-white">Dashboard</h1>
+          <p className="text-ink-400 mt-1">
+            {account?.slice(0, 6)}…{account?.slice(-4)}
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Link
+            href="/escrow/create"
+            className="btn-press px-4 py-2.5 rounded-lg bg-trust-600 hover:bg-trust-500 text-white text-sm font-semibold glow-trust flex items-center gap-2"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Create Escrow
+          </Link>
+          <Link
+            href="/marketplace/create"
+            className="btn-press px-4 py-2.5 rounded-lg bg-ink-800 hover:bg-ink-700 border border-ink-700 text-white text-sm font-semibold flex items-center gap-2"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Create Listing
+          </Link>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         <Link href="/escrow" className="deal-card block bg-ink-900 border border-ink-800 rounded-xl p-5">
-          <div className="text-3xl font-bold font-mono text-white">{buyerCount}</div>
-          <div className="text-sm text-ink-400 mt-1">Trades as Buyer</div>
+          <div className="text-3xl font-bold font-mono text-white">{activeCount}</div>
+          <div className="text-sm text-ink-400 mt-1">Active Trades</div>
         </Link>
-        <Link href="/escrow" className="deal-card block bg-ink-900 border border-ink-800 rounded-xl p-5">
-          <div className="text-3xl font-bold font-mono text-white">{sellerCount}</div>
-          <div className="text-sm text-ink-400 mt-1">Trades as Seller</div>
+        <Link
+          href="/escrow"
+          className={`deal-card block rounded-xl p-5 border ${
+            attentionCount > 0 ? "bg-warning-500/10 border-warning-500/30" : "bg-ink-900 border-ink-800"
+          }`}
+        >
+          <div className={`text-3xl font-bold font-mono ${attentionCount > 0 ? "text-warning-400" : "text-white"}`}>
+            {attentionCount}
+          </div>
+          <div className={`text-sm mt-1 ${attentionCount > 0 ? "text-warning-400" : "text-ink-400"}`}>
+            Needs Your Attention
+          </div>
         </Link>
-        <Link href="/escrow" className="deal-card block bg-ink-900 border border-ink-800 rounded-xl p-5">
-          <div className="text-3xl font-bold font-mono text-white">{arbiterCount}</div>
-          <div className="text-sm text-ink-400 mt-1">Trades as Arbiter</div>
+        <Link href="/marketplace" className="deal-card block bg-ink-900 border border-ink-800 rounded-xl p-5">
+          <div className="text-3xl font-bold font-mono text-white">{listingCount?.toString() ?? "…"}</div>
+          <div className="text-sm text-ink-400 mt-1">Marketplace Listings</div>
         </Link>
+      </div>
+
+      <div className="bg-ink-900 border border-ink-800 rounded-xl p-6 mb-6">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 rounded-lg bg-success-500/20 flex items-center justify-center shrink-0">
+            <svg className="w-5 h-5 text-success-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 8c-1.657 0-3 .672-3 1.5S10.343 11 12 11s3 .672 3 1.5-1.343 1.5-3 1.5m0-6c1.11 0 2.08.402 2.599 1M12 8V6.5m0 1.5v6m0 0V17m0-1.5c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+          </div>
+          <div>
+            <h2 className="font-semibold text-white">Total Value Locked</h2>
+            <p className="text-sm text-ink-400">Real on-chain balances across every escrow vault and the lending pool</p>
+          </div>
+        </div>
+        {tvlLoading ? (
+          <p className="text-sm text-ink-400">Loading…</p>
+        ) : tvl.length === 0 ? (
+          <p className="text-sm text-ink-400">Nothing locked on the protocol yet.</p>
+        ) : (
+          <div className="flex flex-wrap gap-4">
+            {tvl.map((t) => (
+              <div key={t.token} className="px-4 py-3 rounded-lg bg-ink-800/50 border border-ink-700">
+                <div className="text-xl font-bold font-mono text-white">{formatToken(t.amount, t.decimals, t.symbol)}</div>
+              </div>
+            ))}
+          </div>
+        )}
+        <p className="text-xs text-ink-500 mt-3">
+          Shown per-token rather than as one combined figure — there&apos;s no price oracle here to convert between
+          different payment tokens into a common unit.
+        </p>
       </div>
 
       <div className="bg-ink-900 border border-ink-800 rounded-xl p-6 mb-6">
