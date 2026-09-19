@@ -40,7 +40,7 @@ export function MilestoneRow({
   const [disputeReason, setDisputeReason] = useState("");
   const [showDispute, setShowDispute] = useState(false);
 
-  const { data: dispute } = useDisputeReason(vault, index, status === 3);
+  const { data: dispute, isLoading: disputeLoading } = useDisputeReason(vault, index, status === 3);
 
   const { writeContract, data: hash, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({
@@ -123,8 +123,13 @@ export function MilestoneRow({
                   </div>
                   <p className="text-sm text-ink-300">{dispute.reason}</p>
                 </>
-              ) : (
+              ) : disputeLoading ? (
                 <p className="text-sm text-ink-400">Loading dispute details…</p>
+              ) : (
+                <p className="text-sm text-ink-400">
+                  Dispute reason unavailable on this RPC (log history beyond its free-tier range) — still a real,
+                  resolvable dispute.
+                </p>
               )}
               <p className="text-xs text-ink-500 mt-2">Waiting on the arbiter to resolve this — see Arbiter Panel below.</p>
             </div>

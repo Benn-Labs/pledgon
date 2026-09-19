@@ -23,7 +23,7 @@ function DisputeResolutionCard({
   symbol: string;
   onSuccess: () => void;
 }) {
-  const { data: dispute } = useDisputeReason(vault, milestone.index, true);
+  const { data: dispute, isLoading: disputeLoading } = useDisputeReason(vault, milestone.index, true);
   const { writeContract, data: hash, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({
     hash,
@@ -44,7 +44,12 @@ function DisputeResolutionCard({
         <span className="font-semibold text-white">Milestone #{milestone.index + 1}</span>
         <span className="font-mono text-warning-400">{formatToken(milestone.amount, decimals, symbol)}</span>
       </div>
-      <p className="text-sm text-ink-300 mb-4">{dispute?.reason ?? "Loading dispute reason…"}</p>
+      <p className="text-sm text-ink-300 mb-4">
+        {dispute?.reason ??
+          (disputeLoading
+            ? "Loading dispute reason…"
+            : "Dispute reason unavailable on this RPC (log history beyond its free-tier range) — the dispute itself is still real and resolvable below.")}
+      </p>
       <div className="flex gap-2">
         <button
           onClick={() =>
