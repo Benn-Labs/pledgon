@@ -136,6 +136,38 @@ contract EscrowVaultTest is Test, IEscrowFactory {
         );
     }
 
+    function test_Constructor_RevertsIfArbiterIsBuyer() public {
+        vm.expectRevert(abi.encodeWithSelector(EscrowVault.ArbiterConflict.selector, buyer));
+        new EscrowVault(
+            buyer,
+            seller,
+            buyer,
+            IERC20(address(token)),
+            0,
+            _singleMilestone(100),
+            TIER0_CAP,
+            TIER1_CAP,
+            confirmationConsumer,
+            complianceConsumer
+        );
+    }
+
+    function test_Constructor_RevertsIfArbiterIsSeller() public {
+        vm.expectRevert(abi.encodeWithSelector(EscrowVault.ArbiterConflict.selector, seller));
+        new EscrowVault(
+            buyer,
+            seller,
+            seller,
+            IERC20(address(token)),
+            0,
+            _singleMilestone(100),
+            TIER0_CAP,
+            TIER1_CAP,
+            confirmationConsumer,
+            complianceConsumer
+        );
+    }
+
     function test_Constructor_SumsTotalAmount() public {
         uint256[] memory amounts = new uint256[](2);
         amounts[0] = 100;

@@ -72,6 +72,7 @@ contract EscrowVault {
     error NoMilestones();
     error TransferFailed();
     error ZeroAddress();
+    error ArbiterConflict(address arbiter);
 
     modifier onlyBuyer() {
         if (msg.sender != buyer) revert NotBuyer(msg.sender);
@@ -105,6 +106,11 @@ contract EscrowVault {
             _buyer == address(0) || _seller == address(0) || _arbiter == address(0) || address(_token) == address(0)
                 || address(_confirmationConsumer) == address(0) || address(_complianceConsumer) == address(0)
         ) revert ZeroAddress();
+        // An arbiter who is also a party to the trade can't neutrally resolve
+        // a dispute involving themselves — reject that regardless of which
+        // path created this vault (direct EscrowFactory call or
+        // Marketplace.purchase()).
+        if (_arbiter == _buyer || _arbiter == _seller) revert ArbiterConflict(_arbiter);
 
         buyer = _buyer;
         seller = _seller;
