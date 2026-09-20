@@ -8,6 +8,7 @@ import { marketplaceAbi } from "@/generated/contracts";
 import { addresses } from "@/lib/addresses";
 import { formatToken, sumBigints } from "@/lib/format";
 import { StatusBadge, LISTING_STATUS } from "@/components/ui/badges";
+import { useListingMetadataMap } from "@/hooks/useListingMetadataMap";
 
 type ListingTuple = readonly [Address, Address, Address, bigint, string, number, Address];
 
@@ -24,6 +25,10 @@ export default function BrowsePage() {
   });
 
   const ids = useMemo(() => (count === undefined ? [] : Array.from({ length: Number(count) }, (_, i) => BigInt(i))), [count]);
+  const listingMetadata = useListingMetadataMap(
+    marketplace,
+    useMemo(() => ids.map((id) => Number(id)), [ids]),
+  );
 
   const { data: listingResults, isLoading } = useReadContracts({
     contracts: ids.map((id) => ({
@@ -93,6 +98,7 @@ export default function BrowsePage() {
           const symbol = tokenResults?.[i * 2 + 1]?.result as string | undefined;
           const total = milestones ? sumBigints(milestones) : 0n;
           const href = status === SOLD && vault !== zeroAddress ? `/escrow/${vault}` : `/marketplace/${id}`;
+          const meta = listingMetadata.get(Number(id));
 
           return (
             <Link
@@ -100,12 +106,19 @@ export default function BrowsePage() {
               href={href}
               className="deal-card bg-ink-900 border border-ink-800 rounded-xl overflow-hidden block"
             >
+              {meta?.thumbnailUrl && (
+                // eslint-disable-next-line @next/next/no-img-element -- arbitrary seller-provided URL
+                <img src={meta.thumbnailUrl} alt="" className="w-full h-36 object-cover bg-ink-800" />
+              )}
               <div className="p-5">
                 <div className="flex items-start justify-between mb-4">
                   <StatusBadge status={LISTING_STATUS[status]} />
                   <span className="text-xs text-ink-500 font-mono">#{id.toString()}</span>
                 </div>
-                <h3 className="font-semibold text-lg mb-2 line-clamp-2 text-white">{metadataURI || `Listing #${id}`}</h3>
+                <h3 className="font-semibold text-lg mb-2 line-clamp-2 text-white">
+                  {meta?.title || metadataURI || `Listing #${id}`}
+                </h3>
+                {meta?.description && <p className="text-sm text-ink-400 mb-4 line-clamp-2">{meta.description}</p>}
                 <div className="flex items-center gap-2 mb-4">
                   <div className="w-6 h-6 rounded-full bg-gradient-to-br from-trust-500 to-trust-700 flex items-center justify-center text-xs font-bold text-white shrink-0">
                     {seller.slice(2, 4).toUpperCase()}

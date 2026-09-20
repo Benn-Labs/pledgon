@@ -1,24 +1,101 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { erc20Abi, type Address } from "viem";
-import { useAccount, useReadContracts } from "wagmi";
-import { escrowVaultAbi } from "@/generated/contracts";
+import { useRouter } from "next/navigation";
+import { erc20Abi, isAddress, type Address } from "viem";
+import { useAccount, useReadContract, useReadContracts } from "wagmi";
+import { escrowFactoryAbi, escrowVaultAbi } from "@/generated/contracts";
+import { addresses } from "@/lib/addresses";
 import { useMyVaults, type VaultCreatedEvent } from "@/hooks/useMyVaults";
-import { formatToken } from "@/lib/format";
+import { formatToken, formatVaultNumber } from "@/lib/format";
+import { deriveTradeStatus, deriveTradeProgress, type TradeLifecycleStatus, type TradeProgress } from "@/lib/tradeStatus";
+import { TradeStatusBadge } from "@/components/ui/badges";
+import { TradeProgressBar } from "@/components/ui/TradeProgressBar";
 import { EscrowIcon } from "@/components/ui/icons";
+import { useEscrowMetadataMap } from "@/hooks/useEscrowMetadataMap";
+import { useListingTitleByVault } from "@/hooks/useListingTitleByVault";
+
+/**
+ * The trade detail page (/escrow/[address]) already renders any vault
+ * address read-only, regardless of whether the connected wallet is a party
+ * to it — there was just no way to reach one you weren't already listed on
+ * without someone sending you the exact link. This closes that gap: paste
+ * an address, confirm EscrowFactory actually deployed it, then navigate.
+ */
+function VaultLookup() {
+  const router = useRouter();
+  const [input, setInput] = useState("");
+  const [checkedAddress, setCheckedAddress] = useState<Address | undefined>();
+
+  const { data: isVault, isFetching } = useReadContract({
+    address: addresses.escrowFactory,
+    abi: escrowFactoryAbi,
+    functionName: "isVault",
+    args: checkedAddress ? [checkedAddress] : undefined,
+    query: { enabled: Boolean(addresses.escrowFactory && checkedAddress) },
+  });
+
+  const notFound = checkedAddress !== undefined && isVault === false && !isFetching;
+
+  function submit() {
+    if (!isAddress(input)) return;
+    setCheckedAddress(input as Address);
+  }
+
+  useEffect(() => {
+    if (isVault === true && checkedAddress) router.push(`/escrow/${checkedAddress}`);
+  }, [isVault, checkedAddress, router]);
+
+  return (
+    <div className="bg-ink-900 border border-ink-800 rounded-xl p-5 mb-6">
+      <label className="block text-sm font-medium mb-2">Look Up a Vault</label>
+      <div className="flex gap-2">
+        <input
+          className="flex-1 bg-ink-800 border border-ink-700 rounded-lg px-4 py-2.5 text-ink-200 font-mono text-sm focus:outline-none focus:border-trust-500"
+          placeholder="0x… vault address"
+          value={input}
+          onChange={(e) => {
+            setInput(e.target.value);
+            setCheckedAddress(undefined);
+          }}
+          onKeyDown={(e) => e.key === "Enter" && submit()}
+        />
+        <button
+          onClick={submit}
+          disabled={!isAddress(input) || isFetching}
+          className="btn-press px-4 py-2.5 rounded-lg bg-ink-800 hover:bg-ink-700 border border-ink-700 disabled:opacity-40 text-white text-sm font-medium shrink-0"
+        >
+          {isFetching ? "Checking…" : "Open"}
+        </button>
+      </div>
+      {notFound && (
+        <p className="text-xs text-danger-400 mt-2">
+          Not a vault this EscrowFactory deployed — double-check the address.
+        </p>
+      )}
+      <p className="text-xs text-ink-500 mt-2">
+        View any trade by its vault address, not just ones you&apos;re a party to — everything shown is on-chain and
+        readable by anyone.
+      </p>
+    </div>
+  );
+}
 
 function VaultCard({
   entry,
   role,
-  funded,
+  status,
+  progress,
+  description,
   decimals,
   symbol,
 }: {
   entry: VaultCreatedEvent;
   role: "buyer" | "seller" | "arbiter";
-  funded: boolean | undefined;
+  status: TradeLifecycleStatus | undefined;
+  progress: TradeProgress | undefined;
+  description: string | undefined;
   decimals: number | undefined;
   symbol: string | undefined;
 }) {
@@ -31,21 +108,18 @@ function VaultCard({
       className="deal-card block bg-ink-900 border border-ink-800 rounded-xl p-5"
     >
       <div className="flex items-start justify-between mb-3">
-        <span
-          className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium capitalize ${
-            funded ? "bg-success-500/20 text-success-400 border-success-500/30" : "bg-ink-700 text-ink-300 border-ink-600"
-          }`}
-        >
-          {funded === undefined ? "Loading…" : funded ? "Funded" : "Awaiting funding"}
-        </span>
-        <span className="text-xs text-ink-500 font-mono">
-          {entry.vault.slice(0, 6)}…{entry.vault.slice(-4)}
-        </span>
+        {status ? <TradeStatusBadge status={status} size="sm" /> : <span className="text-xs text-ink-500">Loading…</span>}
+        <div className="text-right">
+          <div className="text-xs text-ink-300 font-mono">{formatVaultNumber(entry.index)}</div>
+          <div className="text-[10px] text-ink-600 font-mono">
+            {entry.vault.slice(0, 6)}…{entry.vault.slice(-4)}
+          </div>
+        </div>
       </div>
       <div className="text-sm text-ink-400 mb-1">
         {role === "arbiter" ? "Buyer / Seller" : counterpart.label}
       </div>
-      <div className="font-mono text-sm text-ink-200 mb-3">
+      <div className="font-mono text-sm text-ink-200 mb-4">
         {role === "arbiter" ? (
           <>
             {entry.buyer.slice(0, 6)}…{entry.buyer.slice(-4)} / {entry.seller.slice(0, 6)}…{entry.seller.slice(-4)}
@@ -56,10 +130,20 @@ function VaultCard({
           </>
         )}
       </div>
+      {description && <p className="text-xs text-ink-500 -mt-2 mb-4 line-clamp-2">{description}</p>}
+      {progress && <TradeProgressBar progress={progress} />}
       {decimals !== undefined && (
-        <div className="flex justify-between text-sm pt-3 border-t border-ink-800">
-          <span className="text-ink-400">Bond</span>
-          <span className="font-mono text-warning-400">{formatToken(entry.bondAmount, decimals, symbol)}</span>
+        <div className="pt-3 mt-4 border-t border-ink-800 space-y-1.5">
+          <div className="flex justify-between text-sm">
+            <span className="text-ink-400">Trade Value</span>
+            <span className="font-mono text-ink-100">{formatToken(entry.totalAmount, decimals, symbol)}</span>
+          </div>
+          {entry.bondAmount > 0n && (
+            <div className="flex justify-between text-sm">
+              <span className="text-ink-400">Bond</span>
+              <span className="font-mono text-warning-400">{formatToken(entry.bondAmount, decimals, symbol)}</span>
+            </div>
+          )}
         </div>
       )}
     </Link>
@@ -70,13 +154,17 @@ function VaultSection({
   title,
   role,
   entries,
-  fundedByVault,
+  statusByVault,
+  progressByVault,
+  descriptionByVault,
   tokenInfo,
 }: {
   title: string;
   role: "buyer" | "seller" | "arbiter";
   entries: VaultCreatedEvent[];
-  fundedByVault: Map<string, boolean>;
+  statusByVault: Map<string, TradeLifecycleStatus>;
+  progressByVault: Map<string, TradeProgress>;
+  descriptionByVault: Map<string, string>;
   tokenInfo: Map<string, { decimals: number; symbol: string }>;
 }) {
   if (entries.length === 0) return null;
@@ -93,7 +181,9 @@ function VaultSection({
               key={entry.vault}
               entry={entry}
               role={role}
-              funded={fundedByVault.get(entry.vault.toLowerCase())}
+              status={statusByVault.get(entry.vault.toLowerCase())}
+              progress={progressByVault.get(entry.vault.toLowerCase())}
+              description={descriptionByVault.get(entry.vault.toLowerCase())}
               decimals={info?.decimals}
               symbol={info?.symbol}
             />
@@ -116,19 +206,84 @@ export default function EscrowListPage() {
     return [...map.values()];
   }, [data]);
 
-  const { data: fundedResults } = useReadContracts({
-    contracts: allMine.map((v) => ({ address: v.vault, abi: escrowVaultAbi, functionName: "funded" as const })),
+  const { data: scalarResults } = useReadContracts({
+    contracts: allMine.flatMap((v) => [
+      { address: v.vault, abi: escrowVaultAbi, functionName: "funded" as const },
+      { address: v.vault, abi: escrowVaultAbi, functionName: "bondDeposited" as const },
+      { address: v.vault, abi: escrowVaultAbi, functionName: "milestoneCount" as const },
+      { address: v.vault, abi: escrowVaultAbi, functionName: "cancelled" as const },
+    ]),
     query: { enabled: allMine.length > 0 },
   });
 
-  const fundedByVault = useMemo(() => {
-    const map = new Map<string, boolean>();
-    allMine.forEach((v, i) => {
-      const result = fundedResults?.[i]?.result;
-      if (result !== undefined) map.set(v.vault.toLowerCase(), result);
-    });
+  const perVaultScalars = useMemo(
+    () =>
+      allMine.map((v, i) => ({
+        vault: v,
+        funded: scalarResults?.[i * 4]?.result as boolean | undefined,
+        bondDeposited: scalarResults?.[i * 4 + 1]?.result as boolean | undefined,
+        milestoneCount: scalarResults?.[i * 4 + 2]?.result as bigint | undefined,
+        cancelled: scalarResults?.[i * 4 + 3]?.result as boolean | undefined,
+      })),
+    [allMine, scalarResults],
+  );
+
+  const milestoneQueries = useMemo(
+    () =>
+      perVaultScalars.flatMap(({ vault, milestoneCount }) =>
+        milestoneCount === undefined
+          ? []
+          : Array.from({ length: Number(milestoneCount) }, (_, i) => ({
+              address: vault.vault,
+              abi: escrowVaultAbi,
+              functionName: "milestones" as const,
+              args: [BigInt(i)] as const,
+            })),
+      ),
+    [perVaultScalars],
+  );
+
+  const { data: milestoneResults } = useReadContracts({
+    contracts: milestoneQueries,
+    query: { enabled: milestoneQueries.length > 0 },
+  });
+
+  const { statusByVault, progressByVault } = useMemo(() => {
+    const statusMap = new Map<string, TradeLifecycleStatus>();
+    const progressMap = new Map<string, TradeProgress>();
+    let flatIndex = 0;
+    for (const { vault, funded, bondDeposited, milestoneCount, cancelled } of perVaultScalars) {
+      const statuses: number[] = [];
+      for (let i = 0; i < Number(milestoneCount ?? 0n); i++) {
+        const result = milestoneResults?.[flatIndex]?.result as readonly [bigint, number, `0x${string}`] | undefined;
+        if (result) statuses.push(result[1]);
+        flatIndex++;
+      }
+      if (funded === undefined || bondDeposited === undefined) continue;
+      const key = vault.vault.toLowerCase();
+      statusMap.set(
+        key,
+        deriveTradeStatus({ bondAmount: vault.bondAmount, bondDeposited, funded, cancelled, milestoneStatuses: statuses }),
+      );
+      progressMap.set(
+        key,
+        deriveTradeProgress({ bondAmount: vault.bondAmount, bondDeposited, funded, cancelled, milestoneStatuses: statuses }),
+      );
+    }
+    return { statusByVault: statusMap, progressByVault: progressMap };
+  }, [perVaultScalars, milestoneResults]);
+
+  const escrowDescriptionByVault = useEscrowMetadataMap(useMemo(() => allMine.map((v) => v.vault), [allMine]));
+  const listingTitleByVault = useListingTitleByVault();
+  // A trade opened via Marketplace.purchase() has no escrow-level
+  // description of its own — its identifying text is the listing's Title
+  // instead, so prefer that when both exist.
+  const descriptionByVault = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const [vault, description] of escrowDescriptionByVault) map.set(vault, description);
+    for (const [vault, title] of listingTitleByVault) map.set(vault, title);
     return map;
-  }, [allMine, fundedResults]);
+  }, [escrowDescriptionByVault, listingTitleByVault]);
 
   const uniqueTokens = useMemo(() => [...new Set(allMine.map((v) => v.token.toLowerCase()))] as Address[], [allMine]);
 
@@ -168,6 +323,8 @@ export default function EscrowListPage() {
         </Link>
       </div>
 
+      <VaultLookup />
+
       {!isConnected ? (
         <p className="text-sm text-ink-400">Connect a wallet to see your trades.</p>
       ) : isLoading ? (
@@ -179,9 +336,9 @@ export default function EscrowListPage() {
         </div>
       ) : (
         <>
-          <VaultSection title="As Buyer" role="buyer" entries={data?.asBuyer ?? []} fundedByVault={fundedByVault} tokenInfo={tokenInfo} />
-          <VaultSection title="As Seller" role="seller" entries={data?.asSeller ?? []} fundedByVault={fundedByVault} tokenInfo={tokenInfo} />
-          <VaultSection title="As Arbiter" role="arbiter" entries={data?.asArbiter ?? []} fundedByVault={fundedByVault} tokenInfo={tokenInfo} />
+          <VaultSection title="As Buyer" role="buyer" entries={data?.asBuyer ?? []} statusByVault={statusByVault} progressByVault={progressByVault} descriptionByVault={descriptionByVault} tokenInfo={tokenInfo} />
+          <VaultSection title="As Seller" role="seller" entries={data?.asSeller ?? []} statusByVault={statusByVault} progressByVault={progressByVault} descriptionByVault={descriptionByVault} tokenInfo={tokenInfo} />
+          <VaultSection title="As Arbiter" role="arbiter" entries={data?.asArbiter ?? []} statusByVault={statusByVault} progressByVault={progressByVault} descriptionByVault={descriptionByVault} tokenInfo={tokenInfo} />
         </>
       )}
     </div>

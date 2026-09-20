@@ -7,7 +7,7 @@ import { addresses } from "@/lib/addresses";
 export type TokenLockedAmount = { token: Address; symbol: string; decimals: number; amount: bigint };
 
 /**
- * Protocol-wide value currently held by DEEDS contracts: every EscrowVault's
+ * Protocol-wide value currently held by PLEDGON contracts: every EscrowVault's
  * token balance, plus LendingPool's collateral/debt balances. Deliberately
  * not collapsed into one number — there's no price oracle to convert, say,
  * MOCK and mCOL into a common unit, so summing them would just be wrong.

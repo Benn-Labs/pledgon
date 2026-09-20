@@ -1,41 +1,28 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useAccount, useReadContract } from "wagmi";
-import { complianceConsumerAbi, escrowFactoryAbi, marketplaceAbi } from "@/generated/contracts";
+import { marketplaceAbi } from "@/generated/contracts";
 import { addresses, isLendingConfigured } from "@/lib/addresses";
 import { useEscrowAttention } from "@/hooks/useEscrowAttention";
 import { useTotalValueLocked } from "@/hooks/useTotalValueLocked";
-import { formatToken } from "@/lib/format";
-import { VerificationBadge } from "@/components/ui/badges";
+import { useRecentTrades } from "@/hooks/useRecentTrades";
+import { useLendingPosition } from "@/hooks/useLendingPosition";
+import { formatToken, formatVaultNumber } from "@/lib/format";
+import { TradeStatusBadge } from "@/components/ui/badges";
+import { TradeProgressBar } from "@/components/ui/TradeProgressBar";
 import { MarketplaceIcon, EscrowIcon, LendingIcon, ShieldAlertIcon } from "@/components/ui/icons";
+
+const CLOSED_STATUSES = new Set(["Completed", "Cancelled"]);
 
 export default function DashboardPage() {
   const { address: account, isConnected } = useAccount();
   const { activeCount, attentionCount } = useEscrowAttention();
   const { totals: tvl, isLoading: tvlLoading } = useTotalValueLocked();
-
-  const { data: tier } = useReadContract({
-    address: addresses.complianceConsumer,
-    abi: complianceConsumerAbi,
-    functionName: "tierOf",
-    args: account ? [account] : undefined,
-    query: { enabled: Boolean(addresses.complianceConsumer && account) },
-  });
-
-  const { data: tier0CapUsd } = useReadContract({
-    address: addresses.escrowFactory,
-    abi: escrowFactoryAbi,
-    functionName: "tier0CapUsd",
-    query: { enabled: Boolean(addresses.escrowFactory) },
-  });
-
-  const { data: tier1CapUsd } = useReadContract({
-    address: addresses.escrowFactory,
-    abi: escrowFactoryAbi,
-    functionName: "tier1CapUsd",
-    query: { enabled: Boolean(addresses.escrowFactory) },
-  });
+  const { trades: recentTrades, isLoading: recentLoading } = useRecentTrades(10);
+  const lending = useLendingPosition();
+  const [tradeTab, setTradeTab] = useState<"active" | "closed">("active");
 
   const { data: listingCount } = useReadContract({
     address: addresses.marketplace,
@@ -43,6 +30,10 @@ export default function DashboardPage() {
     functionName: "listingCount",
     query: { enabled: Boolean(addresses.marketplace) },
   });
+
+  const activeTrades = useMemo(() => recentTrades.filter((t) => !CLOSED_STATUSES.has(t.status)), [recentTrades]);
+  const closedTrades = useMemo(() => recentTrades.filter((t) => CLOSED_STATUSES.has(t.status)), [recentTrades]);
+  const visibleTrades = tradeTab === "active" ? activeTrades : closedTrades;
 
   if (!isConnected) {
     return (
@@ -57,7 +48,7 @@ export default function DashboardPage() {
             />
           </svg>
         </div>
-        <h1 className="text-2xl font-bold text-white mb-2">Welcome to DEEDS</h1>
+        <h1 className="text-2xl font-bold text-white mb-2">Welcome to PLEDGON</h1>
         <p className="text-ink-400">
           Milestone escrow, independently verified — connect a wallet to browse the marketplace, view your active
           trades, and see your compliance standing.
@@ -157,43 +148,152 @@ export default function DashboardPage() {
         </p>
       </div>
 
-      <div className="bg-ink-900 border border-ink-800 rounded-xl p-6 mb-6">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-trust-500/20 flex items-center justify-center shrink-0">
-              <ShieldAlertIcon className="w-5 h-5 text-trust-400" />
+      {isLendingConfigured && (
+        <div className="bg-ink-900 border border-ink-800 rounded-xl p-6 mb-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 rounded-lg bg-warning-500/20 flex items-center justify-center shrink-0">
+              <LendingIcon className="w-5 h-5 text-warning-400" />
             </div>
             <div>
-              <h2 className="font-semibold text-white">Compliance Status</h2>
-              <p className="text-sm text-ink-400">Your on-chain KYC tier, verified by the compliance-check workflow</p>
+              <h2 className="font-semibold text-white">Lending Position</h2>
+              <p className="text-sm text-ink-400">Your collateral, debt, and liquidation-protection standing</p>
             </div>
           </div>
-          {tier !== undefined && <VerificationBadge tier={tier} />}
-        </div>
 
-        {tier0CapUsd !== undefined && tier1CapUsd !== undefined && (
-          <div className="grid grid-cols-3 gap-3 text-center">
-            <div className={`p-3 rounded-lg border ${tier === 0 ? "border-trust-500/40 bg-trust-500/10" : "border-ink-700 bg-ink-800/50"}`}>
-              <div className="text-xs text-ink-400 mb-1">Tier 0</div>
-              <div className="font-mono text-sm text-ink-100">${tier0CapUsd.toString()} / 30d</div>
-            </div>
-            <div className={`p-3 rounded-lg border ${tier === 1 ? "border-trust-500/40 bg-trust-500/10" : "border-ink-700 bg-ink-800/50"}`}>
-              <div className="text-xs text-ink-400 mb-1">Tier 1</div>
-              <div className="font-mono text-sm text-ink-100">${tier1CapUsd.toString()} / 30d</div>
-            </div>
-            <div className={`p-3 rounded-lg border ${tier === 2 ? "border-trust-500/40 bg-trust-500/10" : "border-ink-700 bg-ink-800/50"}`}>
-              <div className="text-xs text-ink-400 mb-1">Tier 2</div>
-              <div className="font-mono text-sm text-ink-100">Uncapped</div>
-            </div>
+          {!lending.hasPosition ? (
+            <p className="text-sm text-ink-400">No open position yet — deposit collateral on the Lending page to get started.</p>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="p-3 rounded-lg bg-ink-800/50 border border-ink-700">
+                  <div className="text-xs text-ink-400 mb-1">Collateral</div>
+                  <div className="font-mono text-sm text-ink-100">
+                    {lending.collDecimals !== undefined
+                      ? formatToken(lending.collateralAmount, lending.collDecimals, lending.collSymbol)
+                      : "…"}
+                  </div>
+                </div>
+                <div className="p-3 rounded-lg bg-ink-800/50 border border-ink-700">
+                  <div className="text-xs text-ink-400 mb-1">Debt</div>
+                  <div className="font-mono text-sm text-ink-100">
+                    {lending.debtDecimals !== undefined ? formatToken(lending.debtAmount, lending.debtDecimals, lending.debtSymbol) : "…"}
+                  </div>
+                </div>
+                <div className="p-3 rounded-lg bg-ink-800/50 border border-ink-700">
+                  <div className="text-xs text-ink-400 mb-1">Liquidation Threshold</div>
+                  <div className="font-mono text-sm text-ink-100">
+                    {lending.liquidationThresholdBps !== undefined ? `${Number(lending.liquidationThresholdBps) / 100}%` : "…"}
+                  </div>
+                </div>
+                <div className="p-3 rounded-lg bg-ink-800/50 border border-ink-700">
+                  <div className="text-xs text-ink-400 mb-1">Health Factor</div>
+                  {lending.debtAmount === 0n ? (
+                    <div className="font-mono text-sm text-success-400">No debt</div>
+                  ) : lending.healthFactor !== undefined ? (
+                    <div className={`font-mono text-sm ${lending.healthFactor < 1 ? "text-danger-400" : "text-success-400"}`}>
+                      {lending.healthFactor.toFixed(2)}
+                    </div>
+                  ) : (
+                    <div className="font-mono text-sm text-ink-500">—</div>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 mt-3">
+                <div className="p-3 rounded-lg bg-ink-800/50 border border-ink-700">
+                  <div className="text-xs text-ink-400 mb-1">Current LTV</div>
+                  <div className="font-mono text-sm text-ink-100">
+                    {lending.debtAmount === 0n ? "0%" : lending.ltvBps !== undefined ? `${Number(lending.ltvBps) / 100}%` : "—"}
+                  </div>
+                </div>
+                <div className="p-3 rounded-lg bg-ink-800/50 border border-ink-700">
+                  <div className="text-xs text-ink-400 mb-1">Est. Liquidation Price</div>
+                  <div className="font-mono text-sm text-ink-100">
+                    {lending.debtAmount === 0n
+                      ? "N/A — no debt"
+                      : lending.liquidationPrice !== undefined
+                        ? `${(Number(lending.liquidationPrice) / 10 ** lending.priceDecimals).toLocaleString(undefined, { maximumFractionDigits: 4 })} ${lending.debtSymbol ?? ""}`
+                        : "—"}
+                  </div>
+                </div>
+              </div>
+
+              {!lending.hasPrice && lending.debtAmount > 0n && (
+                <p className="text-xs text-warning-400 mt-3">
+                  Health Factor, LTV, and Liquidation Price need a live price feed from the liquidation-protection DON
+                  workflow — none has ever reported here, so these show as "—" rather than a fabricated number. They'll
+                  start showing real figures automatically the moment one does, no app update needed.
+                </p>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      <div className="bg-ink-900 border border-ink-800 rounded-xl p-6 mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-1 p-1 rounded-lg bg-ink-800/60">
+            <button
+              onClick={() => setTradeTab("active")}
+              className={`px-3 py-1.5 rounded-md text-sm font-medium ${
+                tradeTab === "active" ? "bg-ink-700 text-white" : "text-ink-400 hover:text-white"
+              }`}
+            >
+              Active ({activeTrades.length})
+            </button>
+            <button
+              onClick={() => setTradeTab("closed")}
+              className={`px-3 py-1.5 rounded-md text-sm font-medium ${
+                tradeTab === "closed" ? "bg-ink-700 text-white" : "text-ink-400 hover:text-white"
+              }`}
+            >
+              Closed ({closedTrades.length})
+            </button>
+          </div>
+          <Link href="/escrow" className="text-sm text-trust-400 hover:text-trust-300 font-medium">
+            View all
+          </Link>
+        </div>
+        {recentLoading ? (
+          <p className="text-sm text-ink-400">Loading…</p>
+        ) : visibleTrades.length === 0 ? (
+          <p className="text-sm text-ink-400">
+            {tradeTab === "active"
+              ? "No active trades — create an escrow or purchase a listing to get started."
+              : "No closed trades yet."}
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {visibleTrades.map((t) => (
+              <Link
+                key={t.vault}
+                href={`/escrow/${t.vault}`}
+                className="deal-card block p-3 rounded-lg bg-ink-800/40 border border-ink-700"
+              >
+                <div className="flex items-center justify-between gap-3 mb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-ink-500 font-mono">{formatVaultNumber(t.index)}</span>
+                    <span className="text-xs text-ink-400 capitalize">{t.role}</span>
+                  </div>
+                  <TradeStatusBadge status={t.status} size="sm" />
+                </div>
+                {(t.listingTitle || t.description) && (
+                  <p className="text-xs text-ink-500 mb-2 line-clamp-1">{t.listingTitle || t.description}</p>
+                )}
+                <TradeProgressBar progress={t.progress} />
+                {t.decimals !== undefined && (
+                  <div className="flex justify-between text-xs mt-2 pt-2 border-t border-ink-800/60">
+                    <span className="text-ink-500">Trade Value</span>
+                    <span className="font-mono text-ink-300">{formatToken(t.totalAmount, t.decimals, t.symbol)}</span>
+                  </div>
+                )}
+              </Link>
+            ))}
           </div>
         )}
-        <p className="text-xs text-ink-500 mt-3">
-          Caps are USD-equivalent, assuming a ~1:1 stablecoin peg. Your actual rolling volume is token-specific and
-          shown when funding a trade, since it isn&apos;t meaningfully comparable across different payment tokens.
-        </p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Link href="/marketplace" className="deal-card flex items-center gap-3 bg-ink-900 border border-ink-800 rounded-xl p-5">
           <MarketplaceIcon className="w-6 h-6 text-trust-400 shrink-0" />
           <div>
@@ -210,12 +310,39 @@ export default function DashboardPage() {
         </Link>
         <Link
           href="/lending"
-          className={`deal-card flex items-center gap-3 bg-ink-900 border border-ink-800 rounded-xl p-5 ${!isLendingConfigured ? "opacity-50" : ""}`}
+          className={`deal-card flex flex-col gap-2 bg-ink-900 border border-ink-800 rounded-xl p-5 ${!isLendingConfigured ? "opacity-50" : ""}`}
         >
-          <LendingIcon className="w-6 h-6 text-warning-400 shrink-0" />
-          <div>
+          <div className="flex items-center gap-3">
+            <LendingIcon className="w-6 h-6 text-warning-400 shrink-0" />
             <div className="font-semibold text-white">Lending</div>
-            <div className="text-xs text-ink-400">{isLendingConfigured ? "Collateral & positions" : "Not deployed yet"}</div>
+          </div>
+          {!isLendingConfigured ? (
+            <div className="text-xs text-ink-400">Not deployed yet</div>
+          ) : !lending.hasPosition ? (
+            <div className="text-xs text-ink-400">No open position — deposit to get started</div>
+          ) : (
+            <div className="text-xs text-ink-400 space-y-0.5">
+              <div>
+                Collateral:{" "}
+                <span className="font-mono text-ink-200">
+                  {lending.collDecimals !== undefined ? formatToken(lending.collateralAmount, lending.collDecimals, lending.collSymbol) : "…"}
+                </span>
+              </div>
+              <div>
+                Debt:{" "}
+                <span className="font-mono text-ink-200">
+                  {lending.debtDecimals !== undefined ? formatToken(lending.debtAmount, lending.debtDecimals, lending.debtSymbol) : "…"}
+                </span>
+              </div>
+              {lending.debtAmount > 0n && <div className="text-warning-400 pt-0.5">Liquidation protection needs a live price feed</div>}
+            </div>
+          )}
+        </Link>
+        <Link href="/compliance" className="deal-card flex items-center gap-3 bg-ink-900 border border-ink-800 rounded-xl p-5">
+          <ShieldAlertIcon className="w-6 h-6 text-trust-400 shrink-0" />
+          <div>
+            <div className="font-semibold text-white">Compliance</div>
+            <div className="text-xs text-ink-400">Your KYC tier & caps</div>
           </div>
         </Link>
       </div>

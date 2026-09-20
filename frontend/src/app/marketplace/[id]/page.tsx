@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { decodeEventLog, zeroAddress } from "viem";
@@ -11,6 +11,8 @@ import { useToken } from "@/hooks/useToken";
 import { formatToken, sumBigints } from "@/lib/format";
 import { toast } from "@/lib/toast";
 import { StatusBadge, LISTING_STATUS } from "@/components/ui/badges";
+import { useListingMetadata } from "@/hooks/useListingMetadata";
+import { EditListingMetadata } from "@/components/marketplace/EditListingMetadata";
 
 export default function ListingDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -37,6 +39,12 @@ export default function ListingDetailPage() {
 
   const [seller, arbiter, token, bondAmount, metadataURI, status, vault] = listing ?? [];
   const { decimals, symbol, isReady: tokenReady } = useToken(token);
+
+  const { metadata: fetchedMetadata } = useListingMetadata(marketplace, Number(id));
+  const [metadata, setMetadata] = useState(fetchedMetadata);
+  useEffect(() => {
+    setMetadata(fetchedMetadata);
+  }, [fetchedMetadata]);
 
   const { writeContract, data: hash, isPending, error } = useWriteContract();
   const { data: receipt, isLoading: isConfirming } = useWaitForTransactionReceipt({ hash });
@@ -80,12 +88,42 @@ export default function ListingDetailPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
-          <div className="bg-ink-900 border border-ink-800 rounded-xl p-6">
+          <div className="bg-ink-900 border border-ink-800 rounded-xl overflow-hidden">
+            {metadata.thumbnailUrl && (
+              // eslint-disable-next-line @next/next/no-img-element -- arbitrary seller-provided URL
+              <img src={metadata.thumbnailUrl} alt="" className="w-full h-56 object-cover bg-ink-800" />
+            )}
+            <div className="p-6">
             <div className="flex items-start justify-between mb-4">
               <StatusBadge status={LISTING_STATUS[status ?? 0]} />
               <span className="text-sm text-ink-500 font-mono">Listing #{id}</span>
             </div>
-            <h1 className="text-2xl font-bold mb-4 text-white">{metadataURI || `Listing #${id}`}</h1>
+            <h1 className="text-2xl font-bold mb-2 text-white">{metadata.title || metadataURI || `Listing #${id}`}</h1>
+            {metadata.description && <p className="text-sm text-ink-300 mb-4">{metadata.description}</p>}
+            {(metadata.terms.category || metadata.terms.location || metadata.terms.conditionNotes) && (
+              <div className="flex flex-wrap gap-2 mb-4">
+                {metadata.terms.category && (
+                  <span className="px-2.5 py-1 rounded-full bg-ink-800 border border-ink-700 text-xs text-ink-300">
+                    {metadata.terms.category}
+                  </span>
+                )}
+                {metadata.terms.location && (
+                  <span className="px-2.5 py-1 rounded-full bg-ink-800 border border-ink-700 text-xs text-ink-300">
+                    📍 {metadata.terms.location}
+                  </span>
+                )}
+                {metadata.terms.conditionNotes && (
+                  <span className="px-2.5 py-1 rounded-full bg-ink-800 border border-ink-700 text-xs text-ink-300">
+                    {metadata.terms.conditionNotes}
+                  </span>
+                )}
+              </div>
+            )}
+            {isSeller && marketplace && (
+              <div className="mb-4">
+                <EditListingMetadata marketplaceAddress={marketplace} listingId={Number(id)} metadata={metadata} onSaved={setMetadata} />
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-4 mb-6">
               <div className="p-4 rounded-lg bg-ink-800/50 border border-ink-700">
                 <div className="text-xs text-ink-400 mb-1">Seller</div>
@@ -126,6 +164,7 @@ export default function ListingDetailPage() {
                 </div>
               </>
             )}
+            </div>
           </div>
         </div>
 

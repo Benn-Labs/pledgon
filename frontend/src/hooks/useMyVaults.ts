@@ -6,11 +6,14 @@ import { addresses } from "@/lib/addresses";
 
 export type VaultCreatedEvent = {
   vault: Address;
+  /** Position in EscrowFactory.allVaults() — a stable, sequential vault number (0-indexed). */
+  index: number;
   buyer: Address;
   seller: Address;
   arbiter: Address;
   token: Address;
   bondAmount: bigint;
+  totalAmount: bigint;
 };
 
 /**
@@ -59,6 +62,7 @@ export function useMyVaults() {
       { address: v, abi: escrowVaultAbi, functionName: "arbiter" as const },
       { address: v, abi: escrowVaultAbi, functionName: "token" as const },
       { address: v, abi: escrowVaultAbi, functionName: "bondAmount" as const },
+      { address: v, abi: escrowVaultAbi, functionName: "totalAmount" as const },
     ]),
     query: { enabled: vaultAddresses.length > 0 },
   });
@@ -67,15 +71,17 @@ export function useMyVaults() {
     return vaultAddresses
       .map((vault, i) => ({
         vault,
-        buyer: detailResults?.[i * 5]?.result as Address | undefined,
-        seller: detailResults?.[i * 5 + 1]?.result as Address | undefined,
-        arbiter: detailResults?.[i * 5 + 2]?.result as Address | undefined,
-        token: detailResults?.[i * 5 + 3]?.result as Address | undefined,
-        bondAmount: detailResults?.[i * 5 + 4]?.result as bigint | undefined,
+        index: i,
+        buyer: detailResults?.[i * 6]?.result as Address | undefined,
+        seller: detailResults?.[i * 6 + 1]?.result as Address | undefined,
+        arbiter: detailResults?.[i * 6 + 2]?.result as Address | undefined,
+        token: detailResults?.[i * 6 + 3]?.result as Address | undefined,
+        bondAmount: detailResults?.[i * 6 + 4]?.result as bigint | undefined,
+        totalAmount: detailResults?.[i * 6 + 5]?.result as bigint | undefined,
       }))
       .filter(
         (v): v is VaultCreatedEvent =>
-          Boolean(v.buyer && v.seller && v.arbiter && v.token) && v.bondAmount !== undefined,
+          Boolean(v.buyer && v.seller && v.arbiter && v.token) && v.bondAmount !== undefined && v.totalAmount !== undefined,
       );
   }, [vaultAddresses, detailResults]);
 
