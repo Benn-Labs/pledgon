@@ -1,4 +1,4 @@
-# DEEDS
+# PLEDGON
 
 A Garantor successor on Chainlink CRE: marketplace, milestone escrow, a
 confidential compliance layer, and lending/borrowing.

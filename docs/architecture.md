@@ -1,17 +1,17 @@
-# DEEDS Architecture
+# PLEDGON Architecture
 
-DEEDS is a Garantor successor built on Chainlink CRE: marketplace, milestone
+PLEDGON is a Garantor successor built on Chainlink CRE: marketplace, milestone
 escrow, a confidential compliance layer, and lending/borrowing.
 
 Garantor (predecessor, `../garantor-project`) proved the domain model on TON/Tact:
 listings, a performance bond, seller-submits-docs → buyer-confirms → release,
 with dispute as an escape hatch (see `../garantor-project/MILESTONE_ACTIONS_FLOW.md`).
-DEEDS keeps that domain model but rebuilds it on EVM + CRE, replacing TON-specific
+PLEDGON keeps that domain model but rebuilds it on EVM + CRE, replacing TON-specific
 transaction plumbing with Solidity contracts and DON-verified confidential workflows.
 
 ## Feature → CRE mapping
 
-| DEEDS feature | Maps to | Status |
+| PLEDGON feature | Maps to | Status |
 |---|---|---|
 | Marketplace (listings, transfers) | Plain Solidity — CRE doesn't do much here | **Built**: `Marketplace` (Solidity, 16 tests) |
 | Escrow + DON confirmation | Confidential workflow verifies an off-chain condition (title recorded, payment cleared) → signed report → escrow contract checks it before releasing funds | **Built**: `EscrowVault`/`EscrowFactory`/`EscrowConfirmationConsumer` (Solidity, 66 tests) + `escrow-confirmation` workflow (Go, 18 tests) |
@@ -101,7 +101,7 @@ PII. `caseId` is an opaque reference issued by the KYC provider when the subject
 completed verification directly with that provider, out of band. The enclave uses
 it to fetch the provider's verdict (the provider looks up the PII server-side);
 only the resulting tier (see "Compliance hardening" below) ever crosses
-`UsingTheDons()`. This means DEEDS' frontend needs a direct integration with the
+`UsingTheDons()`. This means PLEDGON's frontend needs a direct integration with the
 KYC provider to obtain `caseId` before calling this workflow — not yet built,
 and out of scope for the workflow itself.
 
@@ -181,7 +181,7 @@ Still open, deliberately not solved here: `maxValidity` and the tier caps are
 set once at deploy time (constructor params, not owner-adjustable) — changing
 them means a new `EscrowFactory`/`ComplianceConsumer` deployment. Given
 neither contract has any other admin/owner concept, adding one just for this
-felt like solving a problem DEEDS doesn't have yet.
+felt like solving a problem PLEDGON doesn't have yet.
 
 ## Deployment
 
@@ -238,7 +238,7 @@ funds — it only creates the vault; the buyer still calls `fund()` and the sell
 The actual `automated-liquidation-protection` CRE template is a proactive bot:
 it monitors a position on an *existing* lending platform and, before liquidation,
 uses exchange-account credentials (in-enclave) to pull funds and add collateral
-or repay debt. That doesn't fit DEEDS, which has no lending contracts yet and no
+or repay debt. That doesn't fit PLEDGON, which has no lending contracts yet and no
 external-exchange custody story. Chose instead to mirror the pattern already
 proven twice (escrow-confirmation, compliance-check): a workflow verifies
 something independently, attests it with a DON-signed report, and a consumer

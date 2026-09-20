@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* DEEDS is a dark-only, protocol-native Ethereum dApp look — deliberately
+/* PLEDGON is a dark-only, protocol-native Ethereum dApp look — deliberately
    not theme-switchable (see the frontend design port notes). */
 @theme {
   --color-ink-50: #f8fafc;

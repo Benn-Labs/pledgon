@@ -1,8 +1,8 @@
-# DEEDS Frontend — Build Prompt
+# PLEDGON Frontend — Build Prompt
 
 ## What you're building
 
-A frontend for **DEEDS**, an Ethereum + Chainlink CRE milestone-escrow
+A frontend for **PLEDGON**, an Ethereum + Chainlink CRE milestone-escrow
 marketplace. Cover the **full happy path and the full dispute path** for one
 trade lifecycle: browse → list → purchase → compliance gate → fund → bond →
 milestone docs/confirm → dispute → arbiter resolution. Lending is a separate,
@@ -19,7 +19,7 @@ plumbing unless you have a good reason to change it.
 ## Visual direction: Ethereum dApp, not a consumer messaging app
 
 Garantor (the predecessor this replaces) was built on TON, where the norm
-leans toward a lightweight, chat-app/Telegram-Mini-App feel. DEEDS should
+leans toward a lightweight, chat-app/Telegram-Mini-App feel. PLEDGON should
 read the opposite way: a **serious, protocol-native Ethereum application** —
 closer in spirit to Uniswap, Aave, or Etherscan than to a consumer app.
 Concretely:
@@ -153,7 +153,7 @@ Concretely:
 
 - [docs/architecture.md](architecture.md) — authoritative build log, exact
   contract behavior, known limitations.
-- [docs/DEEDS-Design-Architecture-Prompt.md](DEEDS-Design-Architecture-Prompt.md)
+- [docs/PLEDGON-Design-Architecture-Prompt.md](PLEDGON-Design-Architecture-Prompt.md)
   — corrected architecture reference (contract names, workflow language,
   what's built vs. future roadmap).
 - `contracts/evm/src/` — read the actual Solidity if anything here is

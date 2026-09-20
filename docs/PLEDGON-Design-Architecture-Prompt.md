@@ -1,7 +1,7 @@
-# DEEDS Platform — Design & Architecture Reference
+# PLEDGON Platform — Design & Architecture Reference
 
 > Originally written as an aspirational design brief before the contracts and
-> workflows existed. Amended to match what DEEDS actually is on **Ethereum +
+> workflows existed. Amended to match what PLEDGON actually is on **Ethereum +
 > Chainlink CRE**: real contract names, real Go workflows, and real scope
 > boundaries — see [docs/architecture.md](architecture.md) for the
 > authoritative build log and design-decision history. Anything below that
@@ -12,11 +12,11 @@
 
 ## CONTEXT
 
-DEEDS is a milestone-based escrow marketplace with compliance verification
+PLEDGON is a milestone-based escrow marketplace with compliance verification
 and collateralized lending, built on **Ethereum (EVM)** using **Chainlink
 CRE (Chainlink Runtime Environment)** for confidential off-chain
 computation. It is the successor to **Garantor**, a prior version built on
-TON/Tact (`../garantor-project`). DEEDS keeps Garantor's domain model
+TON/Tact (`../garantor-project`). PLEDGON keeps Garantor's domain model
 (listings, performance bond, milestone docs → confirm → release, dispute as
 an escape hatch) and rebuilds it on Solidity + DON-verified confidential
 workflows.
@@ -250,7 +250,7 @@ happens, not something to invent unprompted mid-build.
 
 1. TON-specific limitations (immature lending ecosystem, limited oracle
    support) → solved by moving to Ethereum + CRE.
-2. Opaque verification → DEEDS's whole point is DON attestation being
+2. Opaque verification → PLEDGON's whole point is DON attestation being
    visible, once the UI catches up to that principle.
 3. Compliance bolted on → the tier/rolling-volume model is core to
    `EscrowFactory`/`EscrowVault`, not an afterthought, even though its UI

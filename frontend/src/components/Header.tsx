@@ -32,7 +32,7 @@ export function Header() {
                 />
               </svg>
             </div>
-            <span className="text-lg font-bold tracking-tight text-white hidden sm:inline">DEEDS</span>
+            <span className="text-lg font-bold tracking-tight text-white hidden sm:inline">PLEDGON</span>
           </Link>
 
           <nav className="flex items-center gap-1 overflow-x-auto">

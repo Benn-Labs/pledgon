@@ -17,7 +17,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "DEEDS",
+  title: "PLEDGON",
   description: "Marketplace, milestone escrow, and compliance-gated trades on Chainlink CRE",
 };
 
@@ -31,7 +31,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">{children}</main>
           <footer className="border-t border-ink-800 mt-auto">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 text-sm text-ink-500 flex items-center gap-2">
-              <span>DEEDS Protocol</span>
+              <span>PLEDGON Protocol</span>
               <span className="text-ink-700">·</span>
               <span className="font-mono text-xs">Sepolia testnet</span>
             </div>

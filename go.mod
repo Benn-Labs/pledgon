@@ -1,4 +1,4 @@
-module deeds-cre-workflows
+module pledgon-cre-workflows
 
 go 1.25.3
 

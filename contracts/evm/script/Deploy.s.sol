@@ -12,7 +12,7 @@ import {LiquidationConsumer} from "../src/lending/LiquidationConsumer.sol";
 import {LendingPool} from "../src/lending/LendingPool.sol";
 
 /// @title Deploy
-/// @notice Deploys the DEEDS system contracts to whatever chain `forge script`
+/// @notice Deploys the PLEDGON system contracts to whatever chain `forge script`
 /// targets. Key material is supplied on the CLI (`--private-key` or
 /// `--account`) — never read from an env var here.
 ///
