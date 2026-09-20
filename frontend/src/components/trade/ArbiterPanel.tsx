@@ -24,6 +24,7 @@ function DisputeResolutionCard({
   onSuccess: () => void;
 }) {
   const { data: dispute, isLoading: disputeLoading } = useDisputeReason(vault, milestone.index, true);
+  const [splitPercent, setSplitPercent] = useState(50);
   const { writeContract, data: hash, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({
     hash,
@@ -50,14 +51,14 @@ function DisputeResolutionCard({
             ? "Loading dispute reason…"
             : "Dispute reason unavailable on this RPC (log history beyond its free-tier range) — the dispute itself is still real and resolvable below.")}
       </p>
-      <div className="flex gap-2">
+      <div className="flex gap-2 mb-3">
         <button
           onClick={() =>
             writeContract({
               address: vault,
               abi: escrowVaultAbi,
               functionName: "resolveDispute",
-              args: [BigInt(milestone.index), true],
+              args: [BigInt(milestone.index), 10_000],
             })
           }
           disabled={isPending || isConfirming}
@@ -71,7 +72,7 @@ function DisputeResolutionCard({
               address: vault,
               abi: escrowVaultAbi,
               functionName: "resolveDispute",
-              args: [BigInt(milestone.index), false],
+              args: [BigInt(milestone.index), 0],
             })
           }
           disabled={isPending || isConfirming}
@@ -79,6 +80,36 @@ function DisputeResolutionCard({
         >
           Refund Buyer
         </button>
+      </div>
+      <div className="pt-3 border-t border-danger-500/20">
+        <p className="text-xs text-ink-500 mb-2">Or split the pool between both parties</p>
+        <div className="flex gap-3 items-center flex-wrap">
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={splitPercent}
+            onChange={(e) => setSplitPercent(Number(e.target.value))}
+            className="flex-1 min-w-[140px] accent-warning-500"
+          />
+          <span className="text-xs text-ink-300 font-mono w-36 shrink-0">
+            {splitPercent}% seller / {100 - splitPercent}% buyer
+          </span>
+          <button
+            onClick={() =>
+              writeContract({
+                address: vault,
+                abi: escrowVaultAbi,
+                functionName: "resolveDispute",
+                args: [BigInt(milestone.index), splitPercent * 100],
+              })
+            }
+            disabled={isPending || isConfirming}
+            className="btn-press px-4 py-2 rounded-lg bg-warning-600 hover:bg-warning-500 disabled:opacity-40 text-white text-sm font-semibold"
+          >
+            Apply Split
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -105,7 +136,7 @@ export function ArbiterPanel({
 }) {
   const [slashRecipient, setSlashRecipient] = useState(buyer);
   const disputed = milestones.filter((m) => m.status === 3);
-  const hasRefunded = milestones.some((m) => m.status === 4);
+  const hasRefunded = milestones.some((m) => m.status === 4 || m.status === 5);
 
   const { writeContract, data: hash, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({

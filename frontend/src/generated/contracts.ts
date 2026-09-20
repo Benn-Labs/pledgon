@@ -374,6 +374,27 @@ export const escrowVaultAbi = [
   {
     type: 'function',
     inputs: [],
+    name: 'BPS_DENOMINATOR',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'index', internalType: 'uint256', type: 'uint256' }],
+    name: 'acceptSettlement',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'acceptTradeExit',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [],
     name: 'arbiter',
     outputs: [{ name: '', internalType: 'address', type: 'address' }],
     stateMutability: 'view',
@@ -404,6 +425,34 @@ export const escrowVaultAbi = [
     inputs: [],
     name: 'buyer',
     outputs: [{ name: '', internalType: 'address', type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'index', internalType: 'uint256', type: 'uint256' }],
+    name: 'cancelSettlementProposal',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'cancelTrade',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'cancelTradeExitProposal',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'cancelled',
+    outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
     stateMutability: 'view',
   },
   {
@@ -503,6 +552,23 @@ export const escrowVaultAbi = [
   },
   {
     type: 'function',
+    inputs: [
+      { name: 'index', internalType: 'uint256', type: 'uint256' },
+      { name: 'sellerBps', internalType: 'uint16', type: 'uint16' },
+    ],
+    name: 'proposeSettlement',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'proposeTradeExit',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
     inputs: [{ name: 'index', internalType: 'uint256', type: 'uint256' }],
     name: 'releaseMilestoneViaDon',
     outputs: [],
@@ -512,7 +578,7 @@ export const escrowVaultAbi = [
     type: 'function',
     inputs: [
       { name: 'index', internalType: 'uint256', type: 'uint256' },
-      { name: 'releaseToSeller', internalType: 'bool', type: 'bool' },
+      { name: 'sellerBps', internalType: 'uint16', type: 'uint16' },
     ],
     name: 'resolveDispute',
     outputs: [],
@@ -523,6 +589,17 @@ export const escrowVaultAbi = [
     inputs: [],
     name: 'seller',
     outputs: [{ name: '', internalType: 'address', type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    name: 'settlementProposals',
+    outputs: [
+      { name: 'sellerBps', internalType: 'uint16', type: 'uint16' },
+      { name: 'proposedBy', internalType: 'address', type: 'address' },
+      { name: 'active', internalType: 'bool', type: 'bool' },
+    ],
     stateMutability: 'view',
   },
   {
@@ -568,6 +645,16 @@ export const escrowVaultAbi = [
     inputs: [],
     name: 'totalAmount',
     outputs: [{ name: 'total', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'tradeExitProposal',
+    outputs: [
+      { name: 'proposedBy', internalType: 'address', type: 'address' },
+      { name: 'active', internalType: 'bool', type: 'bool' },
+    ],
     stateMutability: 'view',
   },
   {
@@ -621,9 +708,9 @@ export const escrowVaultAbi = [
         indexed: true,
       },
       {
-        name: 'releasedToSeller',
-        internalType: 'bool',
-        type: 'bool',
+        name: 'sellerBps',
+        internalType: 'uint16',
+        type: 'uint16',
         indexed: false,
       },
     ],
@@ -700,6 +787,116 @@ export const escrowVaultAbi = [
     ],
     name: 'MilestoneReleased',
   },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'milestoneIndex',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: true,
+      },
+      {
+        name: 'sellerBps',
+        internalType: 'uint16',
+        type: 'uint16',
+        indexed: false,
+      },
+    ],
+    name: 'SettlementAccepted',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'milestoneIndex',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: true,
+      },
+    ],
+    name: 'SettlementCancelled',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'milestoneIndex',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: true,
+      },
+      {
+        name: 'proposedBy',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      {
+        name: 'sellerBps',
+        internalType: 'uint16',
+        type: 'uint16',
+        indexed: false,
+      },
+    ],
+    name: 'SettlementProposed',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'canceledBy',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      {
+        name: 'bondRefunded',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: false,
+      },
+    ],
+    name: 'TradeCancelled',
+  },
+  { type: 'event', anonymous: false, inputs: [], name: 'TradeExitCancelled' },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'proposedBy',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+    ],
+    name: 'TradeExitProposed',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'buyerRefund',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: false,
+      },
+      {
+        name: 'sellerBondRefund',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: false,
+      },
+    ],
+    name: 'TradeExited',
+  },
+  { type: 'error', inputs: [], name: 'AlreadyCancelled' },
   { type: 'error', inputs: [], name: 'AlreadyFunded' },
   {
     type: 'error',
@@ -708,6 +905,7 @@ export const escrowVaultAbi = [
   },
   { type: 'error', inputs: [], name: 'BondAlreadyDeposited' },
   { type: 'error', inputs: [], name: 'BondNotDeposited' },
+  { type: 'error', inputs: [], name: 'CannotCancelAfterFunded' },
   {
     type: 'error',
     inputs: [
@@ -739,6 +937,17 @@ export const escrowVaultAbi = [
     ],
     name: 'InvalidMilestoneStatus',
   },
+  {
+    type: 'error',
+    inputs: [{ name: 'sellerBps', internalType: 'uint16', type: 'uint16' }],
+    name: 'InvalidSplit',
+  },
+  { type: 'error', inputs: [], name: 'NoActiveExitProposal' },
+  {
+    type: 'error',
+    inputs: [{ name: 'index', internalType: 'uint256', type: 'uint256' }],
+    name: 'NoActiveProposal',
+  },
   { type: 'error', inputs: [], name: 'NoMilestones' },
   {
     type: 'error',
@@ -749,6 +958,11 @@ export const escrowVaultAbi = [
     type: 'error',
     inputs: [{ name: 'caller', internalType: 'address', type: 'address' }],
     name: 'NotBuyer',
+  },
+  {
+    type: 'error',
+    inputs: [{ name: 'caller', internalType: 'address', type: 'address' }],
+    name: 'NotCounterparty',
   },
   { type: 'error', inputs: [], name: 'NotFunded' },
   {
@@ -761,6 +975,7 @@ export const escrowVaultAbi = [
     inputs: [{ name: 'caller', internalType: 'address', type: 'address' }],
     name: 'NotSeller',
   },
+  { type: 'error', inputs: [], name: 'TradeAlreadySettled' },
   { type: 'error', inputs: [], name: 'TransferFailed' },
   { type: 'error', inputs: [], name: 'ZeroAddress' },
 ] as const

@@ -8,6 +8,8 @@ const DOCS_SUBMITTED = 1;
 const RELEASED = 2;
 const DISPUTED = 3;
 const REFUNDED = 4;
+const SPLIT = 5;
+const SETTLED_STATUSES = [RELEASED, REFUNDED, SPLIT];
 
 /**
  * "Active" and "needs attention" counts across every trade the connected
@@ -32,15 +34,17 @@ export function useEscrowAttention() {
       { address: v.vault, abi: escrowVaultAbi, functionName: "funded" as const },
       { address: v.vault, abi: escrowVaultAbi, functionName: "bondDeposited" as const },
       { address: v.vault, abi: escrowVaultAbi, functionName: "milestoneCount" as const },
+      { address: v.vault, abi: escrowVaultAbi, functionName: "cancelled" as const },
     ]),
     query: { enabled: allMine.length > 0 },
   });
 
   const perVaultScalars = allMine.map((v, i) => ({
     vault: v,
-    funded: scalarResults?.[i * 3]?.result as boolean | undefined,
-    bondDeposited: scalarResults?.[i * 3 + 1]?.result as boolean | undefined,
-    milestoneCount: scalarResults?.[i * 3 + 2]?.result as bigint | undefined,
+    funded: scalarResults?.[i * 4]?.result as boolean | undefined,
+    bondDeposited: scalarResults?.[i * 4 + 1]?.result as boolean | undefined,
+    milestoneCount: scalarResults?.[i * 4 + 2]?.result as bigint | undefined,
+    cancelled: scalarResults?.[i * 4 + 3]?.result as boolean | undefined,
   }));
 
   const milestoneQueries = perVaultScalars.flatMap(({ vault, milestoneCount }) =>
@@ -66,7 +70,7 @@ export function useEscrowAttention() {
     let attention = 0;
     let active = 0;
 
-    for (const { vault, funded, bondDeposited, milestoneCount } of perVaultScalars) {
+    for (const { vault, funded, bondDeposited, milestoneCount, cancelled } of perVaultScalars) {
       const isBuyer = vault.buyer.toLowerCase() === lower;
       const isSeller = vault.seller.toLowerCase() === lower;
       const isArbiter = vault.arbiter.toLowerCase() === lower;
@@ -77,14 +81,16 @@ export function useEscrowAttention() {
         flatIndex++;
       }
 
-      // "Active" means not fully wound down yet — every milestone Released
-      // or Refunded is a settled trade, nothing left to do on it. Until we
-      // can positively confirm every status, count it as active rather than
-      // risk undercounting while data is still loading.
+      // "Active" means not fully wound down yet — a cancelled/exited vault,
+      // or one where every milestone Released, Refunded, or Split, is a
+      // settled trade with nothing left to do on it. Until we can positively
+      // confirm every status, count it as active rather than risk
+      // undercounting while data is still loading.
       const allStatusesKnown = statuses.length > 0 && statuses.length === Number(milestoneCount ?? 0n);
-      const isSettled = allStatusesKnown && statuses.every((s) => s === RELEASED || s === REFUNDED);
+      const isSettled = cancelled === true || (allStatusesKnown && statuses.every((s) => SETTLED_STATUSES.includes(s)));
       if (!isSettled) active++;
 
+      if (cancelled) continue;
       if (isBuyer && funded === false) attention++;
       if (isBuyer && statuses.includes(DOCS_SUBMITTED)) attention++;
       if (isSeller && bondDeposited === false) attention++;

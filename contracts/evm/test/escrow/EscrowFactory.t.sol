@@ -180,9 +180,11 @@ contract EscrowFactoryTest is Test {
         factory.createTrade(address(0), arbiter, IERC20(address(token)), 0, _amounts(100e6, 0));
     }
 
-    function test_CreateTrade_RevertsIfArbiterIsZero() public {
-        vm.expectRevert(EscrowVault.ZeroAddress.selector);
-        factory.createTrade(seller, address(0), IERC20(address(token)), 0, _amounts(100e6, 0));
+    /// @dev Zero arbiter is deliberate — "no arbiter, mutual settlement only" —
+    /// not a misconfiguration, so createTrade must accept it.
+    function test_CreateTrade_AllowsZeroArbiter() public {
+        address vault = factory.createTrade(seller, address(0), IERC20(address(token)), 0, _amounts(100e6, 0));
+        assertEq(EscrowVault(vault).arbiter(), address(0));
     }
 
     // ─── createTradeFor ─────────────────────────────────────────

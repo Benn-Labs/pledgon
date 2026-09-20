@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import type { Address } from "viem";
+import { zeroAddress, type Address } from "viem";
 import { useAccount, useReadContracts } from "wagmi";
 import { escrowVaultAbi } from "@/generated/contracts";
 import { useToken } from "@/hooks/useToken";
@@ -12,7 +12,11 @@ import { BondPanel } from "@/components/trade/BondPanel";
 import { FundPanel } from "@/components/trade/FundPanel";
 import { MilestoneRow } from "@/components/trade/MilestoneRow";
 import { ArbiterPanel } from "@/components/trade/ArbiterPanel";
-import { RoleBadge } from "@/components/ui/badges";
+import { ExitTradePanel } from "@/components/trade/ExitTradePanel";
+import { RoleBadge, TradeStatusBadge } from "@/components/ui/badges";
+import { deriveTradeStatus } from "@/lib/tradeStatus";
+import { useEscrowMetadata } from "@/hooks/useEscrowMetadata";
+import { EditTradeDescription } from "@/components/trade/EditTradeDescription";
 
 export default function TradePage() {
   const { address } = useParams<{ address: string }>();
@@ -20,6 +24,7 @@ export default function TradePage() {
   const { address: account } = useAccount();
 
   const vaultContract = { address: vault, abi: escrowVaultAbi } as const;
+  const { description: tradeDescription, milestoneLabels, isLoading: metadataLoading } = useEscrowMetadata(vault);
 
   const { data, refetch } = useReadContracts({
     contracts: [
@@ -35,6 +40,8 @@ export default function TradePage() {
       { ...vaultContract, functionName: "milestoneCount" },
       { ...vaultContract, functionName: "totalAmount" },
       { ...vaultContract, functionName: "bondBalance" },
+      { ...vaultContract, functionName: "cancelled" },
+      { ...vaultContract, functionName: "tradeExitProposal" },
     ],
   });
 
@@ -51,6 +58,8 @@ export default function TradePage() {
     milestoneCount,
     totalAmount,
     bondBalance,
+    cancelled,
+    tradeExitProposalResult,
   ] = (data?.map((d) => d.result) ?? []) as [
     Address | undefined,
     Address | undefined,
@@ -64,7 +73,13 @@ export default function TradePage() {
     bigint | undefined,
     bigint | undefined,
     bigint | undefined,
+    boolean | undefined,
+    readonly [Address, boolean] | undefined,
   ];
+
+  const tradeExitProposal = tradeExitProposalResult
+    ? { proposedBy: tradeExitProposalResult[0], active: tradeExitProposalResult[1] }
+    : undefined;
 
   const { decimals, symbol, isReady: tokenReady } = useToken(token);
 
@@ -78,9 +93,19 @@ export default function TradePage() {
     query: { enabled: milestoneIndices.length > 0 },
   });
 
+  const { data: settlementData, refetch: refetchSettlements } = useReadContracts({
+    contracts: milestoneIndices.map((i) => ({
+      ...vaultContract,
+      functionName: "settlementProposals" as const,
+      args: [BigInt(i)],
+    })),
+    query: { enabled: milestoneIndices.length > 0 },
+  });
+
   function refetchAll() {
     refetch();
     refetchMilestones();
+    refetchSettlements();
   }
 
   if (!buyer || !seller || !arbiter || !token) {
@@ -89,13 +114,35 @@ export default function TradePage() {
 
   const isBuyer = account?.toLowerCase() === buyer.toLowerCase();
   const isSeller = account?.toLowerCase() === seller.toLowerCase();
-  const isArbiter = account?.toLowerCase() === arbiter.toLowerCase();
+  const hasArbiter = arbiter.toLowerCase() !== zeroAddress;
+  const isArbiter = hasArbiter && account?.toLowerCase() === arbiter.toLowerCase();
   const role = isBuyer ? "buyer" : isSeller ? "seller" : isArbiter ? "arbiter" : undefined;
 
   const milestones = milestoneIndices.map((i) => {
     const result = milestoneData?.[i]?.result as readonly [bigint, number, `0x${string}`] | undefined;
-    return { index: i, amount: result?.[0] ?? 0n, status: result?.[1] ?? 0, docHash: result?.[2] ?? ("0x" as const) };
+    const proposalResult = settlementData?.[i]?.result as readonly [number, Address, boolean] | undefined;
+    const settlementProposal = proposalResult
+      ? { sellerBps: proposalResult[0], proposedBy: proposalResult[1], active: proposalResult[2] }
+      : undefined;
+    return {
+      index: i,
+      amount: result?.[0] ?? 0n,
+      status: result?.[1] ?? 0,
+      docHash: result?.[2] ?? ("0x" as const),
+      settlementProposal,
+    };
   });
+
+  const lifecycleStatus =
+    bondDeposited !== undefined && funded !== undefined
+      ? deriveTradeStatus({
+          bondAmount: bondAmount ?? 0n,
+          bondDeposited,
+          funded,
+          cancelled,
+          milestoneStatuses: milestones.map((m) => m.status),
+        })
+      : undefined;
 
   return (
     <div className="fade-in max-w-5xl mx-auto">
@@ -111,11 +158,17 @@ export default function TradePage() {
           <div>
             <div className="flex items-center gap-3 mb-2 flex-wrap">
               <h1 className="text-2xl font-bold text-white">Trade</h1>
+              {lifecycleStatus && <TradeStatusBadge status={lifecycleStatus} />}
               {role && <RoleBadge role={role} />}
             </div>
             <p className="text-ink-400 text-sm">
               Escrow Vault: <span className="addr text-trust-400 font-mono">{vault}</span>
             </p>
+            {(isBuyer || isSeller) && !metadataLoading ? (
+              <EditTradeDescription vault={vault} description={tradeDescription} />
+            ) : (
+              tradeDescription && <p className="text-sm text-ink-300 mt-2 max-w-lg">{tradeDescription}</p>
+            )}
           </div>
           {tokenReady && decimals !== undefined && (
             <div className="text-right">
@@ -142,10 +195,16 @@ export default function TradePage() {
           </div>
           <div className="p-4 rounded-lg bg-ink-800/50 border border-ink-700 text-center">
             <div className="text-xs text-ink-400 mb-1">Arbiter</div>
-            <div className="addr text-ink-200 font-mono text-xs">
-              {arbiter.slice(0, 6)}…{arbiter.slice(-4)}
-            </div>
-            {isArbiter && <div className="text-xs text-warning-400 mt-1">You</div>}
+            {hasArbiter ? (
+              <>
+                <div className="addr text-ink-200 font-mono text-xs">
+                  {arbiter.slice(0, 6)}…{arbiter.slice(-4)}
+                </div>
+                {isArbiter && <div className="text-xs text-warning-400 mt-1">You</div>}
+              </>
+            ) : (
+              <div className="text-xs text-ink-500 italic">None — mutual settlement only</div>
+            )}
           </div>
         </div>
       </div>
@@ -192,13 +251,28 @@ export default function TradePage() {
                   buyer={buyer}
                   seller={seller}
                   funded={funded ?? false}
+                  hasArbiter={hasArbiter}
                   decimals={decimals}
                   symbol={symbol}
+                  settlementProposal={m.settlementProposal}
+                  label={milestoneLabels[m.index]}
                   onSuccess={refetchAll}
                 />
               ))}
             </div>
           </div>
+
+          {(isBuyer || isSeller) && lifecycleStatus !== "Completed" && (
+            <ExitTradePanel
+              vault={vault}
+              buyer={buyer}
+              seller={seller}
+              funded={funded ?? false}
+              cancelled={cancelled ?? false}
+              exitProposal={tradeExitProposal}
+              onSuccess={refetchAll}
+            />
+          )}
 
           {isArbiter && (
             <ArbiterPanel

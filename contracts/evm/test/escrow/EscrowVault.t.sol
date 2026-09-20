@@ -168,6 +168,96 @@ contract EscrowVaultTest is Test, IEscrowFactory {
         );
     }
 
+    function test_Constructor_AllowsZeroArbiter() public {
+        EscrowVault vault = new EscrowVault(
+            buyer,
+            seller,
+            address(0),
+            IERC20(address(token)),
+            0,
+            _singleMilestone(100e6),
+            TIER0_CAP,
+            TIER1_CAP,
+            confirmationConsumer,
+            complianceConsumer
+        );
+        assertEq(vault.arbiter(), address(0));
+    }
+
+    function test_ResolveDispute_RevertsForAnyoneWhenNoArbiter() public {
+        EscrowVault vault = new EscrowVault(
+            buyer,
+            seller,
+            address(0),
+            IERC20(address(token)),
+            0,
+            _singleMilestone(100e6),
+            TIER0_CAP,
+            TIER1_CAP,
+            confirmationConsumer,
+            complianceConsumer
+        );
+        _mintAndApprove(buyer, vault, 100e6);
+        vm.prank(buyer);
+        vault.fund();
+        vm.prank(buyer);
+        vault.disputeMilestone(0, "no arbiter escrow");
+
+        vm.expectRevert(abi.encodeWithSelector(EscrowVault.NotArbiter.selector, buyer));
+        vm.prank(buyer);
+        vault.resolveDispute(0, 10_000);
+
+        vm.expectRevert(abi.encodeWithSelector(EscrowVault.NotArbiter.selector, seller));
+        vm.prank(seller);
+        vault.resolveDispute(0, 10_000);
+    }
+
+    function test_SlashBond_RevertsForAnyoneWhenNoArbiter() public {
+        EscrowVault vault = new EscrowVault(
+            buyer,
+            seller,
+            address(0),
+            IERC20(address(token)),
+            20e6,
+            _singleMilestone(100e6),
+            TIER0_CAP,
+            TIER1_CAP,
+            confirmationConsumer,
+            complianceConsumer
+        );
+        vm.expectRevert(abi.encodeWithSelector(EscrowVault.NotArbiter.selector, buyer));
+        vm.prank(buyer);
+        vault.slashBond(buyer);
+    }
+
+    function test_MutualSettlement_StillWorksWithNoArbiter() public {
+        EscrowVault vault = new EscrowVault(
+            buyer,
+            seller,
+            address(0),
+            IERC20(address(token)),
+            0,
+            _singleMilestone(100e6),
+            TIER0_CAP,
+            TIER1_CAP,
+            confirmationConsumer,
+            complianceConsumer
+        );
+        _mintAndApprove(buyer, vault, 100e6);
+        vm.prank(buyer);
+        vault.fund();
+        vm.prank(buyer);
+        vault.disputeMilestone(0, "no arbiter escrow");
+
+        vm.prank(seller);
+        vault.proposeSettlement(0, 6_000);
+        vm.prank(buyer);
+        vault.acceptSettlement(0);
+
+        assertEq(token.balanceOf(seller), 60e6);
+        assertEq(token.balanceOf(buyer), 40e6);
+    }
+
     function test_Constructor_SumsTotalAmount() public {
         uint256[] memory amounts = new uint256[](2);
         amounts[0] = 100;
@@ -507,7 +597,17 @@ contract EscrowVaultTest is Test, IEscrowFactory {
 
         vm.expectRevert(abi.encodeWithSelector(EscrowVault.NotArbiter.selector, buyer));
         vm.prank(buyer);
-        vault.resolveDispute(0, true);
+        vault.resolveDispute(0, 10_000);
+    }
+
+    function test_ResolveDispute_RevertsOnInvalidSplit() public {
+        EscrowVault vault = _fundedVault(100e6, 0);
+        vm.prank(buyer);
+        vault.disputeMilestone(0, "not delivered");
+
+        vm.expectRevert(abi.encodeWithSelector(EscrowVault.InvalidSplit.selector, 10_001));
+        vm.prank(arbiter);
+        vault.resolveDispute(0, 10_001);
     }
 
     function test_ResolveDispute_ReleaseToSeller() public {
@@ -516,7 +616,7 @@ contract EscrowVaultTest is Test, IEscrowFactory {
         vault.disputeMilestone(0, "quality concern");
 
         vm.prank(arbiter);
-        vault.resolveDispute(0, true);
+        vault.resolveDispute(0, 10_000);
 
         assertEq(token.balanceOf(seller), 100e6);
         (, EscrowVault.MilestoneStatus status,) = vault.milestones(0);
@@ -532,12 +632,26 @@ contract EscrowVaultTest is Test, IEscrowFactory {
         vault.disputeMilestone(0, "seller never delivered");
 
         vm.prank(arbiter);
-        vault.resolveDispute(0, false);
+        vault.resolveDispute(0, 0);
 
         assertEq(token.balanceOf(buyer), 100e6, "milestone amount refunded back to buyer");
         (, EscrowVault.MilestoneStatus status,) = vault.milestones(0);
         assertEq(uint8(status), uint8(EscrowVault.MilestoneStatus.Refunded));
         assertEq(vault.bondBalance(), 20e6, "bond is stuck until the arbiter explicitly slashes it");
+    }
+
+    function test_ResolveDispute_SplitPaysBothPartiesAndMarksSplit() public {
+        EscrowVault vault = _fundedVault(100e6, 0);
+        vm.prank(seller);
+        vault.disputeMilestone(0, "partial delivery");
+
+        vm.prank(arbiter);
+        vault.resolveDispute(0, 6_000); // 60% seller / 40% buyer
+
+        assertEq(token.balanceOf(seller), 60e6);
+        assertEq(token.balanceOf(buyer), 40e6);
+        (, EscrowVault.MilestoneStatus status,) = vault.milestones(0);
+        assertEq(uint8(status), uint8(EscrowVault.MilestoneStatus.Split));
     }
 
     // ─── slashBond ────────────────────────────────────────────
@@ -557,6 +671,321 @@ contract EscrowVaultTest is Test, IEscrowFactory {
 
         assertEq(vault.bondBalance(), 0);
         assertEq(token.balanceOf(buyer), 20e6);
+    }
+
+    // ─── cancelTrade ──────────────────────────────────────────
+
+    function test_CancelTrade_RevertsIfNotParty() public {
+        EscrowVault vault = _newVault(_singleMilestone(100e6), 0);
+        vm.expectRevert(abi.encodeWithSelector(EscrowVault.NotPartyToTrade.selector, stranger));
+        vm.prank(stranger);
+        vault.cancelTrade();
+    }
+
+    function test_CancelTrade_RevertsIfAlreadyFunded() public {
+        EscrowVault vault = _fundedVault(100e6, 0);
+        vm.expectRevert(EscrowVault.CannotCancelAfterFunded.selector);
+        vm.prank(buyer);
+        vault.cancelTrade();
+    }
+
+    function test_CancelTrade_BySeller_RefundsBondAndBlocksFurtherActions() public {
+        EscrowVault vault = _newVault(_singleMilestone(100e6), 20e6);
+        _mintAndApprove(seller, vault, 20e6);
+        vm.prank(seller);
+        vault.depositBond();
+
+        vm.prank(seller);
+        vault.cancelTrade();
+
+        assertTrue(vault.cancelled());
+        assertEq(token.balanceOf(seller), 20e6, "bond refunded to seller");
+        assertEq(vault.bondBalance(), 0);
+
+        vm.expectRevert(EscrowVault.AlreadyCancelled.selector);
+        vm.prank(buyer);
+        vault.fund();
+    }
+
+    function test_CancelTrade_ByBuyer_NoBondDeposited() public {
+        EscrowVault vault = _newVault(_singleMilestone(100e6), 20e6);
+        vm.prank(buyer);
+        vault.cancelTrade();
+        assertTrue(vault.cancelled());
+        assertEq(token.balanceOf(seller), 0);
+    }
+
+    // ─── proposeSettlement / acceptSettlement ──────────────────
+
+    function test_ProposeSettlement_RevertsIfNotParty() public {
+        EscrowVault vault = _fundedVault(100e6, 0);
+        vm.expectRevert(abi.encodeWithSelector(EscrowVault.NotPartyToTrade.selector, stranger));
+        vm.prank(stranger);
+        vault.proposeSettlement(0, 5_000);
+    }
+
+    function test_AcceptSettlement_RevertsIfNotCounterparty() public {
+        EscrowVault vault = _fundedVault(100e6, 0);
+        vm.prank(seller);
+        vault.proposeSettlement(0, 5_000);
+
+        vm.expectRevert(abi.encodeWithSelector(EscrowVault.NotCounterparty.selector, stranger));
+        vm.prank(stranger);
+        vault.acceptSettlement(0);
+    }
+
+    function test_AcceptSettlement_RevertsIfNoActiveProposal() public {
+        EscrowVault vault = _fundedVault(100e6, 0);
+        vm.expectRevert(abi.encodeWithSelector(EscrowVault.NoActiveProposal.selector, 0));
+        vm.prank(buyer);
+        vault.acceptSettlement(0);
+    }
+
+    function test_ProposeThenCancelSettlement_ReopensMilestoneForNewProposal() public {
+        EscrowVault vault = _fundedVault(100e6, 0);
+        vm.prank(seller);
+        vault.proposeSettlement(0, 5_000);
+        vm.prank(seller);
+        vault.cancelSettlementProposal(0);
+
+        vm.expectRevert(abi.encodeWithSelector(EscrowVault.NoActiveProposal.selector, 0));
+        vm.prank(buyer);
+        vault.acceptSettlement(0);
+    }
+
+    function test_MutualSettlement_SplitPaysBothPartiesAndSkipsArbiter() public {
+        EscrowVault vault = _fundedVault(100e6, 0);
+
+        vm.prank(seller);
+        vault.proposeSettlement(0, 7_000); // seller proposes 70/30
+
+        vm.prank(buyer);
+        vault.acceptSettlement(0);
+
+        assertEq(token.balanceOf(seller), 70e6);
+        assertEq(token.balanceOf(buyer), 30e6);
+        (, EscrowVault.MilestoneStatus status,) = vault.milestones(0);
+        assertEq(uint8(status), uint8(EscrowVault.MilestoneStatus.Split));
+    }
+
+    function test_MutualSettlement_WorksOnDisputedMilestone() public {
+        EscrowVault vault = _fundedVault(100e6, 0);
+        vm.prank(buyer);
+        vault.disputeMilestone(0, "quality concern");
+
+        vm.prank(buyer);
+        vault.proposeSettlement(0, 4_000);
+        vm.prank(seller);
+        vault.acceptSettlement(0);
+
+        assertEq(token.balanceOf(seller), 40e6);
+        assertEq(token.balanceOf(buyer), 60e6);
+    }
+
+    function test_MutualSettlement_FullToSellerReturnsBondOnLastMilestone() public {
+        EscrowVault vault = _fundedVault(100e6, 20e6);
+        vm.prank(seller);
+        vault.proposeSettlement(0, 10_000);
+        vm.prank(buyer);
+        vault.acceptSettlement(0);
+
+        assertEq(token.balanceOf(seller), 120e6, "milestone + auto-returned bond");
+        assertEq(vault.bondBalance(), 0);
+    }
+
+    /// @dev Regression test for a real double-payout hole: a proposal made
+    /// while a milestone was Pending must not still be acceptable after the
+    /// milestone was independently resolved through a different path (here,
+    /// a direct buyer confirm). `_release` proactively clears the proposal,
+    /// so the observable failure is `NoActiveProposal` — the belt-and-suspenders
+    /// status recheck inside `acceptSettlement` exists for any path that might
+    /// ever skip that cleanup.
+    function test_AcceptSettlement_RevertsIfMilestoneResolvedThroughAnotherPath() public {
+        EscrowVault vault = _fundedVault(100e6, 0);
+
+        vm.prank(seller);
+        vault.proposeSettlement(0, 5_000);
+
+        vm.prank(seller);
+        vault.submitMilestoneDocs(0, keccak256("docs"));
+        vm.prank(buyer);
+        vault.confirmMilestone(0);
+        assertEq(token.balanceOf(seller), 100e6);
+
+        (,, bool active) = vault.settlementProposals(0);
+        assertFalse(active, "proposal cleared as a side effect of the direct confirm");
+
+        vm.expectRevert(abi.encodeWithSelector(EscrowVault.NoActiveProposal.selector, 0));
+        vm.prank(buyer);
+        vault.acceptSettlement(0);
+
+        assertEq(token.balanceOf(seller), 100e6, "no double payout");
+    }
+
+    function test_ResolveDispute_ClearsStaleSettlementProposal() public {
+        EscrowVault vault = _fundedVault(100e6, 0);
+        vm.prank(buyer);
+        vault.disputeMilestone(0, "quality concern");
+        vm.prank(seller);
+        vault.proposeSettlement(0, 8_000);
+
+        vm.prank(arbiter);
+        vault.resolveDispute(0, 3_000);
+
+        (, address proposedBy, bool active) = vault.settlementProposals(0);
+        assertFalse(active, "stale proposal cleared once the arbiter ruled");
+        assertEq(proposedBy, address(0));
+
+        vm.expectRevert(abi.encodeWithSelector(EscrowVault.NoActiveProposal.selector, 0));
+        vm.prank(buyer);
+        vault.acceptSettlement(0);
+    }
+
+    function test_TradeExit_ClearsStaleSettlementProposal() public {
+        EscrowVault vault = _fundedVault(100e6, 0);
+        vm.prank(buyer);
+        vault.proposeSettlement(0, 4_000);
+
+        vm.prank(seller);
+        vault.proposeTradeExit();
+        vm.prank(buyer);
+        vault.acceptTradeExit();
+
+        (,, bool active) = vault.settlementProposals(0);
+        assertFalse(active);
+    }
+
+    // ─── proposeTradeExit / acceptTradeExit ─────────────────────
+
+    function test_ProposeTradeExit_RevertsIfNotParty() public {
+        EscrowVault vault = _fundedVault(100e6, 0);
+        vm.expectRevert(abi.encodeWithSelector(EscrowVault.NotPartyToTrade.selector, stranger));
+        vm.prank(stranger);
+        vault.proposeTradeExit();
+    }
+
+    function test_AcceptTradeExit_RevertsIfNotCounterparty() public {
+        EscrowVault vault = _fundedVault(100e6, 0);
+        vm.prank(buyer);
+        vault.proposeTradeExit();
+
+        vm.expectRevert(abi.encodeWithSelector(EscrowVault.NotCounterparty.selector, stranger));
+        vm.prank(stranger);
+        vault.acceptTradeExit();
+    }
+
+    function test_TradeExit_RefundsOpenMilestonesToBuyerAndBondToSeller() public {
+        EscrowVault vault = _fundedVault(100e6, 20e6);
+
+        vm.prank(buyer);
+        vault.proposeTradeExit();
+        vm.prank(seller);
+        vault.acceptTradeExit();
+
+        assertEq(token.balanceOf(buyer), 100e6, "unreleased milestone refunded");
+        assertEq(token.balanceOf(seller), 20e6, "bond returned");
+        assertTrue(vault.cancelled());
+        (, EscrowVault.MilestoneStatus status,) = vault.milestones(0);
+        assertEq(uint8(status), uint8(EscrowVault.MilestoneStatus.Refunded));
+    }
+
+    function test_TradeExit_SkipsAlreadySettledMilestones() public {
+        uint256[] memory amounts = new uint256[](2);
+        amounts[0] = 100e6;
+        amounts[1] = 200e6;
+        EscrowVault vault = _newVault(amounts, 0);
+        _mintAndApprove(buyer, vault, 300e6);
+        vm.prank(buyer);
+        vault.fund();
+
+        vm.prank(seller);
+        vault.submitMilestoneDocs(0, keccak256("docs"));
+        vm.prank(buyer);
+        vault.confirmMilestone(0);
+        assertEq(token.balanceOf(seller), 100e6);
+
+        vm.prank(seller);
+        vault.proposeTradeExit();
+        vm.prank(buyer);
+        vault.acceptTradeExit();
+
+        assertEq(token.balanceOf(buyer), 200e6, "only the still-open milestone refunds");
+        (, EscrowVault.MilestoneStatus status0,) = vault.milestones(0);
+        (, EscrowVault.MilestoneStatus status1,) = vault.milestones(1);
+        assertEq(uint8(status0), uint8(EscrowVault.MilestoneStatus.Released), "untouched by the exit");
+        assertEq(uint8(status1), uint8(EscrowVault.MilestoneStatus.Refunded));
+    }
+
+    function test_TradeExit_WorksPreFundingAndRefundsBond() public {
+        EscrowVault vault = _newVault(_singleMilestone(100e6), 20e6);
+        _mintAndApprove(seller, vault, 20e6);
+        vm.prank(seller);
+        vault.depositBond();
+
+        vm.prank(seller);
+        vault.proposeTradeExit();
+        vm.prank(buyer);
+        vault.acceptTradeExit();
+
+        assertEq(token.balanceOf(seller), 20e6);
+        assertTrue(vault.cancelled());
+    }
+
+    function test_AcceptTradeExit_RevertsIfCancelled() public {
+        EscrowVault vault = _fundedVault(100e6, 0);
+        vm.prank(buyer);
+        vault.proposeTradeExit();
+        vm.prank(seller);
+        vault.acceptTradeExit();
+
+        vm.expectRevert(EscrowVault.AlreadyCancelled.selector);
+        vm.prank(buyer);
+        vault.proposeTradeExit();
+    }
+
+    /// @dev Regression test: a completed trade has nothing left to wind down,
+    /// and accepting an exit proposal on one would relabel it Cancelled
+    /// instead of Completed while also force-moving any bond still locked
+    /// from a non-Released final milestone (e.g. one resolved via Split).
+    function test_ProposeTradeExit_RevertsIfAllMilestonesSettled() public {
+        EscrowVault vault = _fundedVault(100e6, 0);
+        vm.prank(seller);
+        vault.submitMilestoneDocs(0, keccak256("docs"));
+        vm.prank(buyer);
+        vault.confirmMilestone(0);
+
+        vm.expectRevert(EscrowVault.TradeAlreadySettled.selector);
+        vm.prank(buyer);
+        vault.proposeTradeExit();
+    }
+
+    function test_AcceptTradeExit_RevertsIfMilestonesSettledBetweenProposeAndAccept() public {
+        EscrowVault vault = _fundedVault(100e6, 20e6);
+        vm.prank(buyer);
+        vault.proposeTradeExit();
+
+        vm.prank(seller);
+        vault.submitMilestoneDocs(0, keccak256("docs"));
+        vm.prank(buyer);
+        vault.confirmMilestone(0);
+
+        vm.expectRevert(EscrowVault.TradeAlreadySettled.selector);
+        vm.prank(seller);
+        vault.acceptTradeExit();
+
+        assertFalse(vault.cancelled(), "the completed trade must not be relabeled Cancelled");
+    }
+
+    function test_ProposeTradeExit_RevertsWhenFinalMilestoneOnlySplitNotFullyReleased() public {
+        EscrowVault vault = _fundedVault(100e6, 0);
+        vm.prank(buyer);
+        vault.disputeMilestone(0, "quality concern");
+        vm.prank(arbiter);
+        vault.resolveDispute(0, 6_000);
+
+        vm.expectRevert(EscrowVault.TradeAlreadySettled.selector);
+        vm.prank(buyer);
+        vault.proposeTradeExit();
     }
 
     // ─── Full lifecycle ───────────────────────────────────────
