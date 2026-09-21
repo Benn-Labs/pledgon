@@ -11,6 +11,8 @@ import { toast } from "@/lib/toast";
 import { saveMilestoneLabels } from "@/lib/milestoneLabels";
 import { saveTradeDescription } from "@/lib/tradeDescriptions";
 import { useSignedEscrowMetadataWrite } from "@/hooks/useSignedMetadataWrite";
+import { useAccreditedArbitrators } from "@/hooks/useAccreditedArbitrators";
+import { DEADLINE_WINDOW_OPTIONS } from "@/lib/deadlineWindows";
 
 /**
  * Purely a UX starting point for filling in milestone amounts — none of
@@ -34,6 +36,7 @@ export default function CreateEscrowPage() {
   const { address: account, isConnected } = useAccount();
   const chainId = useChainId();
   const { write: writeEscrowMetadata } = useSignedEscrowMetadataWrite();
+  const { defaultArbiter, accredited, isLoading: arbitratorsLoading } = useAccreditedArbitrators();
 
   const [categoryId, setCategoryId] = useState<(typeof CATEGORIES)[number]["id"]>("freelance");
   const category = CATEGORIES.find((c) => c.id === categoryId)!;
@@ -44,6 +47,9 @@ export default function CreateEscrowPage() {
   const [counterpartyInput, setCounterpartyInput] = useState("");
   const [arbiterInput, setArbiterInput] = useState("");
   const [bondInput, setBondInput] = useState("0");
+  const [fundingWindowInput, setFundingWindowInput] = useState<string>(DEADLINE_WINDOW_OPTIONS[0].seconds);
+  const [milestoneWindowInput, setMilestoneWindowInput] = useState<string>(DEADLINE_WINDOW_OPTIONS[0].seconds);
+  const [deliveryWindowInput, setDeliveryWindowInput] = useState<string>(DEADLINE_WINDOW_OPTIONS[0].seconds);
   const [milestoneInputs, setMilestoneInputs] = useState<string[]>([...category.milestones].map(() => ""));
   const [descriptionInputs, setDescriptionInputs] = useState<string[]>([...category.milestones]);
   const pendingLabels = useRef<string[]>([]);
@@ -54,13 +60,12 @@ export default function CreateEscrowPage() {
 
   // Whichever address ends up buyer or seller, the arbiter can't be either
   // one — check against both you and the counterparty regardless of which
-  // role you picked. Empty is valid (no arbiter), so only check when
-  // something's actually been typed.
+  // role you picked. Empty means "use the default" (resolved on-chain), so
+  // only a concrete selection can conflict.
   const arbiterConflict =
-    isAddress(arbiterInput) &&
+    arbiterInput !== "" &&
     ((account && arbiterInput.toLowerCase() === account.toLowerCase()) ||
       (isAddress(counterpartyInput) && arbiterInput.toLowerCase() === counterpartyInput.toLowerCase()));
-  const arbiterValid = arbiterInput.trim() === "" || isAddress(arbiterInput);
 
   const { writeContract, data: hash, isPending, error } = useWriteContract();
   const { data: receipt, isLoading: isConfirming } = useWaitForTransactionReceipt({ hash, query: { enabled: Boolean(hash) } });
@@ -140,22 +145,36 @@ export default function CreateEscrowPage() {
   }
 
   function submit() {
-    if (!addresses.escrowFactory || !account || !token || decimals === undefined || !isAddress(counterpartyInput) || !arbiterValid) {
+    if (!addresses.escrowFactory || !account || !token || decimals === undefined || !isAddress(counterpartyInput)) {
       return;
     }
 
-    const arbiterAddress = isAddress(arbiterInput) ? (arbiterInput as Address) : zeroAddress;
+    // Empty selection means "use EscrowFactory's default arbiter" — zeroAddress
+    // resolves to it on-chain, same as leaving the field untouched.
+    const arbiterAddress = (arbiterInput || zeroAddress) as Address;
     const bondAmount = parseUnits(bondInput || "0", decimals);
     const filledIndices = milestoneInputs.map((v, i) => i).filter((i) => milestoneInputs[i].trim() !== "");
     const milestoneAmounts = filledIndices.map((i) => parseUnits(milestoneInputs[i], decimals));
     pendingLabels.current = filledIndices.map((i, n) => descriptionInputs[i]?.trim() || `Milestone ${n + 1}`);
+    const fundingWindow = BigInt(fundingWindowInput);
+    const milestoneConfirmWindow = BigInt(milestoneWindowInput);
+    const deliveryWindow = BigInt(deliveryWindowInput);
 
     if (myRole === "buyer") {
       writeContract({
         address: addresses.escrowFactory,
         abi: escrowFactoryAbi,
         functionName: "createTrade",
-        args: [counterpartyInput as Address, arbiterAddress, token, bondAmount, milestoneAmounts],
+        args: [
+          counterpartyInput as Address,
+          arbiterAddress,
+          token,
+          bondAmount,
+          milestoneAmounts,
+          fundingWindow,
+          milestoneConfirmWindow,
+          deliveryWindow,
+        ],
       });
     } else {
       // createTradeFor is permissionless: fund() still requires the buyer's
@@ -166,7 +185,17 @@ export default function CreateEscrowPage() {
         address: addresses.escrowFactory,
         abi: escrowFactoryAbi,
         functionName: "createTradeFor",
-        args: [counterpartyInput as Address, account, arbiterAddress, token, bondAmount, milestoneAmounts],
+        args: [
+          counterpartyInput as Address,
+          account,
+          arbiterAddress,
+          token,
+          bondAmount,
+          milestoneAmounts,
+          fundingWindow,
+          milestoneConfirmWindow,
+          deliveryWindow,
+        ],
       });
     }
   }
@@ -178,7 +207,6 @@ export default function CreateEscrowPage() {
     Boolean(token) &&
     tokenReady &&
     isAddress(counterpartyInput) &&
-    arbiterValid &&
     !arbiterConflict &&
     milestoneInputs.some((m) => m.trim() !== "") &&
     !isPending &&
@@ -307,23 +335,88 @@ export default function CreateEscrowPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-2">Arbiter Address (optional)</label>
-          <input
+          <label className="block text-sm font-medium mb-2">Arbiter</label>
+          <select
             className="w-full bg-ink-800 border border-ink-700 rounded-lg px-4 py-3 text-ink-200 font-mono focus:outline-none focus:border-trust-500"
-            placeholder="0x… — leave empty for no arbiter"
             value={arbiterInput}
             onChange={(e) => setArbiterInput(e.target.value)}
-          />
+          >
+            <option value="">{defaultArbiter ? `Default (${defaultArbiter.slice(0, 6)}…${defaultArbiter.slice(-4)})` : "Default"}</option>
+            {accredited
+              .filter((a) => !defaultArbiter || a.toLowerCase() !== defaultArbiter.toLowerCase())
+              .map((a) => (
+                <option key={a} value={a}>
+                  {a.slice(0, 6)}…{a.slice(-4)}
+                </option>
+              ))}
+          </select>
           <p className="text-xs text-ink-500 mt-1">
-            {arbiterInput.trim() === ""
-              ? "No arbiter: if you and the counterparty disagree, mutual settlement is the only way to resolve it — a dispute has no one to rule on it."
-              : "Must be distinct from both parties to the trade — enforced on-chain."}
+            {arbitratorsLoading
+              ? "Loading accredited arbitrators…"
+              : "Every trade has a real arbiter able to rule on a dispute. Must be distinct from both parties to the trade."}
           </p>
           {arbiterConflict && (
             <div className="mt-2 p-3 rounded-lg bg-danger-500/10 border border-danger-500/30 text-sm text-danger-400">
               Arbiter cannot be you or the counterparty.
             </div>
           )}
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div>
+            <label className="block text-sm font-medium mb-2">Funding Deadline</label>
+            <select
+              className="w-full bg-ink-800 border border-ink-700 rounded-lg px-4 py-3 text-ink-200 focus:outline-none focus:border-trust-500"
+              value={fundingWindowInput}
+              onChange={(e) => setFundingWindowInput(e.target.value)}
+            >
+              {DEADLINE_WINDOW_OPTIONS.map((o) => (
+                <option key={o.seconds} value={o.seconds}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-ink-500 mt-1">
+              How long the buyer has to fund after the bond is posted. Past it, anyone can trigger a refund to the
+              seller and the trade cancels.
+            </p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-2">Milestone Confirmation Window</label>
+            <select
+              className="w-full bg-ink-800 border border-ink-700 rounded-lg px-4 py-3 text-ink-200 focus:outline-none focus:border-trust-500"
+              value={milestoneWindowInput}
+              onChange={(e) => setMilestoneWindowInput(e.target.value)}
+            >
+              {DEADLINE_WINDOW_OPTIONS.map((o) => (
+                <option key={o.seconds} value={o.seconds}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-ink-500 mt-1">
+              How long the buyer has to confirm each milestone once docs are submitted. Past it, anyone can release it
+              to the seller — silence counts as accepted delivery.
+            </p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-2">Delivery Window</label>
+            <select
+              className="w-full bg-ink-800 border border-ink-700 rounded-lg px-4 py-3 text-ink-200 focus:outline-none focus:border-trust-500"
+              value={deliveryWindowInput}
+              onChange={(e) => setDeliveryWindowInput(e.target.value)}
+            >
+              {DEADLINE_WINDOW_OPTIONS.map((o) => (
+                <option key={o.seconds} value={o.seconds}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-ink-500 mt-1">
+              How long the seller has to submit docs for each milestone after funding. Past it, anyone can trigger a
+              refund to the buyer for that milestone.
+            </p>
+          </div>
         </div>
 
         <div>

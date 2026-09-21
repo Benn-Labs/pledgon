@@ -5,6 +5,8 @@ import {Script, console} from "forge-std/Script.sol";
 import {IERC20} from "../src/interfaces/IERC20.sol";
 import {EscrowConfirmationConsumer} from "../src/escrow/EscrowConfirmationConsumer.sol";
 import {EscrowFactory} from "../src/escrow/EscrowFactory.sol";
+import {ArbitratorRegistry} from "../src/escrow/ArbitratorRegistry.sol";
+import {TradeExpiryKeeper} from "../src/escrow/TradeExpiryKeeper.sol";
 import {ComplianceConsumer} from "../src/compliance/ComplianceConsumer.sol";
 import {Marketplace} from "../src/marketplace/Marketplace.sol";
 import {LendingOracleConsumer} from "../src/lending/LendingOracleConsumer.sol";
@@ -20,12 +22,20 @@ import {LendingPool} from "../src/lending/LendingPool.sol";
 /// addresses are set; a partial deployment (e.g. shipping escrow/marketplace
 /// before lending's token pair is decided) is expected, not an error case.
 ///
-/// Required env var:
+/// Required env vars:
 ///   FORWARDER_ADDRESS          KeystoneForwarder for the target chain — the
 ///                               production address from chain-selectors.md, or
 ///                               the MockKeystoneForwarder for a local/simulation
 ///                               run. One forwarder serves every consumer on a
 ///                               given chain; this deploy targets one chain.
+///   DEFAULT_ARBITER_ADDRESS    Arbiter EscrowFactory falls back to when a
+///                               trade creator doesn't pick an accredited one
+///                               of their own (see ArbitratorRegistry.sol /
+///                               EscrowFactory._resolveArbiter). A real address
+///                               someone actively arbitrates disputes from —
+///                               no fallback default, since silently pointing
+///                               this at nothing would leave every trade with
+///                               an arbiter that can never actually rule.
 ///
 /// Optional env vars (lending is skipped entirely unless both token addresses
 /// are set):
@@ -54,6 +64,7 @@ import {LendingPool} from "../src/lending/LendingPool.sol";
 contract Deploy is Script {
     function run() external {
         address forwarder = vm.envAddress("FORWARDER_ADDRESS");
+        address defaultArbiter = vm.envAddress("DEFAULT_ARBITER_ADDRESS");
 
         uint256 maxValidity = vm.envOr("COMPLIANCE_MAX_VALIDITY_DAYS", uint256(180)) * 1 days;
         uint256 tier0CapUsd = vm.envOr("TIER0_CAP_USD", uint256(999));
@@ -63,13 +74,21 @@ contract Deploy is Script {
 
         EscrowConfirmationConsumer confirmationConsumer = new EscrowConfirmationConsumer(forwarder);
         ComplianceConsumer complianceConsumer = new ComplianceConsumer(forwarder, maxValidity);
-        EscrowFactory factory = new EscrowFactory(confirmationConsumer, complianceConsumer, tier0CapUsd, tier1CapUsd);
+        // Owned by the broadcasting account — transfer ownership afterwards
+        // (ArbitratorRegistry.transferOwnership) if accreditation decisions
+        // should live with a different key.
+        ArbitratorRegistry arbitratorRegistry = new ArbitratorRegistry(msg.sender);
+        EscrowFactory factory =
+            new EscrowFactory(confirmationConsumer, complianceConsumer, tier0CapUsd, tier1CapUsd, arbitratorRegistry, defaultArbiter);
         Marketplace marketplace = new Marketplace(factory);
+        TradeExpiryKeeper tradeExpiryKeeper = new TradeExpiryKeeper(forwarder);
 
         console.log("EscrowConfirmationConsumer:", address(confirmationConsumer));
         console.log("ComplianceConsumer:        ", address(complianceConsumer));
+        console.log("ArbitratorRegistry:        ", address(arbitratorRegistry));
         console.log("EscrowFactory:             ", address(factory));
         console.log("Marketplace:               ", address(marketplace));
+        console.log("TradeExpiryKeeper:         ", address(tradeExpiryKeeper));
 
         (address lendingOracleConsumer, address liquidationConsumer, address lendingPool) = _maybeDeployLending(forwarder);
 
@@ -78,8 +97,10 @@ contract Deploy is Script {
         _writeDeploymentJson(
             address(confirmationConsumer),
             address(complianceConsumer),
+            address(arbitratorRegistry),
             address(factory),
             address(marketplace),
+            address(tradeExpiryKeeper),
             lendingOracleConsumer,
             liquidationConsumer,
             lendingPool
@@ -122,8 +143,10 @@ contract Deploy is Script {
     function _writeDeploymentJson(
         address confirmationConsumer,
         address complianceConsumer,
+        address arbitratorRegistry,
         address factory,
         address marketplace,
+        address tradeExpiryKeeper,
         address lendingOracleConsumer,
         address liquidationConsumer,
         address lendingPool
@@ -131,8 +154,10 @@ contract Deploy is Script {
         string memory json = "deployment";
         vm.serializeAddress(json, "escrowConfirmationConsumer", confirmationConsumer);
         vm.serializeAddress(json, "complianceConsumer", complianceConsumer);
+        vm.serializeAddress(json, "arbitratorRegistry", arbitratorRegistry);
         vm.serializeAddress(json, "escrowFactory", factory);
         vm.serializeAddress(json, "marketplace", marketplace);
+        vm.serializeAddress(json, "tradeExpiryKeeper", tradeExpiryKeeper);
         vm.serializeAddress(json, "lendingOracleConsumer", lendingOracleConsumer);
         vm.serializeAddress(json, "liquidationConsumer", liquidationConsumer);
         string memory finalJson = vm.serializeAddress(json, "lendingPool", lendingPool);

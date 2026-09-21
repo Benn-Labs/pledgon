@@ -13,6 +13,7 @@ export default defineConfig({
         "Marketplace.sol/**",
         "EscrowFactory.sol/**",
         "EscrowVault.sol/**",
+        "ArbitratorRegistry.sol/**",
         "ComplianceConsumer.sol/**",
         "LendingPool.sol/**",
         "LendingOracleConsumer.sol/**",

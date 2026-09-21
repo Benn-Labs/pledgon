@@ -9,9 +9,17 @@ import { escrowFactoryAbi, escrowVaultAbi } from "@/generated/contracts";
 import { addresses } from "@/lib/addresses";
 import { useMyVaults, type VaultCreatedEvent } from "@/hooks/useMyVaults";
 import { formatToken, formatVaultNumber } from "@/lib/format";
-import { deriveTradeStatus, deriveTradeProgress, type TradeLifecycleStatus, type TradeProgress } from "@/lib/tradeStatus";
+import {
+  deriveTradeStatus,
+  deriveTradeProgress,
+  deriveCurrentDeadline,
+  type TradeLifecycleStatus,
+  type TradeProgress,
+  type CurrentDeadline,
+} from "@/lib/tradeStatus";
 import { TradeStatusBadge } from "@/components/ui/badges";
 import { TradeProgressBar } from "@/components/ui/TradeProgressBar";
+import { CountdownBadge } from "@/components/ui/CountdownBadge";
 import { EscrowIcon } from "@/components/ui/icons";
 import { useEscrowMetadataMap } from "@/hooks/useEscrowMetadataMap";
 import { useListingTitleByVault } from "@/hooks/useListingTitleByVault";
@@ -87,6 +95,7 @@ function VaultCard({
   role,
   status,
   progress,
+  deadline,
   description,
   decimals,
   symbol,
@@ -95,6 +104,7 @@ function VaultCard({
   role: "buyer" | "seller" | "arbiter";
   status: TradeLifecycleStatus | undefined;
   progress: TradeProgress | undefined;
+  deadline: CurrentDeadline | undefined;
   description: string | undefined;
   decimals: number | undefined;
   symbol: string | undefined;
@@ -107,9 +117,12 @@ function VaultCard({
       href={`/escrow/${entry.vault}`}
       className="deal-card block bg-ink-900 border border-ink-800 rounded-xl p-5"
     >
-      <div className="flex items-start justify-between mb-3">
-        {status ? <TradeStatusBadge status={status} size="sm" /> : <span className="text-xs text-ink-500">Loading…</span>}
-        <div className="text-right">
+      <div className="flex items-start justify-between mb-3 gap-2">
+        <div className="flex flex-wrap items-center gap-1.5">
+          {status ? <TradeStatusBadge status={status} size="sm" /> : <span className="text-xs text-ink-500">Loading…</span>}
+          {deadline && <CountdownBadge deadline={deadline.deadline} label={deadline.label} />}
+        </div>
+        <div className="text-right shrink-0">
           <div className="text-xs text-ink-300 font-mono">{formatVaultNumber(entry.index)}</div>
           <div className="text-[10px] text-ink-600 font-mono">
             {entry.vault.slice(0, 6)}…{entry.vault.slice(-4)}
@@ -156,6 +169,7 @@ function VaultSection({
   entries,
   statusByVault,
   progressByVault,
+  deadlineByVault,
   descriptionByVault,
   tokenInfo,
 }: {
@@ -164,6 +178,7 @@ function VaultSection({
   entries: VaultCreatedEvent[];
   statusByVault: Map<string, TradeLifecycleStatus>;
   progressByVault: Map<string, TradeProgress>;
+  deadlineByVault: Map<string, CurrentDeadline>;
   descriptionByVault: Map<string, string>;
   tokenInfo: Map<string, { decimals: number; symbol: string }>;
 }) {
@@ -183,6 +198,7 @@ function VaultSection({
               role={role}
               status={statusByVault.get(entry.vault.toLowerCase())}
               progress={progressByVault.get(entry.vault.toLowerCase())}
+              deadline={deadlineByVault.get(entry.vault.toLowerCase())}
               description={descriptionByVault.get(entry.vault.toLowerCase())}
               decimals={info?.decimals}
               symbol={info?.symbol}
@@ -212,6 +228,7 @@ export default function EscrowListPage() {
       { address: v.vault, abi: escrowVaultAbi, functionName: "bondDeposited" as const },
       { address: v.vault, abi: escrowVaultAbi, functionName: "milestoneCount" as const },
       { address: v.vault, abi: escrowVaultAbi, functionName: "cancelled" as const },
+      { address: v.vault, abi: escrowVaultAbi, functionName: "fundingDeadline" as const },
     ]),
     query: { enabled: allMine.length > 0 },
   });
@@ -220,10 +237,11 @@ export default function EscrowListPage() {
     () =>
       allMine.map((v, i) => ({
         vault: v,
-        funded: scalarResults?.[i * 4]?.result as boolean | undefined,
-        bondDeposited: scalarResults?.[i * 4 + 1]?.result as boolean | undefined,
-        milestoneCount: scalarResults?.[i * 4 + 2]?.result as bigint | undefined,
-        cancelled: scalarResults?.[i * 4 + 3]?.result as boolean | undefined,
+        funded: scalarResults?.[i * 5]?.result as boolean | undefined,
+        bondDeposited: scalarResults?.[i * 5 + 1]?.result as boolean | undefined,
+        milestoneCount: scalarResults?.[i * 5 + 2]?.result as bigint | undefined,
+        cancelled: scalarResults?.[i * 5 + 3]?.result as boolean | undefined,
+        fundingDeadline: scalarResults?.[i * 5 + 4]?.result as bigint | undefined,
       })),
     [allMine, scalarResults],
   );
@@ -248,15 +266,65 @@ export default function EscrowListPage() {
     query: { enabled: milestoneQueries.length > 0 },
   });
 
-  const { statusByVault, progressByVault } = useMemo(() => {
+  // Parallel to milestoneQueries (same shape, same order) — kept as its own
+  // call rather than interleaved into milestoneQueries so both stay a simple
+  // one-function-per-entry batch instead of needing per-entry disambiguation.
+  const milestoneDeadlineQueries = useMemo(
+    () =>
+      perVaultScalars.flatMap(({ vault, milestoneCount }) =>
+        milestoneCount === undefined
+          ? []
+          : Array.from({ length: Number(milestoneCount) }, (_, i) => ({
+              address: vault.vault,
+              abi: escrowVaultAbi,
+              functionName: "milestoneDeadline" as const,
+              args: [BigInt(i)] as const,
+            })),
+      ),
+    [perVaultScalars],
+  );
+
+  const { data: milestoneDeadlineResults } = useReadContracts({
+    contracts: milestoneDeadlineQueries,
+    query: { enabled: milestoneDeadlineQueries.length > 0 },
+  });
+
+  // Parallel to milestoneQueries too — the Pending-side mirror of
+  // milestoneDeadlineQueries above.
+  const deliveryDeadlineQueries = useMemo(
+    () =>
+      perVaultScalars.flatMap(({ vault, milestoneCount }) =>
+        milestoneCount === undefined
+          ? []
+          : Array.from({ length: Number(milestoneCount) }, (_, i) => ({
+              address: vault.vault,
+              abi: escrowVaultAbi,
+              functionName: "deliveryDeadline" as const,
+              args: [BigInt(i)] as const,
+            })),
+      ),
+    [perVaultScalars],
+  );
+
+  const { data: deliveryDeadlineResults } = useReadContracts({
+    contracts: deliveryDeadlineQueries,
+    query: { enabled: deliveryDeadlineQueries.length > 0 },
+  });
+
+  const { statusByVault, progressByVault, deadlineByVault } = useMemo(() => {
     const statusMap = new Map<string, TradeLifecycleStatus>();
     const progressMap = new Map<string, TradeProgress>();
+    const deadlineMap = new Map<string, CurrentDeadline>();
     let flatIndex = 0;
-    for (const { vault, funded, bondDeposited, milestoneCount, cancelled } of perVaultScalars) {
+    for (const { vault, funded, bondDeposited, milestoneCount, cancelled, fundingDeadline } of perVaultScalars) {
       const statuses: number[] = [];
+      const milestoneDeadlines: (bigint | undefined)[] = [];
+      const deliveryDeadlines: (bigint | undefined)[] = [];
       for (let i = 0; i < Number(milestoneCount ?? 0n); i++) {
-        const result = milestoneResults?.[flatIndex]?.result as readonly [bigint, number, `0x${string}`] | undefined;
+        const result = milestoneResults?.[flatIndex]?.result as readonly [bigint, number, `0x${string}`, bigint] | undefined;
         if (result) statuses.push(result[1]);
+        milestoneDeadlines.push(milestoneDeadlineResults?.[flatIndex]?.result as bigint | undefined);
+        deliveryDeadlines.push(deliveryDeadlineResults?.[flatIndex]?.result as bigint | undefined);
         flatIndex++;
       }
       if (funded === undefined || bondDeposited === undefined) continue;
@@ -269,9 +337,18 @@ export default function EscrowListPage() {
         key,
         deriveTradeProgress({ bondAmount: vault.bondAmount, bondDeposited, funded, cancelled, milestoneStatuses: statuses }),
       );
+      const deadline = deriveCurrentDeadline({
+        funded,
+        cancelled,
+        fundingDeadline,
+        milestoneStatuses: statuses,
+        milestoneDeadlines,
+        deliveryDeadlines,
+      });
+      if (deadline) deadlineMap.set(key, deadline);
     }
-    return { statusByVault: statusMap, progressByVault: progressMap };
-  }, [perVaultScalars, milestoneResults]);
+    return { statusByVault: statusMap, progressByVault: progressMap, deadlineByVault: deadlineMap };
+  }, [perVaultScalars, milestoneResults, milestoneDeadlineResults, deliveryDeadlineResults]);
 
   const escrowDescriptionByVault = useEscrowMetadataMap(useMemo(() => allMine.map((v) => v.vault), [allMine]));
   const listingTitleByVault = useListingTitleByVault();
@@ -336,9 +413,9 @@ export default function EscrowListPage() {
         </div>
       ) : (
         <>
-          <VaultSection title="As Buyer" role="buyer" entries={data?.asBuyer ?? []} statusByVault={statusByVault} progressByVault={progressByVault} descriptionByVault={descriptionByVault} tokenInfo={tokenInfo} />
-          <VaultSection title="As Seller" role="seller" entries={data?.asSeller ?? []} statusByVault={statusByVault} progressByVault={progressByVault} descriptionByVault={descriptionByVault} tokenInfo={tokenInfo} />
-          <VaultSection title="As Arbiter" role="arbiter" entries={data?.asArbiter ?? []} statusByVault={statusByVault} progressByVault={progressByVault} descriptionByVault={descriptionByVault} tokenInfo={tokenInfo} />
+          <VaultSection title="As Buyer" role="buyer" entries={data?.asBuyer ?? []} statusByVault={statusByVault} progressByVault={progressByVault} deadlineByVault={deadlineByVault} descriptionByVault={descriptionByVault} tokenInfo={tokenInfo} />
+          <VaultSection title="As Seller" role="seller" entries={data?.asSeller ?? []} statusByVault={statusByVault} progressByVault={progressByVault} deadlineByVault={deadlineByVault} descriptionByVault={descriptionByVault} tokenInfo={tokenInfo} />
+          <VaultSection title="As Arbiter" role="arbiter" entries={data?.asArbiter ?? []} statusByVault={statusByVault} progressByVault={progressByVault} deadlineByVault={deadlineByVault} descriptionByVault={descriptionByVault} tokenInfo={tokenInfo} />
         </>
       )}
     </div>

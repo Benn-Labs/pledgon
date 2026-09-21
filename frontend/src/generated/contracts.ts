@@ -1,4 +1,116 @@
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// ArbitratorRegistry
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+export const arbitratorRegistryAbi = [
+  {
+    type: 'constructor',
+    inputs: [{ name: '_owner', internalType: 'address', type: 'address' }],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'arbitrator', internalType: 'address', type: 'address' }],
+    name: 'accredit',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'accreditedCount',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    name: 'allAccredited',
+    outputs: [{ name: '', internalType: 'address', type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'arbitrator', internalType: 'address', type: 'address' }],
+    name: 'isAccredited',
+    outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'owner',
+    outputs: [{ name: '', internalType: 'address', type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'arbitrator', internalType: 'address', type: 'address' }],
+    name: 'revoke',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'newOwner', internalType: 'address', type: 'address' }],
+    name: 'transferOwnership',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'arbitrator',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+    ],
+    name: 'ArbitratorAccredited',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'arbitrator',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+    ],
+    name: 'ArbitratorRevoked',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'previousOwner',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      {
+        name: 'newOwner',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+    ],
+    name: 'OwnershipTransferred',
+  },
+  {
+    type: 'error',
+    inputs: [{ name: 'caller', internalType: 'address', type: 'address' }],
+    name: 'NotOwner',
+  },
+  { type: 'error', inputs: [], name: 'ZeroAddress' },
+] as const
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // ComplianceConsumer
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -134,6 +246,12 @@ export const escrowFactoryAbi = [
       },
       { name: '_tier0CapUsd', internalType: 'uint256', type: 'uint256' },
       { name: '_tier1CapUsd', internalType: 'uint256', type: 'uint256' },
+      {
+        name: '_arbitratorRegistry',
+        internalType: 'contract ArbitratorRegistry',
+        type: 'address',
+      },
+      { name: '_defaultArbiter', internalType: 'address', type: 'address' },
     ],
     stateMutability: 'nonpayable',
   },
@@ -149,6 +267,19 @@ export const escrowFactoryAbi = [
     inputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
     name: 'allVaults',
     outputs: [{ name: '', internalType: 'address', type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'arbitratorRegistry',
+    outputs: [
+      {
+        name: '',
+        internalType: 'contract ArbitratorRegistry',
+        type: 'address',
+      },
+    ],
     stateMutability: 'view',
   },
   {
@@ -189,6 +320,13 @@ export const escrowFactoryAbi = [
         internalType: 'uint256[]',
         type: 'uint256[]',
       },
+      { name: 'fundingWindow', internalType: 'uint256', type: 'uint256' },
+      {
+        name: 'milestoneConfirmWindow',
+        internalType: 'uint256',
+        type: 'uint256',
+      },
+      { name: 'deliveryWindow', internalType: 'uint256', type: 'uint256' },
     ],
     name: 'createTrade',
     outputs: [{ name: 'vault', internalType: 'address', type: 'address' }],
@@ -207,6 +345,13 @@ export const escrowFactoryAbi = [
         internalType: 'uint256[]',
         type: 'uint256[]',
       },
+      { name: 'fundingWindow', internalType: 'uint256', type: 'uint256' },
+      {
+        name: 'milestoneConfirmWindow',
+        internalType: 'uint256',
+        type: 'uint256',
+      },
+      { name: 'deliveryWindow', internalType: 'uint256', type: 'uint256' },
     ],
     name: 'createTradeFor',
     outputs: [{ name: 'vault', internalType: 'address', type: 'address' }],
@@ -217,6 +362,13 @@ export const escrowFactoryAbi = [
     inputs: [{ name: 'buyer', internalType: 'address', type: 'address' }],
     name: 'currentPeriodVolume',
     outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'defaultArbiter',
+    outputs: [{ name: '', internalType: 'address', type: 'address' }],
     stateMutability: 'view',
   },
   {
@@ -335,6 +487,11 @@ export const escrowFactoryAbi = [
     inputs: [{ name: 'caller', internalType: 'address', type: 'address' }],
     name: 'NotAVault',
   },
+  {
+    type: 'error',
+    inputs: [{ name: 'arbiter', internalType: 'address', type: 'address' }],
+    name: 'NotAccreditedArbiter',
+  },
   { type: 'error', inputs: [], name: 'ZeroAddress' },
 ] as const
 
@@ -368,6 +525,13 @@ export const escrowVaultAbi = [
         internalType: 'contract ComplianceConsumer',
         type: 'address',
       },
+      { name: '_fundingWindow', internalType: 'uint256', type: 'uint256' },
+      {
+        name: '_milestoneConfirmWindow',
+        internalType: 'uint256',
+        type: 'uint256',
+      },
+      { name: '_deliveryWindow', internalType: 'uint256', type: 'uint256' },
     ],
     stateMutability: 'nonpayable',
   },
@@ -490,6 +654,20 @@ export const escrowVaultAbi = [
   },
   {
     type: 'function',
+    inputs: [{ name: 'index', internalType: 'uint256', type: 'uint256' }],
+    name: 'deliveryDeadline',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'deliveryWindow',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
     inputs: [],
     name: 'depositBond',
     outputs: [],
@@ -502,6 +680,27 @@ export const escrowVaultAbi = [
       { name: 'reason', internalType: 'string', type: 'string' },
     ],
     name: 'disputeMilestone',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'index', internalType: 'uint256', type: 'uint256' }],
+    name: 'expireDelivery',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'expireFunding',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'index', internalType: 'uint256', type: 'uint256' }],
+    name: 'expireMilestone',
     outputs: [],
     stateMutability: 'nonpayable',
   },
@@ -531,7 +730,35 @@ export const escrowVaultAbi = [
   {
     type: 'function',
     inputs: [],
+    name: 'fundedAt',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'fundingDeadline',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'milestoneConfirmWindow',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
     name: 'milestoneCount',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'index', internalType: 'uint256', type: 'uint256' }],
+    name: 'milestoneDeadline',
     outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
     stateMutability: 'view',
   },
@@ -547,6 +774,7 @@ export const escrowVaultAbi = [
         type: 'uint8',
       },
       { name: 'docHash', internalType: 'bytes32', type: 'bytes32' },
+      { name: 'docsSubmittedAt', internalType: 'uint256', type: 'uint256' },
     ],
     stateMutability: 'view',
   },
@@ -708,6 +936,44 @@ export const escrowVaultAbi = [
         indexed: true,
       },
       {
+        name: 'amountReleased',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: false,
+      },
+    ],
+    name: 'ConfirmationExpired',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'milestoneIndex',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: true,
+      },
+      {
+        name: 'amountRefunded',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: false,
+      },
+    ],
+    name: 'DeliveryExpired',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'milestoneIndex',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: true,
+      },
+      {
         name: 'sellerBps',
         internalType: 'uint16',
         type: 'uint16',
@@ -772,6 +1038,19 @@ export const escrowVaultAbi = [
       },
     ],
     name: 'Funded',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'bondRefunded',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: false,
+      },
+    ],
+    name: 'FundingExpired',
   },
   {
     type: 'event',
@@ -915,11 +1194,14 @@ export const escrowVaultAbi = [
     ],
     name: 'ComplianceRequired',
   },
+  { type: 'error', inputs: [], name: 'DeliveryNotYetExpired' },
   {
     type: 'error',
     inputs: [{ name: 'index', internalType: 'uint256', type: 'uint256' }],
     name: 'DonNotConfirmed',
   },
+  { type: 'error', inputs: [], name: 'FundingDeadlinePassed' },
+  { type: 'error', inputs: [], name: 'FundingNotYetExpired' },
   {
     type: 'error',
     inputs: [{ name: 'index', internalType: 'uint256', type: 'uint256' }],
@@ -942,6 +1224,7 @@ export const escrowVaultAbi = [
     inputs: [{ name: 'sellerBps', internalType: 'uint16', type: 'uint16' }],
     name: 'InvalidSplit',
   },
+  { type: 'error', inputs: [], name: 'MilestoneNotYetExpired' },
   { type: 'error', inputs: [], name: 'NoActiveExitProposal' },
   {
     type: 'error',

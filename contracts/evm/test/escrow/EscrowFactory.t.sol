@@ -6,6 +6,7 @@ import {EscrowFactory} from "../../src/escrow/EscrowFactory.sol";
 import {EscrowVault} from "../../src/escrow/EscrowVault.sol";
 import {EscrowConfirmationConsumer} from "../../src/escrow/EscrowConfirmationConsumer.sol";
 import {ComplianceConsumer} from "../../src/compliance/ComplianceConsumer.sol";
+import {ArbitratorRegistry} from "../../src/escrow/ArbitratorRegistry.sol";
 import {IERC20} from "../../src/interfaces/IERC20.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 
@@ -17,17 +18,24 @@ contract EscrowFactoryTest is Test {
     address forwarder = makeAddr("forwarder");
     address buyer = makeAddr("buyer");
     address seller = makeAddr("seller");
+    /// @dev Accredited in setUp() below, so every existing test that treats
+    /// this as "a legitimate distinct arbiter" keeps working unchanged —
+    /// tests specifically about accreditation use their own addresses.
     address arbiter = makeAddr("arbiter");
+    address defaultArbiter = makeAddr("defaultArbiter");
 
     EscrowConfirmationConsumer confirmationConsumer;
     ComplianceConsumer complianceConsumer;
+    ArbitratorRegistry registry;
     EscrowFactory factory;
     MockERC20 token;
 
     function setUp() public {
         confirmationConsumer = new EscrowConfirmationConsumer(forwarder);
         complianceConsumer = new ComplianceConsumer(forwarder, MAX_VALIDITY);
-        factory = new EscrowFactory(confirmationConsumer, complianceConsumer, TIER0_CAP_USD, TIER1_CAP_USD);
+        registry = new ArbitratorRegistry(address(this));
+        registry.accredit(arbiter);
+        factory = new EscrowFactory(confirmationConsumer, complianceConsumer, TIER0_CAP_USD, TIER1_CAP_USD, registry, defaultArbiter);
         token = new MockERC20(6);
     }
 
@@ -54,29 +62,47 @@ contract EscrowFactoryTest is Test {
 
     function test_Constructor_RevertsOnZeroConfirmationConsumer() public {
         vm.expectRevert(EscrowFactory.ZeroAddress.selector);
-        new EscrowFactory(EscrowConfirmationConsumer(address(0)), complianceConsumer, TIER0_CAP_USD, TIER1_CAP_USD);
+        new EscrowFactory(
+            EscrowConfirmationConsumer(address(0)), complianceConsumer, TIER0_CAP_USD, TIER1_CAP_USD, registry, defaultArbiter
+        );
     }
 
     function test_Constructor_RevertsOnZeroComplianceConsumer() public {
         vm.expectRevert(EscrowFactory.ZeroAddress.selector);
-        new EscrowFactory(confirmationConsumer, ComplianceConsumer(address(0)), TIER0_CAP_USD, TIER1_CAP_USD);
+        new EscrowFactory(
+            confirmationConsumer, ComplianceConsumer(address(0)), TIER0_CAP_USD, TIER1_CAP_USD, registry, defaultArbiter
+        );
+    }
+
+    function test_Constructor_RevertsOnZeroArbitratorRegistry() public {
+        vm.expectRevert(EscrowFactory.ZeroAddress.selector);
+        new EscrowFactory(
+            confirmationConsumer, complianceConsumer, TIER0_CAP_USD, TIER1_CAP_USD, ArbitratorRegistry(address(0)), defaultArbiter
+        );
+    }
+
+    function test_Constructor_RevertsOnZeroDefaultArbiter() public {
+        vm.expectRevert(EscrowFactory.ZeroAddress.selector);
+        new EscrowFactory(confirmationConsumer, complianceConsumer, TIER0_CAP_USD, TIER1_CAP_USD, registry, address(0));
     }
 
     function test_Constructor_RevertsIfTier1CapBelowTier0Cap() public {
         vm.expectRevert(abi.encodeWithSelector(EscrowFactory.InvalidTierCaps.selector, 1000, 999));
-        new EscrowFactory(confirmationConsumer, complianceConsumer, 1000, 999);
+        new EscrowFactory(confirmationConsumer, complianceConsumer, 1000, 999, registry, defaultArbiter);
     }
 
     function test_Constructor_SetsSharedConsumers() public view {
         assertEq(address(factory.confirmationConsumer()), address(confirmationConsumer));
         assertEq(address(factory.complianceConsumer()), address(complianceConsumer));
+        assertEq(address(factory.arbitratorRegistry()), address(registry));
+        assertEq(factory.defaultArbiter(), defaultArbiter);
     }
 
     // ─── createTrade ──────────────────────────────────────────
 
     function test_CreateTrade_DeploysVaultWithBuyerAsCaller() public {
         vm.prank(buyer);
-        address vault = factory.createTrade(seller, arbiter, IERC20(address(token)), 50e6, _amounts(100e6, 200e6));
+        address vault = factory.createTrade(seller, arbiter, IERC20(address(token)), 50e6, _amounts(100e6, 200e6), 0, 0, 0);
 
         assertEq(EscrowVault(vault).buyer(), buyer);
         assertEq(EscrowVault(vault).seller(), seller);
@@ -91,7 +117,7 @@ contract EscrowFactoryTest is Test {
     /// deployed vault must end up pointed at the exact same singletons, not a copy.
     function test_CreateTrade_WiresSharedConsumersIntoVault() public {
         vm.prank(buyer);
-        address vault = factory.createTrade(seller, arbiter, IERC20(address(token)), 0, _amounts(100e6, 0));
+        address vault = factory.createTrade(seller, arbiter, IERC20(address(token)), 0, _amounts(100e6, 0), 0, 0, 0);
 
         assertEq(address(EscrowVault(vault).confirmationConsumer()), address(confirmationConsumer));
         assertEq(address(EscrowVault(vault).complianceConsumer()), address(complianceConsumer));
@@ -99,14 +125,14 @@ contract EscrowFactoryTest is Test {
 
     function test_CreateTrade_WiresFactoryAsCallback() public {
         vm.prank(buyer);
-        address vault = factory.createTrade(seller, arbiter, IERC20(address(token)), 0, _amounts(100e6, 0));
+        address vault = factory.createTrade(seller, arbiter, IERC20(address(token)), 0, _amounts(100e6, 0), 0, 0, 0);
 
         assertEq(address(EscrowVault(vault).factory()), address(factory));
     }
 
     function test_CreateTrade_ComputesTierCapsFromTokenDecimals_6() public {
         vm.prank(buyer);
-        address vault = factory.createTrade(seller, arbiter, IERC20(address(token)), 0, _amounts(1, 1));
+        address vault = factory.createTrade(seller, arbiter, IERC20(address(token)), 0, _amounts(1, 1), 0, 0, 0);
         assertEq(EscrowVault(vault).tier0Cap(), 999 * 10 ** 6);
         assertEq(EscrowVault(vault).tier1Cap(), 10_000 * 10 ** 6);
     }
@@ -114,7 +140,7 @@ contract EscrowFactoryTest is Test {
     function test_CreateTrade_ComputesTierCapsFromTokenDecimals_18() public {
         MockERC20 token18 = new MockERC20(18);
         vm.prank(buyer);
-        address vault = factory.createTrade(seller, arbiter, IERC20(address(token18)), 0, _amounts(1, 1));
+        address vault = factory.createTrade(seller, arbiter, IERC20(address(token18)), 0, _amounts(1, 1), 0, 0, 0);
         assertEq(EscrowVault(vault).tier0Cap(), 999 * 10 ** 18);
         assertEq(EscrowVault(vault).tier1Cap(), 10_000 * 10 ** 18);
     }
@@ -123,12 +149,12 @@ contract EscrowFactoryTest is Test {
         vm.prank(buyer);
         vm.expectEmit(false, true, true, true, address(factory));
         emit EscrowFactory.VaultCreated(address(0), buyer, seller, arbiter, address(token), 50e6);
-        factory.createTrade(seller, arbiter, IERC20(address(token)), 50e6, _amounts(100e6, 200e6));
+        factory.createTrade(seller, arbiter, IERC20(address(token)), 50e6, _amounts(100e6, 200e6), 0, 0, 0);
     }
 
     function test_CreateTrade_RecordsVaultInAllVaults() public {
         vm.prank(buyer);
-        address vault = factory.createTrade(seller, arbiter, IERC20(address(token)), 0, _amounts(100e6, 0));
+        address vault = factory.createTrade(seller, arbiter, IERC20(address(token)), 0, _amounts(100e6, 0), 0, 0, 0);
 
         assertEq(factory.vaultCount(), 1);
         assertEq(factory.allVaults(0), vault);
@@ -136,15 +162,15 @@ contract EscrowFactoryTest is Test {
 
     function test_CreateTrade_MarksVaultAsVault() public {
         vm.prank(buyer);
-        address vault = factory.createTrade(seller, arbiter, IERC20(address(token)), 0, _amounts(100e6, 0));
+        address vault = factory.createTrade(seller, arbiter, IERC20(address(token)), 0, _amounts(100e6, 0), 0, 0, 0);
         assertTrue(factory.isVault(vault));
         assertFalse(factory.isVault(seller));
     }
 
     function test_CreateTrade_TracksMultipleTradesByBuyerAndSeller() public {
         vm.startPrank(buyer);
-        address vault1 = factory.createTrade(seller, arbiter, IERC20(address(token)), 0, _amounts(100e6, 0));
-        address vault2 = factory.createTrade(seller, arbiter, IERC20(address(token)), 0, _amounts(200e6, 0));
+        address vault1 = factory.createTrade(seller, arbiter, IERC20(address(token)), 0, _amounts(100e6, 0), 0, 0, 0);
+        address vault2 = factory.createTrade(seller, arbiter, IERC20(address(token)), 0, _amounts(200e6, 0), 0, 0, 0);
         vm.stopPrank();
 
         assertEq(factory.vaultCount(), 2);
@@ -159,9 +185,9 @@ contract EscrowFactoryTest is Test {
         address buyer2 = makeAddr("buyer2");
 
         vm.prank(buyer);
-        factory.createTrade(seller, arbiter, IERC20(address(token)), 0, _amounts(100e6, 0));
+        factory.createTrade(seller, arbiter, IERC20(address(token)), 0, _amounts(100e6, 0), 0, 0, 0);
         vm.prank(buyer2);
-        factory.createTrade(seller, arbiter, IERC20(address(token)), 0, _amounts(150e6, 0));
+        factory.createTrade(seller, arbiter, IERC20(address(token)), 0, _amounts(150e6, 0), 0, 0, 0);
 
         assertEq(factory.vaultCount(), 2);
         assertEq(factory.vaultsByBuyer(buyer2, 0), factory.allVaults(1));
@@ -172,19 +198,42 @@ contract EscrowFactoryTest is Test {
     function test_CreateTrade_RevertsIfNoMilestones() public {
         uint256[] memory empty = new uint256[](0);
         vm.expectRevert(EscrowVault.NoMilestones.selector);
-        factory.createTrade(seller, arbiter, IERC20(address(token)), 0, empty);
+        factory.createTrade(seller, arbiter, IERC20(address(token)), 0, empty, 0, 0, 0);
     }
 
     function test_CreateTrade_RevertsIfSellerIsZero() public {
         vm.expectRevert(EscrowVault.ZeroAddress.selector);
-        factory.createTrade(address(0), arbiter, IERC20(address(token)), 0, _amounts(100e6, 0));
+        factory.createTrade(address(0), arbiter, IERC20(address(token)), 0, _amounts(100e6, 0), 0, 0, 0);
     }
 
-    /// @dev Zero arbiter is deliberate — "no arbiter, mutual settlement only" —
-    /// not a misconfiguration, so createTrade must accept it.
-    function test_CreateTrade_AllowsZeroArbiter() public {
-        address vault = factory.createTrade(seller, address(0), IERC20(address(token)), 0, _amounts(100e6, 0));
-        assertEq(EscrowVault(vault).arbiter(), address(0));
+    /// @dev There's no "no arbiter" option any more — a zero-address arbiter
+    /// resolves to the factory's own default rather than staying zero.
+    function test_CreateTrade_ZeroArbiterResolvesToDefault() public {
+        address vault = factory.createTrade(seller, address(0), IERC20(address(token)), 0, _amounts(100e6, 0), 0, 0, 0);
+        assertEq(EscrowVault(vault).arbiter(), defaultArbiter);
+    }
+
+    function test_CreateTrade_AcceptsDefaultArbiterExplicitly() public {
+        address vault =
+            factory.createTrade(seller, defaultArbiter, IERC20(address(token)), 0, _amounts(100e6, 0), 0, 0, 0);
+        assertEq(EscrowVault(vault).arbiter(), defaultArbiter);
+    }
+
+    function test_CreateTrade_AcceptsAccreditedArbiter() public {
+        address vault = factory.createTrade(seller, arbiter, IERC20(address(token)), 0, _amounts(100e6, 0), 0, 0, 0);
+        assertEq(EscrowVault(vault).arbiter(), arbiter);
+    }
+
+    function test_CreateTrade_RevertsOnUnaccreditedArbiter() public {
+        address stranger = makeAddr("unaccreditedArbiter");
+        vm.expectRevert(abi.encodeWithSelector(EscrowFactory.NotAccreditedArbiter.selector, stranger));
+        factory.createTrade(seller, stranger, IERC20(address(token)), 0, _amounts(100e6, 0), 0, 0, 0);
+    }
+
+    function test_CreateTrade_RevertsOnRevokedArbiter() public {
+        registry.revoke(arbiter);
+        vm.expectRevert(abi.encodeWithSelector(EscrowFactory.NotAccreditedArbiter.selector, arbiter));
+        factory.createTrade(seller, arbiter, IERC20(address(token)), 0, _amounts(100e6, 0), 0, 0, 0);
     }
 
     // ─── createTradeFor ─────────────────────────────────────────
@@ -197,7 +246,7 @@ contract EscrowFactoryTest is Test {
 
         vm.prank(orchestrator);
         address vault =
-            factory.createTradeFor(realBuyer, seller, arbiter, IERC20(address(token)), 0, _amounts(100e6, 0));
+            factory.createTradeFor(realBuyer, seller, arbiter, IERC20(address(token)), 0, _amounts(100e6, 0), 0, 0, 0);
 
         assertEq(EscrowVault(vault).buyer(), realBuyer);
         assertNotEq(EscrowVault(vault).buyer(), orchestrator);
@@ -209,7 +258,7 @@ contract EscrowFactoryTest is Test {
 
         vm.prank(orchestrator);
         address vault =
-            factory.createTradeFor(realBuyer, seller, arbiter, IERC20(address(token)), 0, _amounts(100e6, 0));
+            factory.createTradeFor(realBuyer, seller, arbiter, IERC20(address(token)), 0, _amounts(100e6, 0), 0, 0, 0);
 
         assertEq(factory.vaultsByBuyer(realBuyer, 0), vault);
         assertEq(factory.vaultCount(), 1);
@@ -217,7 +266,7 @@ contract EscrowFactoryTest is Test {
 
     function test_CreateTradeFor_RevertsIfBuyerIsZero() public {
         vm.expectRevert(EscrowVault.ZeroAddress.selector);
-        factory.createTradeFor(address(0), seller, arbiter, IERC20(address(token)), 0, _amounts(100e6, 0));
+        factory.createTradeFor(address(0), seller, arbiter, IERC20(address(token)), 0, _amounts(100e6, 0), 0, 0, 0);
     }
 
     // ─── recordVolume ─────────────────────────────────────────
@@ -229,9 +278,9 @@ contract EscrowFactoryTest is Test {
 
     function test_RecordVolume_AccumulatesWithinPeriod() public {
         vm.prank(buyer);
-        address vault1 = factory.createTrade(seller, arbiter, IERC20(address(token)), 0, _amounts(300e6, 0));
+        address vault1 = factory.createTrade(seller, arbiter, IERC20(address(token)), 0, _amounts(300e6, 0), 0, 0, 0);
         vm.prank(buyer);
-        address vault2 = factory.createTrade(seller, arbiter, IERC20(address(token)), 0, _amounts(400e6, 0));
+        address vault2 = factory.createTrade(seller, arbiter, IERC20(address(token)), 0, _amounts(400e6, 0), 0, 0, 0);
 
         _fundAsBuyer(EscrowVault(vault1), 300e6);
         assertEq(factory.currentPeriodVolume(buyer), 300e6);
@@ -242,7 +291,7 @@ contract EscrowFactoryTest is Test {
 
     function test_RecordVolume_ResetsInNewPeriod() public {
         vm.prank(buyer);
-        address vault1 = factory.createTrade(seller, arbiter, IERC20(address(token)), 0, _amounts(300e6, 0));
+        address vault1 = factory.createTrade(seller, arbiter, IERC20(address(token)), 0, _amounts(300e6, 0), 0, 0, 0);
         _fundAsBuyer(EscrowVault(vault1), 300e6);
         assertEq(factory.currentPeriodVolume(buyer), 300e6);
 
@@ -260,12 +309,12 @@ contract EscrowFactoryTest is Test {
         uint256 secondAmount = 600e6; // under cap alone; combined (1200e6) is over
 
         vm.prank(buyer);
-        address vault1 = factory.createTrade(seller, arbiter, IERC20(address(token)), 0, _amounts(firstAmount, 0));
+        address vault1 = factory.createTrade(seller, arbiter, IERC20(address(token)), 0, _amounts(firstAmount, 0), 0, 0, 0);
         _fundAsBuyer(EscrowVault(vault1), firstAmount);
         assertTrue(EscrowVault(vault1).funded(), "first trade alone is under the tier-0 cap");
 
         vm.prank(buyer);
-        address vault2 = factory.createTrade(seller, arbiter, IERC20(address(token)), 0, _amounts(secondAmount, 0));
+        address vault2 = factory.createTrade(seller, arbiter, IERC20(address(token)), 0, _amounts(secondAmount, 0), 0, 0, 0);
         token.mint(buyer, secondAmount);
         vm.startPrank(buyer);
         token.approve(vault2, secondAmount);
@@ -283,13 +332,13 @@ contract EscrowFactoryTest is Test {
         uint256 secondAmount = 600e6;
 
         vm.prank(buyer);
-        address vault1 = factory.createTrade(seller, arbiter, IERC20(address(token)), 0, _amounts(firstAmount, 0));
+        address vault1 = factory.createTrade(seller, arbiter, IERC20(address(token)), 0, _amounts(firstAmount, 0), 0, 0, 0);
         _fundAsBuyer(EscrowVault(vault1), firstAmount);
 
         _setTier(buyer, 1);
 
         vm.prank(buyer);
-        address vault2 = factory.createTrade(seller, arbiter, IERC20(address(token)), 0, _amounts(secondAmount, 0));
+        address vault2 = factory.createTrade(seller, arbiter, IERC20(address(token)), 0, _amounts(secondAmount, 0), 0, 0, 0);
         _fundAsBuyer(EscrowVault(vault2), secondAmount);
 
         assertTrue(EscrowVault(vault2).funded());

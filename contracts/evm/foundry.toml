@@ -5,6 +5,12 @@ libs = ["lib"]
 solc = "0.8.24"
 optimizer = true
 optimizer_runs = 200
+# EscrowVault's constructor (12 params, one a dynamic array, several immutables
+# computed from them) hits solc's stack-too-deep limit under the legacy
+# codegen once the two deadline-window params were added — via-ir is solc's
+# own suggested fix and avoids reshaping the constructor's public API into
+# structs just to shave stack slots.
+via_ir = true
 
 remappings = ["forge-std/=lib/forge-std/src/"]
 

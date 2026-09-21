@@ -9,6 +9,7 @@ import { formatToken } from "@/lib/format";
 import { toast } from "@/lib/toast";
 import { useDisputeReason } from "@/hooks/useDisputeReason";
 import { StatusBadge, MILESTONE_STATUS } from "@/components/ui/badges";
+import { formatTimeLeft, useNow } from "@/lib/countdown";
 
 export function MilestoneRow({
   vault,
@@ -24,6 +25,8 @@ export function MilestoneRow({
   symbol,
   settlementProposal,
   label,
+  milestoneDeadline,
+  deliveryDeadline,
   onSuccess,
 }: {
   vault: Address;
@@ -39,9 +42,12 @@ export function MilestoneRow({
   symbol: string;
   settlementProposal?: { sellerBps: number; proposedBy: Address; active: boolean };
   label?: string;
+  milestoneDeadline?: bigint;
+  deliveryDeadline?: bigint;
   onSuccess: () => void;
 }) {
   const { address: account } = useAccount();
+  const now = useNow();
   const [docText, setDocText] = useState("");
   const [disputeReason, setDisputeReason] = useState("");
   const [showDispute, setShowDispute] = useState(false);
@@ -177,6 +183,70 @@ export function MilestoneRow({
           </button>
         </div>
       )}
+
+      {status === 0 &&
+        deliveryDeadline !== undefined &&
+        deliveryDeadline > 0n &&
+        (() => {
+          const timeLeft = formatTimeLeft(deliveryDeadline, now);
+          if (!timeLeft) return null;
+          return (
+            <div
+              className={`flex items-center justify-between gap-3 flex-wrap p-3 rounded-lg mb-3 ${
+                timeLeft.expired ? "bg-danger-500/10 border border-danger-500/30" : "bg-ink-800/50 border border-ink-700"
+              }`}
+            >
+              <p className={`text-xs ${timeLeft.expired ? "text-danger-400" : "text-ink-400"}`}>
+                {timeLeft.expired
+                  ? "Delivery window passed — anyone can refund the buyer for this milestone now."
+                  : `Seller must submit docs within ${timeLeft.label}, or it can be refunded to the buyer.`}
+              </p>
+              {timeLeft.expired && (
+                <button
+                  onClick={() =>
+                    writeContract({ address: vault, abi: escrowVaultAbi, functionName: "expireDelivery", args: [BigInt(index)] })
+                  }
+                  disabled={isPending || isConfirming}
+                  className="btn-press px-3 py-1.5 rounded-lg bg-danger-600 hover:bg-danger-500 disabled:opacity-40 text-white text-xs font-semibold shrink-0"
+                >
+                  Refund Buyer
+                </button>
+              )}
+            </div>
+          );
+        })()}
+
+      {status === 1 &&
+        milestoneDeadline !== undefined &&
+        milestoneDeadline > 0n &&
+        (() => {
+          const timeLeft = formatTimeLeft(milestoneDeadline, now);
+          if (!timeLeft) return null;
+          return (
+            <div
+              className={`flex items-center justify-between gap-3 flex-wrap p-3 rounded-lg mb-3 ${
+                timeLeft.expired ? "bg-warning-500/10 border border-warning-500/30" : "bg-ink-800/50 border border-ink-700"
+              }`}
+            >
+              <p className={`text-xs ${timeLeft.expired ? "text-warning-400" : "text-ink-400"}`}>
+                {timeLeft.expired
+                  ? "Confirmation window passed — silence counts as accepted delivery, so anyone can release this to the seller now."
+                  : `Buyer must confirm within ${timeLeft.label}, or it releases to the seller.`}
+              </p>
+              {timeLeft.expired && (
+                <button
+                  onClick={() =>
+                    writeContract({ address: vault, abi: escrowVaultAbi, functionName: "expireMilestone", args: [BigInt(index)] })
+                  }
+                  disabled={isPending || isConfirming}
+                  className="btn-press px-3 py-1.5 rounded-lg bg-warning-600 hover:bg-warning-500 disabled:opacity-40 text-white text-xs font-semibold shrink-0"
+                >
+                  Release to Seller
+                </button>
+              )}
+            </div>
+          );
+        })()}
 
       {funded && isBuyer && status === 1 && (
         <div className="flex flex-wrap gap-2">

@@ -1,3 +1,5 @@
+const PENDING = 0;
+const DOCS_SUBMITTED = 1;
 const RELEASED = 2;
 const DISPUTED = 3;
 const REFUNDED = 4;
@@ -80,4 +82,51 @@ export function deriveTradeProgress({
   const flag: TradeProgress["flag"] = cancelled ? "cancelled" : isDisputed && !isCompleted ? "disputed" : "none";
 
   return { steps, currentIndex, flag };
+}
+
+export interface CurrentDeadline {
+  /** Unix seconds, straight off `fundingDeadline`/`milestoneDeadline`. */
+  deadline: bigint;
+  label: string;
+}
+
+/**
+ * The one deadline currently worth showing on a trade card: `fundingDeadline`
+ * while unfunded, or — once funded — the soonest active deadline across every
+ * milestone: a DocsSubmitted one's confirmation deadline, or a Pending one's
+ * delivery deadline (a trade can have several milestones in flight at once;
+ * only the nearest deadline is the actual time pressure). Undefined means
+ * nothing is currently time-bound — no deadline was configured, or none
+ * applies at this stage.
+ */
+export function deriveCurrentDeadline({
+  funded,
+  cancelled,
+  fundingDeadline,
+  milestoneStatuses,
+  milestoneDeadlines,
+  deliveryDeadlines = [],
+}: {
+  funded: boolean;
+  cancelled?: boolean;
+  fundingDeadline: bigint | undefined;
+  milestoneStatuses: number[];
+  milestoneDeadlines: (bigint | undefined)[];
+  deliveryDeadlines?: (bigint | undefined)[];
+}): CurrentDeadline | undefined {
+  if (cancelled) return undefined;
+
+  if (!funded) {
+    return fundingDeadline && fundingDeadline > 0n ? { deadline: fundingDeadline, label: "Funding" } : undefined;
+  }
+
+  let soonest: (CurrentDeadline & { deadline: bigint }) | undefined;
+  const consider = (deadline: bigint | undefined, label: string) => {
+    if (deadline && deadline > 0n && (soonest === undefined || deadline < soonest.deadline)) soonest = { deadline, label };
+  };
+  milestoneStatuses.forEach((status, i) => {
+    if (status === DOCS_SUBMITTED) consider(milestoneDeadlines[i], "Confirm by");
+    else if (status === PENDING) consider(deliveryDeadlines[i], "Deliver by");
+  });
+  return soonest;
 }

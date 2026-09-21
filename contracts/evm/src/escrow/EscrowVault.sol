@@ -26,6 +26,11 @@ contract EscrowVault {
         uint256 amount;
         MilestoneStatus status;
         bytes32 docHash;
+        /// @notice block.timestamp when the seller submitted docs; 0 until then.
+        /// Anchors `milestoneDeadline` — the buyer's confirmation window starts
+        /// once there's actually something for them to confirm, not at trade
+        /// creation.
+        uint256 docsSubmittedAt;
     }
 
     /// @notice A buyer/seller-proposed alternative to arbiter dispute
@@ -58,6 +63,30 @@ contract EscrowVault {
     /// scaled to `token`'s decimals. Tier 2 (enhanced) is uncapped.
     uint256 public immutable tier0Cap;
     uint256 public immutable tier1Cap;
+    /// @notice Absolute deadline for `fund()`; 0 means no deadline. Computed
+    /// once at construction from the `fundingWindow` duration passed in, so
+    /// callers reason in "how long from now," not an absolute timestamp that
+    /// could drift against when the deploy tx actually lands.
+    uint256 public immutable fundingDeadline;
+    /// @notice How long, after `submitMilestoneDocs`, the buyer has to
+    /// `confirmMilestone` before anyone may call `expireMilestone`. A
+    /// duration, not a timestamp — each milestone's own deadline is
+    /// `docsSubmittedAt + milestoneConfirmWindow`, see `milestoneDeadline`.
+    /// 0 means no deadline.
+    uint256 public immutable milestoneConfirmWindow;
+    /// @notice How long, after `fund()`, the seller has to
+    /// `submitMilestoneDocs` on a Pending milestone before anyone may call
+    /// `expireDelivery` — the mirror image of `milestoneConfirmWindow`: that
+    /// one protects the seller from a buyer who never confirms delivery,
+    /// this one protects the buyer from a seller who never delivers at all.
+    /// Deliberately the same absolute deadline (`fundedAt + deliveryWindow`)
+    /// for every milestone rather than one that accounts for earlier
+    /// milestones' actual completion time — a trade with a long sequential
+    /// timeline should just pick a generous window. 0 means no deadline.
+    uint256 public immutable deliveryWindow;
+    /// @notice block.timestamp when `fund()` was called; 0 until then.
+    /// Anchors `deliveryDeadline`.
+    uint256 public fundedAt;
     /// @notice The EscrowFactory that deployed this vault — always msg.sender
     /// during construction, since EscrowFactory is the only deployer. Used to
     /// record this vault's funding volume against the buyer's rolling total.
@@ -96,6 +125,13 @@ contract EscrowVault {
     event TradeExitProposed(address indexed proposedBy);
     event TradeExitCancelled();
     event TradeExited(uint256 buyerRefund, uint256 sellerBondRefund);
+    event FundingExpired(uint256 bondRefunded);
+    /// @notice A milestone released to the seller because the buyer never
+    /// confirmed it within `milestoneConfirmWindow` of docs being submitted.
+    event ConfirmationExpired(uint256 indexed milestoneIndex, uint256 amountReleased);
+    /// @notice A milestone refunded to the buyer because the seller never
+    /// submitted docs for it within `deliveryWindow` of funding.
+    event DeliveryExpired(uint256 indexed milestoneIndex, uint256 amountRefunded);
 
     error NotBuyer(address caller);
     error NotSeller(address caller);
@@ -120,6 +156,10 @@ contract EscrowVault {
     error NoActiveProposal(uint256 index);
     error NoActiveExitProposal();
     error TradeAlreadySettled();
+    error FundingDeadlinePassed();
+    error FundingNotYetExpired();
+    error MilestoneNotYetExpired();
+    error DeliveryNotYetExpired();
 
     modifier onlyBuyer() {
         if (msg.sender != buyer) revert NotBuyer(msg.sender);
@@ -156,7 +196,10 @@ contract EscrowVault {
         uint256 _tier0Cap,
         uint256 _tier1Cap,
         EscrowConfirmationConsumer _confirmationConsumer,
-        ComplianceConsumer _complianceConsumer
+        ComplianceConsumer _complianceConsumer,
+        uint256 _fundingWindow,
+        uint256 _milestoneConfirmWindow,
+        uint256 _deliveryWindow
     ) {
         if (_milestoneAmounts.length == 0) revert NoMilestones();
         if (
@@ -184,9 +227,14 @@ contract EscrowVault {
         factory = IEscrowFactory(msg.sender);
         confirmationConsumer = _confirmationConsumer;
         complianceConsumer = _complianceConsumer;
+        fundingDeadline = _fundingWindow == 0 ? 0 : block.timestamp + _fundingWindow;
+        milestoneConfirmWindow = _milestoneConfirmWindow;
+        deliveryWindow = _deliveryWindow;
 
         for (uint256 i = 0; i < _milestoneAmounts.length; i++) {
-            milestones.push(Milestone({amount: _milestoneAmounts[i], status: MilestoneStatus.Pending, docHash: bytes32(0)}));
+            milestones.push(
+                Milestone({amount: _milestoneAmounts[i], status: MilestoneStatus.Pending, docHash: bytes32(0), docsSubmittedAt: 0})
+            );
         }
     }
 
@@ -209,6 +257,7 @@ contract EscrowVault {
     function fund() external onlyBuyer notCancelled {
         if (bondAmount > 0 && !bondDeposited) revert BondNotDeposited();
         if (funded) revert AlreadyFunded();
+        if (fundingDeadline != 0 && block.timestamp >= fundingDeadline) revert FundingDeadlinePassed();
 
         uint256 total = totalAmount();
         uint256 periodVolume = factory.recordVolume(buyer, total);
@@ -216,6 +265,7 @@ contract EscrowVault {
         if (periodVolume > cap) revert ComplianceRequired(buyer, periodVolume, cap);
 
         funded = true;
+        fundedAt = block.timestamp;
         _safeTransferFrom(buyer, address(this), total);
         emit Funded(total);
     }
@@ -226,6 +276,7 @@ contract EscrowVault {
         if (m.status != MilestoneStatus.Pending) revert InvalidMilestoneStatus(index, m.status);
         m.docHash = docHash;
         m.status = MilestoneStatus.DocsSubmitted;
+        m.docsSubmittedAt = block.timestamp;
         emit DocsSubmitted(index, docHash);
     }
 
@@ -281,20 +332,22 @@ contract EscrowVault {
         } else if (sellerBps == 0) {
             m.status = MilestoneStatus.Refunded;
             _safeTransfer(buyer, m.amount);
+            _maybeReturnBond();
         } else {
             uint256 sellerAmount = (m.amount * sellerBps) / BPS_DENOMINATOR;
             uint256 buyerAmount = m.amount - sellerAmount;
             m.status = MilestoneStatus.Split;
             _safeTransfer(seller, sellerAmount);
             _safeTransfer(buyer, buyerAmount);
+            _maybeReturnBond();
         }
         emit DisputeResolved(index, sellerBps);
     }
 
     /// @notice Arbiter forfeits the remaining bond to `to`. Independent of dispute
-    /// resolution so it can follow a refunded milestone, where the bond would
-    /// otherwise stay locked (the auto-return path only fires when every
-    /// milestone reaches Released).
+    /// resolution, for the case where the arbiter wants to seize the bond
+    /// (not just let it eventually auto-return) — e.g. mid-trade, before every
+    /// milestone has settled.
     function slashBond(address to) external onlyArbiter notCancelled {
         uint256 amount = bondBalance;
         bondBalance = 0;
@@ -316,6 +369,80 @@ contract EscrowVault {
             _safeTransfer(seller, refund);
         }
         emit TradeCancelled(msg.sender, refund);
+    }
+
+    /// @notice Permissionless: anyone may call once `fundingDeadline` has passed
+    /// without the buyer funding. Same refund shape as `cancelTrade` (bond
+    /// back to the seller, vault permanently closed) — the only difference is
+    /// who may trigger it and why: a missed deadline instead of a party's own
+    /// choice to walk away.
+    function expireFunding() external notCancelled {
+        if (funded) revert AlreadyFunded();
+        if (fundingDeadline == 0 || block.timestamp < fundingDeadline) revert FundingNotYetExpired();
+        cancelled = true;
+
+        uint256 refund = bondBalance;
+        if (refund > 0) {
+            bondBalance = 0;
+            _safeTransfer(seller, refund);
+        }
+        emit FundingExpired(refund);
+    }
+
+    /// @notice Permissionless: anyone may call once a milestone has sat in
+    /// DocsSubmitted for longer than `milestoneConfirmWindow` without the
+    /// buyer confirming it. Releases that milestone to the seller — silence
+    /// past the confirmation window counts as accepted delivery, same as a
+    /// real-world "no response in N days" auto-release. A buyer with an
+    /// actual problem must `disputeMilestone` before this window closes;
+    /// once it's closed, inaction can no longer win them a refund. A third
+    /// racer alongside `confirmMilestone`/`releaseMilestoneViaDon`, exactly
+    /// like those two already race each other.
+    function expireMilestone(uint256 index) external notCancelled {
+        Milestone storage m = _milestone(index);
+        if (m.status != MilestoneStatus.DocsSubmitted) revert InvalidMilestoneStatus(index, m.status);
+        if (milestoneConfirmWindow == 0 || block.timestamp < m.docsSubmittedAt + milestoneConfirmWindow) {
+            revert MilestoneNotYetExpired();
+        }
+        uint256 amount = m.amount;
+        _release(index, m, false);
+        emit ConfirmationExpired(index, amount);
+    }
+
+    /// @notice Permissionless: anyone may call once a milestone has sat in
+    /// Pending for longer than `deliveryWindow` since funding, without the
+    /// seller ever submitting docs. Refunds that milestone's stake to the
+    /// buyer — the mirror image of `expireMilestone`: there, buyer silence
+    /// after delivery favors the seller; here, seller silence before any
+    /// delivery favors the buyer.
+    function expireDelivery(uint256 index) external notCancelled {
+        if (!funded) revert NotFunded();
+        Milestone storage m = _milestone(index);
+        if (m.status != MilestoneStatus.Pending) revert InvalidMilestoneStatus(index, m.status);
+        if (deliveryWindow == 0 || block.timestamp < fundedAt + deliveryWindow) revert DeliveryNotYetExpired();
+        delete settlementProposals[index];
+        m.status = MilestoneStatus.Refunded;
+        _safeTransfer(buyer, m.amount);
+        _maybeReturnBond();
+        emit DeliveryExpired(index, m.amount);
+    }
+
+    /// @notice Absolute deadline for confirming this milestone once the seller
+    /// has submitted docs; 0 if docs aren't submitted yet or no window is
+    /// configured for this trade.
+    function milestoneDeadline(uint256 index) external view returns (uint256) {
+        Milestone storage m = _milestone(index);
+        if (milestoneConfirmWindow == 0 || m.status != MilestoneStatus.DocsSubmitted) return 0;
+        return m.docsSubmittedAt + milestoneConfirmWindow;
+    }
+
+    /// @notice Absolute deadline for the seller to submit docs for this
+    /// milestone; 0 if not yet funded, the milestone isn't Pending, or no
+    /// delivery window is configured for this trade.
+    function deliveryDeadline(uint256 index) external view returns (uint256) {
+        Milestone storage m = _milestone(index);
+        if (deliveryWindow == 0 || !funded || m.status != MilestoneStatus.Pending) return 0;
+        return fundedAt + deliveryWindow;
     }
 
     /// @notice Propose a split for one disputed-or-open milestone that both
@@ -367,12 +494,14 @@ contract EscrowVault {
         } else if (p.sellerBps == 0) {
             m.status = MilestoneStatus.Refunded;
             _safeTransfer(buyer, m.amount);
+            _maybeReturnBond();
         } else {
             uint256 sellerAmount = (m.amount * p.sellerBps) / BPS_DENOMINATOR;
             uint256 buyerAmount = m.amount - sellerAmount;
             m.status = MilestoneStatus.Split;
             _safeTransfer(seller, sellerAmount);
             _safeTransfer(buyer, buyerAmount);
+            _maybeReturnBond();
         }
         emit SettlementAccepted(index, p.sellerBps);
     }
@@ -453,8 +582,19 @@ contract EscrowVault {
         delete settlementProposals[index];
         _safeTransfer(seller, m.amount);
         emit MilestoneReleased(index, viaDon);
+        _maybeReturnBond();
+    }
 
-        if (bondBalance > 0 && _allMilestonesReleased()) {
+    /// @notice Returns any remaining bond to the seller once every milestone
+    /// has reached a terminal, settled state (Released, Refunded, or Split).
+    /// Deliberately broader than "every milestone Released" — a milestone
+    /// resolved as a refund or split elsewhere in the trade (a dispute
+    /// ruling, a mutual settlement, or a delivery-deadline expiry) shouldn't
+    /// strand the bond forever with no arbiter around to `slashBond` it
+    /// loose. Safe to call after any terminal transition; a no-op if the
+    /// bond is already empty or milestones remain open.
+    function _maybeReturnBond() private {
+        if (bondBalance > 0 && _allMilestonesSettled()) {
             uint256 amount = bondBalance;
             bondBalance = 0;
             _safeTransfer(seller, amount);
@@ -462,17 +602,9 @@ contract EscrowVault {
         }
     }
 
-    function _allMilestonesReleased() private view returns (bool) {
-        for (uint256 i = 0; i < milestones.length; i++) {
-            if (milestones[i].status != MilestoneStatus.Released) return false;
-        }
-        return true;
-    }
-
     /// @notice True once every milestone has reached a terminal, paid-out
-    /// status — Released, Refunded, or Split. Broader than
-    /// `_allMilestonesReleased`, which specifically gates the bond
-    /// auto-return path; this one means "there is nothing left to do here."
+    /// status — Released, Refunded, or Split. Gates both the bond
+    /// auto-return path (`_maybeReturnBond`) and trade-exit eligibility.
     function _allMilestonesSettled() private view returns (bool) {
         for (uint256 i = 0; i < milestones.length; i++) {
             MilestoneStatus s = milestones[i].status;

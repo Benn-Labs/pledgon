@@ -10,11 +10,13 @@ import { useToken } from "@/hooks/useToken";
 import { formatToken } from "@/lib/format";
 import { BondPanel } from "@/components/trade/BondPanel";
 import { FundPanel } from "@/components/trade/FundPanel";
+import { FundingDeadlinePanel } from "@/components/trade/FundingDeadlinePanel";
 import { MilestoneRow } from "@/components/trade/MilestoneRow";
 import { ArbiterPanel } from "@/components/trade/ArbiterPanel";
 import { ExitTradePanel } from "@/components/trade/ExitTradePanel";
 import { RoleBadge, TradeStatusBadge } from "@/components/ui/badges";
-import { deriveTradeStatus } from "@/lib/tradeStatus";
+import { CountdownBadge } from "@/components/ui/CountdownBadge";
+import { deriveTradeStatus, deriveCurrentDeadline } from "@/lib/tradeStatus";
 import { useEscrowMetadata } from "@/hooks/useEscrowMetadata";
 import { EditTradeDescription } from "@/components/trade/EditTradeDescription";
 
@@ -42,6 +44,7 @@ export default function TradePage() {
       { ...vaultContract, functionName: "bondBalance" },
       { ...vaultContract, functionName: "cancelled" },
       { ...vaultContract, functionName: "tradeExitProposal" },
+      { ...vaultContract, functionName: "fundingDeadline" },
     ],
   });
 
@@ -60,6 +63,7 @@ export default function TradePage() {
     bondBalance,
     cancelled,
     tradeExitProposalResult,
+    fundingDeadline,
   ] = (data?.map((d) => d.result) ?? []) as [
     Address | undefined,
     Address | undefined,
@@ -75,6 +79,7 @@ export default function TradePage() {
     bigint | undefined,
     boolean | undefined,
     readonly [Address, boolean] | undefined,
+    bigint | undefined,
   ];
 
   const tradeExitProposal = tradeExitProposalResult
@@ -102,10 +107,30 @@ export default function TradePage() {
     query: { enabled: milestoneIndices.length > 0 },
   });
 
+  const { data: milestoneDeadlineData, refetch: refetchMilestoneDeadlines } = useReadContracts({
+    contracts: milestoneIndices.map((i) => ({
+      ...vaultContract,
+      functionName: "milestoneDeadline" as const,
+      args: [BigInt(i)],
+    })),
+    query: { enabled: milestoneIndices.length > 0 },
+  });
+
+  const { data: deliveryDeadlineData, refetch: refetchDeliveryDeadlines } = useReadContracts({
+    contracts: milestoneIndices.map((i) => ({
+      ...vaultContract,
+      functionName: "deliveryDeadline" as const,
+      args: [BigInt(i)],
+    })),
+    query: { enabled: milestoneIndices.length > 0 },
+  });
+
   function refetchAll() {
     refetch();
     refetchMilestones();
     refetchSettlements();
+    refetchMilestoneDeadlines();
+    refetchDeliveryDeadlines();
   }
 
   if (!buyer || !seller || !arbiter || !token) {
@@ -119,7 +144,7 @@ export default function TradePage() {
   const role = isBuyer ? "buyer" : isSeller ? "seller" : isArbiter ? "arbiter" : undefined;
 
   const milestones = milestoneIndices.map((i) => {
-    const result = milestoneData?.[i]?.result as readonly [bigint, number, `0x${string}`] | undefined;
+    const result = milestoneData?.[i]?.result as readonly [bigint, number, `0x${string}`, bigint] | undefined;
     const proposalResult = settlementData?.[i]?.result as readonly [number, Address, boolean] | undefined;
     const settlementProposal = proposalResult
       ? { sellerBps: proposalResult[0], proposedBy: proposalResult[1], active: proposalResult[2] }
@@ -130,6 +155,8 @@ export default function TradePage() {
       status: result?.[1] ?? 0,
       docHash: result?.[2] ?? ("0x" as const),
       settlementProposal,
+      deadline: milestoneDeadlineData?.[i]?.result as bigint | undefined,
+      deliveryDeadline: deliveryDeadlineData?.[i]?.result as bigint | undefined,
     };
   });
 
@@ -141,6 +168,18 @@ export default function TradePage() {
           funded,
           cancelled,
           milestoneStatuses: milestones.map((m) => m.status),
+        })
+      : undefined;
+
+  const currentDeadline =
+    funded !== undefined
+      ? deriveCurrentDeadline({
+          funded,
+          cancelled,
+          fundingDeadline,
+          milestoneStatuses: milestones.map((m) => m.status),
+          milestoneDeadlines: milestones.map((m) => m.deadline),
+          deliveryDeadlines: milestones.map((m) => m.deliveryDeadline),
         })
       : undefined;
 
@@ -160,6 +199,7 @@ export default function TradePage() {
               <h1 className="text-2xl font-bold text-white">Trade</h1>
               {lifecycleStatus && <TradeStatusBadge status={lifecycleStatus} />}
               {role && <RoleBadge role={role} />}
+              {currentDeadline && <CountdownBadge deadline={currentDeadline.deadline} label={currentDeadline.label} />}
             </div>
             <p className="text-ink-400 text-sm">
               Escrow Vault: <span className="addr text-trust-400 font-mono">{vault}</span>
@@ -222,6 +262,14 @@ export default function TradePage() {
             onSuccess={refetchAll}
           />
 
+          <FundingDeadlinePanel
+            vault={vault}
+            fundingDeadline={fundingDeadline ?? 0n}
+            funded={funded ?? false}
+            cancelled={cancelled ?? false}
+            onSuccess={refetchAll}
+          />
+
           <FundPanel
             vault={vault}
             buyer={buyer}
@@ -256,6 +304,8 @@ export default function TradePage() {
                   symbol={symbol}
                   settlementProposal={m.settlementProposal}
                   label={milestoneLabels[m.index]}
+                  milestoneDeadline={m.deadline}
+                  deliveryDeadline={m.deliveryDeadline}
                   onSuccess={refetchAll}
                 />
               ))}

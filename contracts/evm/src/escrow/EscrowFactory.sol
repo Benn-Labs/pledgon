@@ -5,6 +5,7 @@ import {IERC20} from "../interfaces/IERC20.sol";
 import {EscrowVault} from "./EscrowVault.sol";
 import {EscrowConfirmationConsumer} from "./EscrowConfirmationConsumer.sol";
 import {ComplianceConsumer} from "../compliance/ComplianceConsumer.sol";
+import {ArbitratorRegistry} from "./ArbitratorRegistry.sol";
 
 /// @title EscrowFactory
 /// @notice Deploys one EscrowVault per trade. All vaults share a single
@@ -39,6 +40,15 @@ contract EscrowFactory {
 
     EscrowConfirmationConsumer public immutable confirmationConsumer;
     ComplianceConsumer public immutable complianceConsumer;
+    /// @notice Curated allowlist a trade creator's chosen arbiter must appear
+    /// on, unless they leave it as `defaultArbiter` (or address(0), which
+    /// resolves to the same thing) — see `_resolveArbiter`. No trade this
+    /// factory creates can end up with an arbiter nobody vetted.
+    ArbitratorRegistry public immutable arbitratorRegistry;
+    /// @notice The arbiter used when a trade creator doesn't pick an
+    /// accredited one of their own — the platform's own dispute-resolution
+    /// address.
+    address public immutable defaultArbiter;
 
     address[] public allVaults;
     mapping(address => bool) public isVault;
@@ -58,14 +68,20 @@ contract EscrowFactory {
     error ZeroAddress();
     error NotAVault(address caller);
     error InvalidTierCaps(uint256 tier0CapUsd, uint256 tier1CapUsd);
+    error NotAccreditedArbiter(address arbiter);
 
     constructor(
         EscrowConfirmationConsumer _confirmationConsumer,
         ComplianceConsumer _complianceConsumer,
         uint256 _tier0CapUsd,
-        uint256 _tier1CapUsd
+        uint256 _tier1CapUsd,
+        ArbitratorRegistry _arbitratorRegistry,
+        address _defaultArbiter
     ) {
-        if (address(_confirmationConsumer) == address(0) || address(_complianceConsumer) == address(0)) {
+        if (
+            address(_confirmationConsumer) == address(0) || address(_complianceConsumer) == address(0)
+                || address(_arbitratorRegistry) == address(0) || _defaultArbiter == address(0)
+        ) {
             revert ZeroAddress();
         }
         if (_tier1CapUsd < _tier0CapUsd) revert InvalidTierCaps(_tier0CapUsd, _tier1CapUsd);
@@ -74,18 +90,30 @@ contract EscrowFactory {
         complianceConsumer = _complianceConsumer;
         tier0CapUsd = _tier0CapUsd;
         tier1CapUsd = _tier1CapUsd;
+        arbitratorRegistry = _arbitratorRegistry;
+        defaultArbiter = _defaultArbiter;
     }
 
     /// @notice Creates a trade with the caller as buyer. The caller must still
     /// call `fund()` (and the seller `depositBond()`) on the returned vault.
+    /// `fundingWindow`/`milestoneConfirmWindow`/`deliveryWindow` are durations
+    /// in seconds (0 = no deadline) — see EscrowVault for what each one gates.
+    /// `arbiter` must be `address(0)` (resolves to `defaultArbiter`),
+    /// `defaultArbiter` itself, or an address `arbitratorRegistry` has
+    /// accredited — see `_resolveArbiter`.
     function createTrade(
         address seller,
         address arbiter,
         IERC20 token,
         uint256 bondAmount,
-        uint256[] calldata milestoneAmounts
+        uint256[] calldata milestoneAmounts,
+        uint256 fundingWindow,
+        uint256 milestoneConfirmWindow,
+        uint256 deliveryWindow
     ) external returns (address vault) {
-        return _createTrade(msg.sender, seller, arbiter, token, bondAmount, milestoneAmounts);
+        return _createTrade(
+            msg.sender, seller, arbiter, token, bondAmount, milestoneAmounts, fundingWindow, milestoneConfirmWindow, deliveryWindow
+        );
     }
 
     /// @notice Creates a trade on `buyer`'s behalf. For an orchestrator (e.g. a
@@ -101,9 +129,14 @@ contract EscrowFactory {
         address arbiter,
         IERC20 token,
         uint256 bondAmount,
-        uint256[] calldata milestoneAmounts
+        uint256[] calldata milestoneAmounts,
+        uint256 fundingWindow,
+        uint256 milestoneConfirmWindow,
+        uint256 deliveryWindow
     ) external returns (address vault) {
-        return _createTrade(buyer, seller, arbiter, token, bondAmount, milestoneAmounts);
+        return _createTrade(
+            buyer, seller, arbiter, token, bondAmount, milestoneAmounts, fundingWindow, milestoneConfirmWindow, deliveryWindow
+        );
     }
 
     /// @notice Adds `amount` to `buyer`'s volume for the current period.
@@ -126,22 +159,29 @@ contract EscrowFactory {
         address arbiter,
         IERC20 token,
         uint256 bondAmount,
-        uint256[] calldata milestoneAmounts
+        uint256[] calldata milestoneAmounts,
+        uint256 fundingWindow,
+        uint256 milestoneConfirmWindow,
+        uint256 deliveryWindow
     ) private returns (address vault) {
+        address resolvedArbiter = _resolveArbiter(arbiter);
         uint256 scale = 10 ** token.decimals();
 
         vault = address(
             new EscrowVault(
                 buyer,
                 seller,
-                arbiter,
+                resolvedArbiter,
                 token,
                 bondAmount,
                 milestoneAmounts,
                 tier0CapUsd * scale,
                 tier1CapUsd * scale,
                 confirmationConsumer,
-                complianceConsumer
+                complianceConsumer,
+                fundingWindow,
+                milestoneConfirmWindow,
+                deliveryWindow
             )
         );
 
@@ -150,7 +190,20 @@ contract EscrowFactory {
         vaultsByBuyer[buyer].push(vault);
         vaultsBySeller[seller].push(vault);
 
-        emit VaultCreated(vault, buyer, seller, arbiter, address(token), bondAmount);
+        emit VaultCreated(vault, buyer, seller, resolvedArbiter, address(token), bondAmount);
+    }
+
+    /// @notice `address(0)` and `defaultArbiter` both resolve to
+    /// `defaultArbiter` — a trade creator who doesn't specify an arbiter (or
+    /// explicitly names the default one) gets the platform's own address.
+    /// Anything else must already be accredited; there is no third option
+    /// where an arbitrary, unvetted address is accepted, and no "no arbiter"
+    /// option at all — every trade this factory creates has someone who can
+    /// actually rule on a dispute.
+    function _resolveArbiter(address requested) private view returns (address) {
+        if (requested == address(0) || requested == defaultArbiter) return defaultArbiter;
+        if (!arbitratorRegistry.isAccredited(requested)) revert NotAccreditedArbiter(requested);
+        return requested;
     }
 
     function vaultCount() external view returns (uint256) {

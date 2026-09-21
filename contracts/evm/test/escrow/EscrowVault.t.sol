@@ -49,6 +49,16 @@ contract EscrowVaultTest is Test, IEscrowFactory {
     // ─── Helpers ──────────────────────────────────────────────
 
     function _newVault(uint256[] memory amounts, uint256 bondAmount) internal returns (EscrowVault vault) {
+        vault = _newVaultWithWindows(amounts, bondAmount, 0, 0, 0);
+    }
+
+    function _newVaultWithWindows(
+        uint256[] memory amounts,
+        uint256 bondAmount,
+        uint256 fundingWindow,
+        uint256 milestoneConfirmWindow,
+        uint256 deliveryWindow
+    ) internal returns (EscrowVault vault) {
         vault = new EscrowVault(
             buyer,
             seller,
@@ -59,7 +69,10 @@ contract EscrowVaultTest is Test, IEscrowFactory {
             TIER0_CAP,
             TIER1_CAP,
             confirmationConsumer,
-            complianceConsumer
+            complianceConsumer,
+            fundingWindow,
+            milestoneConfirmWindow,
+            deliveryWindow
         );
     }
 
@@ -75,7 +88,17 @@ contract EscrowVaultTest is Test, IEscrowFactory {
     }
 
     function _fundedVault(uint256 milestoneAmount, uint256 bondAmount) internal returns (EscrowVault vault) {
-        vault = _newVault(_singleMilestone(milestoneAmount), bondAmount);
+        vault = _fundedVaultWithWindows(milestoneAmount, bondAmount, 0, 0, 0);
+    }
+
+    function _fundedVaultWithWindows(
+        uint256 milestoneAmount,
+        uint256 bondAmount,
+        uint256 fundingWindow,
+        uint256 milestoneConfirmWindow,
+        uint256 deliveryWindow
+    ) internal returns (EscrowVault vault) {
+        vault = _newVaultWithWindows(_singleMilestone(milestoneAmount), bondAmount, fundingWindow, milestoneConfirmWindow, deliveryWindow);
         if (bondAmount > 0) {
             _mintAndApprove(seller, vault, bondAmount);
             vm.prank(seller);
@@ -116,7 +139,10 @@ contract EscrowVaultTest is Test, IEscrowFactory {
             TIER0_CAP,
             TIER1_CAP,
             confirmationConsumer,
-            complianceConsumer
+            complianceConsumer,
+            0,
+            0,
+            0
         );
     }
 
@@ -132,7 +158,10 @@ contract EscrowVaultTest is Test, IEscrowFactory {
             TIER0_CAP,
             TIER1_CAP,
             confirmationConsumer,
-            complianceConsumer
+            complianceConsumer,
+            0,
+            0,
+            0
         );
     }
 
@@ -148,7 +177,10 @@ contract EscrowVaultTest is Test, IEscrowFactory {
             TIER0_CAP,
             TIER1_CAP,
             confirmationConsumer,
-            complianceConsumer
+            complianceConsumer,
+            0,
+            0,
+            0
         );
     }
 
@@ -164,7 +196,10 @@ contract EscrowVaultTest is Test, IEscrowFactory {
             TIER0_CAP,
             TIER1_CAP,
             confirmationConsumer,
-            complianceConsumer
+            complianceConsumer,
+            0,
+            0,
+            0
         );
     }
 
@@ -179,7 +214,10 @@ contract EscrowVaultTest is Test, IEscrowFactory {
             TIER0_CAP,
             TIER1_CAP,
             confirmationConsumer,
-            complianceConsumer
+            complianceConsumer,
+            0,
+            0,
+            0
         );
         assertEq(vault.arbiter(), address(0));
     }
@@ -195,7 +233,10 @@ contract EscrowVaultTest is Test, IEscrowFactory {
             TIER0_CAP,
             TIER1_CAP,
             confirmationConsumer,
-            complianceConsumer
+            complianceConsumer,
+            0,
+            0,
+            0
         );
         _mintAndApprove(buyer, vault, 100e6);
         vm.prank(buyer);
@@ -223,7 +264,10 @@ contract EscrowVaultTest is Test, IEscrowFactory {
             TIER0_CAP,
             TIER1_CAP,
             confirmationConsumer,
-            complianceConsumer
+            complianceConsumer,
+            0,
+            0,
+            0
         );
         vm.expectRevert(abi.encodeWithSelector(EscrowVault.NotArbiter.selector, buyer));
         vm.prank(buyer);
@@ -241,7 +285,10 @@ contract EscrowVaultTest is Test, IEscrowFactory {
             TIER0_CAP,
             TIER1_CAP,
             confirmationConsumer,
-            complianceConsumer
+            complianceConsumer,
+            0,
+            0,
+            0
         );
         _mintAndApprove(buyer, vault, 100e6);
         vm.prank(buyer);
@@ -440,7 +487,7 @@ contract EscrowVaultTest is Test, IEscrowFactory {
         vm.prank(seller);
         vault.submitMilestoneDocs(0, docHash);
 
-        (, EscrowVault.MilestoneStatus status, bytes32 storedHash) = vault.milestones(0);
+        (, EscrowVault.MilestoneStatus status, bytes32 storedHash,) = vault.milestones(0);
         assertEq(uint8(status), uint8(EscrowVault.MilestoneStatus.DocsSubmitted));
         assertEq(storedHash, docHash);
     }
@@ -480,7 +527,7 @@ contract EscrowVaultTest is Test, IEscrowFactory {
         vault.confirmMilestone(0);
 
         assertEq(token.balanceOf(seller), 100e6);
-        (, EscrowVault.MilestoneStatus status,) = vault.milestones(0);
+        (, EscrowVault.MilestoneStatus status,,) = vault.milestones(0);
         assertEq(uint8(status), uint8(EscrowVault.MilestoneStatus.Released));
     }
 
@@ -542,7 +589,7 @@ contract EscrowVaultTest is Test, IEscrowFactory {
 
         vault.releaseMilestoneViaDon(0);
 
-        (, EscrowVault.MilestoneStatus status,) = vault.milestones(0);
+        (, EscrowVault.MilestoneStatus status,,) = vault.milestones(0);
         assertEq(uint8(status), uint8(EscrowVault.MilestoneStatus.Released));
     }
 
@@ -572,7 +619,7 @@ contract EscrowVaultTest is Test, IEscrowFactory {
         vm.prank(buyer);
         vault.disputeMilestone(0, "not delivered");
 
-        (, EscrowVault.MilestoneStatus status,) = vault.milestones(0);
+        (, EscrowVault.MilestoneStatus status,,) = vault.milestones(0);
         assertEq(uint8(status), uint8(EscrowVault.MilestoneStatus.Disputed));
     }
 
@@ -619,14 +666,20 @@ contract EscrowVaultTest is Test, IEscrowFactory {
         vault.resolveDispute(0, 10_000);
 
         assertEq(token.balanceOf(seller), 100e6);
-        (, EscrowVault.MilestoneStatus status,) = vault.milestones(0);
+        (, EscrowVault.MilestoneStatus status,,) = vault.milestones(0);
         assertEq(uint8(status), uint8(EscrowVault.MilestoneStatus.Released));
     }
 
     /// @dev Documents the known gap: refunding a disputed milestone leaves the
     /// bond locked, since the auto-return path only fires when every milestone
     /// reaches Released. The arbiter must call slashBond separately.
-    function test_ResolveDispute_RefundToBuyer_LeavesBondLocked() public {
+    /// @dev With only one milestone, refunding it also settles the whole
+    /// trade — so the bond auto-returns to the seller even though the
+    /// milestone itself was a refund, not a release. See
+    /// `test_ResolveDispute_RefundToBuyer_MultiMilestone_LeavesBondLockedUntilOthersSettle`
+    /// for the case where the bond stays locked because other milestones
+    /// are still open.
+    function test_ResolveDispute_RefundToBuyer_LastMilestoneAutoReturnsBond() public {
         EscrowVault vault = _fundedVault(100e6, 20e6);
         vm.prank(buyer);
         vault.disputeMilestone(0, "seller never delivered");
@@ -635,9 +688,33 @@ contract EscrowVaultTest is Test, IEscrowFactory {
         vault.resolveDispute(0, 0);
 
         assertEq(token.balanceOf(buyer), 100e6, "milestone amount refunded back to buyer");
-        (, EscrowVault.MilestoneStatus status,) = vault.milestones(0);
+        (, EscrowVault.MilestoneStatus status,,) = vault.milestones(0);
         assertEq(uint8(status), uint8(EscrowVault.MilestoneStatus.Refunded));
-        assertEq(vault.bondBalance(), 20e6, "bond is stuck until the arbiter explicitly slashes it");
+        assertEq(vault.bondBalance(), 0, "bond auto-returns once the only milestone is settled, even by refund");
+        assertEq(token.balanceOf(seller), 20e6, "bond returned to seller");
+    }
+
+    /// @dev The genuine "still locked" case: a refund on one milestone while
+    /// another remains open. The arbiter can still `slashBond` mid-trade if
+    /// warranted; this just confirms the auto-return path doesn't fire early.
+    function test_ResolveDispute_RefundToBuyer_MultiMilestone_LeavesBondLockedUntilOthersSettle() public {
+        uint256[] memory amounts = new uint256[](2);
+        amounts[0] = 100e6;
+        amounts[1] = 200e6;
+        EscrowVault vault = _newVault(amounts, 20e6);
+        _mintAndApprove(seller, vault, 20e6);
+        vm.prank(seller);
+        vault.depositBond();
+        _mintAndApprove(buyer, vault, 300e6);
+        vm.prank(buyer);
+        vault.fund();
+
+        vm.prank(buyer);
+        vault.disputeMilestone(0, "seller never delivered");
+        vm.prank(arbiter);
+        vault.resolveDispute(0, 0);
+
+        assertEq(vault.bondBalance(), 20e6, "bond stays locked while milestone 1 is still open");
     }
 
     function test_ResolveDispute_SplitPaysBothPartiesAndMarksSplit() public {
@@ -650,7 +727,7 @@ contract EscrowVaultTest is Test, IEscrowFactory {
 
         assertEq(token.balanceOf(seller), 60e6);
         assertEq(token.balanceOf(buyer), 40e6);
-        (, EscrowVault.MilestoneStatus status,) = vault.milestones(0);
+        (, EscrowVault.MilestoneStatus status,,) = vault.milestones(0);
         assertEq(uint8(status), uint8(EscrowVault.MilestoneStatus.Split));
     }
 
@@ -764,7 +841,7 @@ contract EscrowVaultTest is Test, IEscrowFactory {
 
         assertEq(token.balanceOf(seller), 70e6);
         assertEq(token.balanceOf(buyer), 30e6);
-        (, EscrowVault.MilestoneStatus status,) = vault.milestones(0);
+        (, EscrowVault.MilestoneStatus status,,) = vault.milestones(0);
         assertEq(uint8(status), uint8(EscrowVault.MilestoneStatus.Split));
     }
 
@@ -885,7 +962,7 @@ contract EscrowVaultTest is Test, IEscrowFactory {
         assertEq(token.balanceOf(buyer), 100e6, "unreleased milestone refunded");
         assertEq(token.balanceOf(seller), 20e6, "bond returned");
         assertTrue(vault.cancelled());
-        (, EscrowVault.MilestoneStatus status,) = vault.milestones(0);
+        (, EscrowVault.MilestoneStatus status,,) = vault.milestones(0);
         assertEq(uint8(status), uint8(EscrowVault.MilestoneStatus.Refunded));
     }
 
@@ -910,8 +987,8 @@ contract EscrowVaultTest is Test, IEscrowFactory {
         vault.acceptTradeExit();
 
         assertEq(token.balanceOf(buyer), 200e6, "only the still-open milestone refunds");
-        (, EscrowVault.MilestoneStatus status0,) = vault.milestones(0);
-        (, EscrowVault.MilestoneStatus status1,) = vault.milestones(1);
+        (, EscrowVault.MilestoneStatus status0,,) = vault.milestones(0);
+        (, EscrowVault.MilestoneStatus status1,,) = vault.milestones(1);
         assertEq(uint8(status0), uint8(EscrowVault.MilestoneStatus.Released), "untouched by the exit");
         assertEq(uint8(status1), uint8(EscrowVault.MilestoneStatus.Refunded));
     }
@@ -1019,5 +1096,309 @@ contract EscrowVaultTest is Test, IEscrowFactory {
         assertEq(token.balanceOf(seller), 300e6 + 700e6 + 50e6);
         assertEq(vault.bondBalance(), 0);
         assertEq(token.balanceOf(address(vault)), 0);
+    }
+
+    // ─── funding deadline / expireFunding ──────────────────────
+
+    function test_FundingDeadline_ZeroWhenNoWindowConfigured() public {
+        EscrowVault vault = _newVault(_singleMilestone(100e6), 0);
+        assertEq(vault.fundingDeadline(), 0);
+    }
+
+    function test_FundingDeadline_SetAtConstruction() public {
+        EscrowVault vault = _newVaultWithWindows(_singleMilestone(100e6), 0, 1 days, 0, 0);
+        assertEq(vault.fundingDeadline(), block.timestamp + 1 days);
+    }
+
+    function test_Fund_RevertsAfterFundingDeadline() public {
+        EscrowVault vault = _newVaultWithWindows(_singleMilestone(100e6), 0, 1 days, 0, 0);
+        _mintAndApprove(buyer, vault, 100e6);
+
+        vm.warp(block.timestamp + 1 days);
+        vm.expectRevert(EscrowVault.FundingDeadlinePassed.selector);
+        vm.prank(buyer);
+        vault.fund();
+    }
+
+    function test_ExpireFunding_RevertsIfNoDeadlineConfigured() public {
+        EscrowVault vault = _newVault(_singleMilestone(100e6), 0);
+        vm.expectRevert(EscrowVault.FundingNotYetExpired.selector);
+        vault.expireFunding();
+    }
+
+    function test_ExpireFunding_RevertsIfNotYetExpired() public {
+        EscrowVault vault = _newVaultWithWindows(_singleMilestone(100e6), 0, 1 days, 0, 0);
+        vm.expectRevert(EscrowVault.FundingNotYetExpired.selector);
+        vault.expireFunding();
+    }
+
+    function test_ExpireFunding_RevertsIfAlreadyFunded() public {
+        EscrowVault vault = _fundedVaultWithWindows(100e6, 0, 1 days, 0, 0);
+        vm.warp(block.timestamp + 1 days);
+        vm.expectRevert(EscrowVault.AlreadyFunded.selector);
+        vault.expireFunding();
+    }
+
+    /// @dev Callable by a stranger — no relationship to the trade at all —
+    /// same as `releaseMilestoneViaDon`'s permissionless style, since the
+    /// deadline check is self-verifying and needs no special caller.
+    function test_ExpireFunding_CallableByStranger_RefundsBondAndCancels() public {
+        EscrowVault vault = _newVaultWithWindows(_singleMilestone(100e6), 20e6, 1 days, 0, 0);
+        _mintAndApprove(seller, vault, 20e6);
+        vm.prank(seller);
+        vault.depositBond();
+
+        vm.warp(block.timestamp + 1 days);
+        vm.prank(stranger);
+        vault.expireFunding();
+
+        assertTrue(vault.cancelled());
+        assertEq(token.balanceOf(seller), 20e6, "bond refunded to seller");
+        assertEq(vault.bondBalance(), 0);
+
+        vm.expectRevert(EscrowVault.AlreadyCancelled.selector);
+        vm.prank(buyer);
+        vault.fund();
+    }
+
+    function test_ExpireFunding_NoBondDeposited_NoTransfer() public {
+        EscrowVault vault = _newVaultWithWindows(_singleMilestone(100e6), 20e6, 1 days, 0, 0);
+        vm.warp(block.timestamp + 1 days);
+        vault.expireFunding();
+        assertTrue(vault.cancelled());
+        assertEq(token.balanceOf(seller), 0);
+    }
+
+    // ─── milestone confirmation deadline / expireMilestone ─────
+    // Timeout releases to the seller (silence past the window counts as
+    // accepted delivery) — NOT a refund to the buyer, which would let a
+    // buyer who actually received the goods simply stay silent and reclaim
+    // the payment too. See ConfirmationExpired's doc comment.
+
+    function test_MilestoneDeadline_ZeroBeforeDocsSubmitted() public {
+        EscrowVault vault = _fundedVaultWithWindows(100e6, 0, 0, 1 days, 0);
+        assertEq(vault.milestoneDeadline(0), 0);
+    }
+
+    function test_MilestoneDeadline_ZeroWhenNoWindowConfigured() public {
+        EscrowVault vault = _fundedVault(100e6, 0);
+        vm.prank(seller);
+        vault.submitMilestoneDocs(0, keccak256("docs"));
+        assertEq(vault.milestoneDeadline(0), 0);
+    }
+
+    function test_MilestoneDeadline_SetAfterDocsSubmitted() public {
+        EscrowVault vault = _fundedVaultWithWindows(100e6, 0, 0, 1 days, 0);
+        vm.prank(seller);
+        vault.submitMilestoneDocs(0, keccak256("docs"));
+        assertEq(vault.milestoneDeadline(0), block.timestamp + 1 days);
+    }
+
+    function test_ExpireMilestone_RevertsIfNoWindowConfigured() public {
+        EscrowVault vault = _fundedVault(100e6, 0);
+        vm.prank(seller);
+        vault.submitMilestoneDocs(0, keccak256("docs"));
+        vm.expectRevert(EscrowVault.MilestoneNotYetExpired.selector);
+        vault.expireMilestone(0);
+    }
+
+    function test_ExpireMilestone_RevertsIfNotYetExpired() public {
+        EscrowVault vault = _fundedVaultWithWindows(100e6, 0, 0, 1 days, 0);
+        vm.prank(seller);
+        vault.submitMilestoneDocs(0, keccak256("docs"));
+        vm.expectRevert(EscrowVault.MilestoneNotYetExpired.selector);
+        vault.expireMilestone(0);
+    }
+
+    function test_ExpireMilestone_RevertsIfWrongStatus() public {
+        EscrowVault vault = _fundedVaultWithWindows(100e6, 0, 0, 1 days, 0);
+        vm.expectRevert(
+            abi.encodeWithSelector(EscrowVault.InvalidMilestoneStatus.selector, 0, EscrowVault.MilestoneStatus.Pending)
+        );
+        vault.expireMilestone(0);
+    }
+
+    /// @dev Callable by a stranger, same rationale as expireFunding above.
+    /// Confirms the milestone releases to the SELLER (not a buyer refund —
+    /// that would be the theft vector this design specifically avoids), and
+    /// that a stale settlement proposal is cleared and ConfirmationExpired
+    /// fires alongside the normal MilestoneReleased event.
+    function test_ExpireMilestone_CallableByStranger_ReleasesToSellerAndClearsSettlementProposal() public {
+        EscrowVault vault = _fundedVaultWithWindows(100e6, 0, 0, 1 days, 0);
+        vm.prank(seller);
+        vault.submitMilestoneDocs(0, keccak256("docs"));
+        vm.prank(seller);
+        vault.proposeSettlement(0, 5000);
+
+        vm.warp(block.timestamp + 1 days);
+        vm.expectEmit(true, false, false, true, address(vault));
+        emit EscrowVault.ConfirmationExpired(0, 100e6);
+        vm.prank(stranger);
+        vault.expireMilestone(0);
+
+        (, EscrowVault.MilestoneStatus status,,) = vault.milestones(0);
+        assertEq(uint8(status), uint8(EscrowVault.MilestoneStatus.Released));
+        assertEq(token.balanceOf(seller), 100e6, "milestone released to seller, not refunded to buyer");
+        assertEq(token.balanceOf(buyer), 0);
+
+        (,, bool active) = vault.settlementProposals(0);
+        assertFalse(active, "stale settlement proposal cleared");
+    }
+
+    // ─── delivery deadline / expireDelivery ────────────────────
+    // The mirror image: a seller who never submits docs at all can't lock
+    // the buyer's payment forever either.
+
+    function test_DeliveryDeadline_ZeroWhenNotFunded() public {
+        EscrowVault vault = _newVaultWithWindows(_singleMilestone(100e6), 0, 0, 0, 1 days);
+        assertEq(vault.deliveryDeadline(0), 0);
+    }
+
+    function test_DeliveryDeadline_ZeroWhenNoWindowConfigured() public {
+        EscrowVault vault = _fundedVault(100e6, 0);
+        assertEq(vault.deliveryDeadline(0), 0);
+    }
+
+    function test_DeliveryDeadline_ZeroOnceDocsSubmitted() public {
+        EscrowVault vault = _fundedVaultWithWindows(100e6, 0, 0, 0, 1 days);
+        vm.prank(seller);
+        vault.submitMilestoneDocs(0, keccak256("docs"));
+        assertEq(vault.deliveryDeadline(0), 0);
+    }
+
+    function test_DeliveryDeadline_SetAtFunding() public {
+        EscrowVault vault = _fundedVaultWithWindows(100e6, 0, 0, 0, 1 days);
+        assertEq(vault.deliveryDeadline(0), block.timestamp + 1 days);
+    }
+
+    function test_ExpireDelivery_RevertsIfNotFunded() public {
+        EscrowVault vault = _newVaultWithWindows(_singleMilestone(100e6), 0, 0, 0, 1 days);
+        vm.expectRevert(EscrowVault.NotFunded.selector);
+        vault.expireDelivery(0);
+    }
+
+    function test_ExpireDelivery_RevertsIfNoWindowConfigured() public {
+        EscrowVault vault = _fundedVault(100e6, 0);
+        vm.expectRevert(EscrowVault.DeliveryNotYetExpired.selector);
+        vault.expireDelivery(0);
+    }
+
+    function test_ExpireDelivery_RevertsIfNotYetExpired() public {
+        EscrowVault vault = _fundedVaultWithWindows(100e6, 0, 0, 0, 1 days);
+        vm.expectRevert(EscrowVault.DeliveryNotYetExpired.selector);
+        vault.expireDelivery(0);
+    }
+
+    function test_ExpireDelivery_RevertsIfWrongStatus() public {
+        EscrowVault vault = _fundedVaultWithWindows(100e6, 0, 0, 0, 1 days);
+        vm.prank(seller);
+        vault.submitMilestoneDocs(0, keccak256("docs"));
+        vm.warp(block.timestamp + 1 days);
+        vm.expectRevert(
+            abi.encodeWithSelector(EscrowVault.InvalidMilestoneStatus.selector, 0, EscrowVault.MilestoneStatus.DocsSubmitted)
+        );
+        vault.expireDelivery(0);
+    }
+
+    /// @dev Callable by a stranger, same rationale as expireFunding/
+    /// expireMilestone. Confirms a stale settlement proposal is cleared.
+    function test_ExpireDelivery_CallableByStranger_RefundsBuyerAndClearsSettlementProposal() public {
+        EscrowVault vault = _fundedVaultWithWindows(100e6, 0, 0, 0, 1 days);
+        vm.prank(buyer);
+        vault.proposeSettlement(0, 5000);
+
+        vm.warp(block.timestamp + 1 days);
+        vm.expectEmit(true, false, false, true, address(vault));
+        emit EscrowVault.DeliveryExpired(0, 100e6);
+        vm.prank(stranger);
+        vault.expireDelivery(0);
+
+        (, EscrowVault.MilestoneStatus status,,) = vault.milestones(0);
+        assertEq(uint8(status), uint8(EscrowVault.MilestoneStatus.Refunded));
+        assertEq(token.balanceOf(buyer), 100e6, "milestone stake refunded to buyer");
+
+        (,, bool active) = vault.settlementProposals(0);
+        assertFalse(active, "stale settlement proposal cleared");
+    }
+
+    // ─── bond auto-return broadened to "all settled" ───────────
+
+    /// @dev Before this broadening, a Refunded milestone anywhere would
+    /// strand the bond forever absent an arbiter's slashBond call. Now the
+    /// bond returns once every milestone reaches ANY terminal status —
+    /// exercised here with one milestone Released normally and the other
+    /// Refunded via a genuine delivery-deadline expiry (seller never
+    /// delivered it at all).
+    function test_BondReturn_TriggersOnceEveryMilestoneSettledEvenIfSomeAreRefunded() public {
+        uint256[] memory amounts = new uint256[](2);
+        amounts[0] = 100e6;
+        amounts[1] = 200e6;
+        EscrowVault vault = _newVaultWithWindows(amounts, 50e6, 0, 0, 1 days);
+
+        _mintAndApprove(seller, vault, 50e6);
+        vm.prank(seller);
+        vault.depositBond();
+        _mintAndApprove(buyer, vault, 300e6);
+        vm.prank(buyer);
+        vault.fund();
+
+        // Milestone 0 released normally.
+        vm.prank(seller);
+        vault.submitMilestoneDocs(0, keccak256("docs-0"));
+        vm.prank(buyer);
+        vault.confirmMilestone(0);
+        assertEq(vault.bondBalance(), 50e6, "bond still locked, milestone 1 remains open");
+
+        // Seller never delivers milestone 1 at all; once the delivery
+        // deadline lapses, it's refunded to the buyer instead of released.
+        vm.warp(block.timestamp + 1 days + 1);
+        vault.expireDelivery(1);
+
+        (, EscrowVault.MilestoneStatus status1,,) = vault.milestones(1);
+        assertEq(uint8(status1), uint8(EscrowVault.MilestoneStatus.Refunded));
+
+        assertEq(vault.bondBalance(), 0, "bond auto-returned once every milestone settled, despite the refund");
+        assertEq(token.balanceOf(seller), 100e6 + 50e6);
+        assertEq(token.balanceOf(buyer), 200e6);
+    }
+
+    /// @dev The actual "all settled, not all released" case: a genuine
+    /// buyer refund (via disputeMilestone + resolveDispute) still frees the
+    /// bond once nothing else is open, with no arbiter slashBond call needed.
+    function test_BondReturn_TriggersAfterDisputeRefundOnLastOpenMilestone() public {
+        address arbitratedVault_arbiter = makeAddr("bondReturnArbiter");
+        EscrowVault vault = new EscrowVault(
+            buyer,
+            seller,
+            arbitratedVault_arbiter,
+            IERC20(address(token)),
+            50e6,
+            _singleMilestone(100e6),
+            TIER0_CAP,
+            TIER1_CAP,
+            confirmationConsumer,
+            complianceConsumer,
+            0,
+            0,
+            0
+        );
+        _mintAndApprove(seller, vault, 50e6);
+        vm.prank(seller);
+        vault.depositBond();
+        _mintAndApprove(buyer, vault, 100e6);
+        vm.prank(buyer);
+        vault.fund();
+
+        vm.prank(seller);
+        vault.submitMilestoneDocs(0, keccak256("docs"));
+        vm.prank(buyer);
+        vault.disputeMilestone(0, "not delivered");
+
+        vm.prank(arbitratedVault_arbiter);
+        vault.resolveDispute(0, 0); // full refund to buyer
+
+        assertEq(vault.bondBalance(), 0, "bond auto-returned once the only milestone settled, even though refunded");
+        assertEq(token.balanceOf(seller), 50e6);
+        assertEq(token.balanceOf(buyer), 100e6);
     }
 }
