@@ -9,12 +9,24 @@ import { useEscrowAttention } from "@/hooks/useEscrowAttention";
 import { useTotalValueLocked } from "@/hooks/useTotalValueLocked";
 import { useRecentTrades } from "@/hooks/useRecentTrades";
 import { useLendingPosition } from "@/hooks/useLendingPosition";
+import { useActivityFeed } from "@/hooks/useActivityFeed";
 import { formatToken, formatVaultNumber } from "@/lib/format";
+import { useNow, formatRelativeTime } from "@/lib/countdown";
 import { TradeStatusBadge, VerificationBadge } from "@/components/ui/badges";
 import { TradeProgressBar } from "@/components/ui/TradeProgressBar";
-import { MarketplaceIcon, EscrowIcon, LendingIcon, ShieldAlertIcon } from "@/components/ui/icons";
+import { CountdownBadge } from "@/components/ui/CountdownBadge";
+import { HealthFactorGauge } from "@/components/ui/HealthFactorGauge";
+import { MarketplaceIcon, EscrowIcon, LendingIcon, ShieldAlertIcon, SwapIcon, FaucetIcon } from "@/components/ui/icons";
+import type { ActivityTone } from "@/lib/activityFeed";
 
 const CLOSED_STATUSES = new Set(["Completed", "Cancelled"]);
+
+const ACTIVITY_DOT: Record<ActivityTone, string> = {
+  info: "bg-trust-400",
+  success: "bg-success-400",
+  warning: "bg-warning-400",
+  danger: "bg-danger-400",
+};
 
 export default function DashboardPage() {
   const { address: account, isConnected } = useAccount();
@@ -22,6 +34,8 @@ export default function DashboardPage() {
   const { escrow: escrowTvl, lendingCollateral, lendingLiquidity, isLoading: tvlLoading } = useTotalValueLocked();
   const { trades: recentTrades, isLoading: recentLoading } = useRecentTrades(10);
   const lending = useLendingPosition();
+  const activity = useActivityFeed(recentTrades, recentLoading);
+  const now = useNow(60_000);
   const [tradeTab, setTradeTab] = useState<"active" | "closed">("active");
 
   const { data: listingCount } = useReadContract({
@@ -69,6 +83,7 @@ export default function DashboardPage() {
     <div className="fade-in">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <div>
+          <p className="text-xs font-semibold text-ink-500 uppercase tracking-wider mb-1">Overview</p>
           <h1 className="text-2xl font-bold tracking-tight text-white">Dashboard</h1>
           <p className="text-ink-400 mt-1">
             {account?.slice(0, 6)}…{account?.slice(-4)}
@@ -100,6 +115,7 @@ export default function DashboardPage() {
         <Link href="/escrow" className="deal-card block bg-ink-900 border border-ink-800 rounded-xl p-5">
           <div className="text-3xl font-bold font-mono text-white">{activeCount}</div>
           <div className="text-sm text-ink-400 mt-1">Active Trades</div>
+          {activeCount === 0 && <div className="text-xs text-ink-500 mt-1">No trades in progress</div>}
         </Link>
         <Link
           href="/escrow"
@@ -113,11 +129,31 @@ export default function DashboardPage() {
           <div className={`text-sm mt-1 ${attentionCount > 0 ? "text-warning-400" : "text-ink-400"}`}>
             Needs Your Attention
           </div>
+          {attentionCount === 0 && <div className="text-xs text-ink-500 mt-1">You&apos;re all caught up</div>}
         </Link>
         <Link href="/marketplace" className="deal-card block bg-ink-900 border border-ink-800 rounded-xl p-5">
           <div className="text-3xl font-bold font-mono text-white">{listingCount?.toString() ?? "…"}</div>
           <div className="text-sm text-ink-400 mt-1">Marketplace Listings</div>
+          {listingCount === 0n && <div className="text-xs text-ink-500 mt-1">Nothing listed yet</div>}
         </Link>
+      </div>
+
+      <div className="bg-ink-900 border border-ink-800 rounded-xl p-6 mb-6">
+        <h2 className="font-semibold text-white mb-1">Recent Activity</h2>
+        <p className="text-xs text-ink-500 mb-4">What changed since you were last here, in this browser — not a full on-chain history.</p>
+        {activity.length === 0 ? (
+          <p className="text-sm text-ink-400">Nothing new since your last visit.</p>
+        ) : (
+          <div className="space-y-3">
+            {activity.map((entry) => (
+              <Link key={entry.id} href={`/escrow/${entry.vault}`} className="flex items-start gap-3 group">
+                <span className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${ACTIVITY_DOT[entry.tone]}`} />
+                <p className="text-sm text-ink-300 group-hover:text-white flex-1 min-w-0">{entry.message}</p>
+                <span className="text-xs text-ink-500 shrink-0">{formatRelativeTime(entry.at, now)}</span>
+              </Link>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="bg-ink-900 border border-ink-800 rounded-xl p-6 mb-6">
@@ -237,17 +273,15 @@ export default function DashboardPage() {
                     {lending.liquidationThresholdBps !== undefined ? `${Number(lending.liquidationThresholdBps) / 100}%` : "…"}
                   </div>
                 </div>
-                <div className="p-3 rounded-lg bg-ink-800/50 border border-ink-700">
-                  <div className="text-xs text-ink-400 mb-1">Health Factor</div>
-                  {lending.debtAmount === 0n ? (
-                    <div className="font-mono text-sm text-success-400">No debt</div>
-                  ) : lending.healthFactor !== undefined ? (
-                    <div className={`font-mono text-sm ${lending.healthFactor < 1 ? "text-danger-400" : "text-success-400"}`}>
-                      {lending.healthFactor.toFixed(2)}
-                    </div>
-                  ) : (
-                    <div className="font-mono text-sm text-ink-500">—</div>
-                  )}
+                <div className="p-3 rounded-lg bg-ink-800/50 border border-ink-700 flex flex-col items-center justify-center">
+                  <div className="text-xs text-ink-400 mb-1 self-start">Health Factor</div>
+                  <HealthFactorGauge
+                    hasDebt={lending.debtAmount > 0n}
+                    hasPrice={lending.hasPrice}
+                    ltvBps={lending.ltvBps}
+                    liquidationThresholdBps={lending.liquidationThresholdBps}
+                    healthFactor={lending.healthFactor}
+                  />
                 </div>
               </div>
 
@@ -322,12 +356,15 @@ export default function DashboardPage() {
                 href={`/escrow/${t.vault}`}
                 className="deal-card block p-3 rounded-lg bg-ink-800/40 border border-ink-700"
               >
-                <div className="flex items-center justify-between gap-3 mb-2">
+                <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-ink-500 font-mono">{formatVaultNumber(t.index)}</span>
                     <span className="text-xs text-ink-400 capitalize">{t.role}</span>
                   </div>
-                  <TradeStatusBadge status={t.status} size="sm" />
+                  <div className="flex items-center gap-2">
+                    {t.currentDeadline && <CountdownBadge deadline={t.currentDeadline.deadline} label={t.currentDeadline.label} />}
+                    <TradeStatusBadge status={t.status} size="sm" />
+                  </div>
                 </div>
                 {(t.listingTitle || t.description) && (
                   <p className="text-xs text-ink-500 mb-2 line-clamp-1">{t.listingTitle || t.description}</p>
@@ -345,7 +382,7 @@ export default function DashboardPage() {
         )}
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <Link href="/marketplace" className="deal-card flex items-center gap-3 bg-ink-900 border border-ink-800 rounded-xl p-5">
           <MarketplaceIcon className="w-6 h-6 text-trust-400 shrink-0" />
           <div>
@@ -404,6 +441,20 @@ export default function DashboardPage() {
             </div>
           </div>
           {tier !== undefined && <VerificationBadge tier={tier} />}
+        </Link>
+        <Link href="/swap" className="deal-card flex items-center gap-3 bg-ink-900 border border-ink-800 rounded-xl p-5">
+          <SwapIcon className="w-6 h-6 text-trust-400 shrink-0" />
+          <div>
+            <div className="font-semibold text-white">Swap</div>
+            <div className="text-xs text-ink-400">Trade real, liquid assets</div>
+          </div>
+        </Link>
+        <Link href="/faucet" className="deal-card flex items-center gap-3 bg-ink-900 border border-ink-800 rounded-xl p-5">
+          <FaucetIcon className="w-6 h-6 text-success-400 shrink-0" />
+          <div>
+            <div className="font-semibold text-white">Faucet</div>
+            <div className="text-xs text-ink-400">Mint testnet tokens</div>
+          </div>
         </Link>
       </div>
     </div>

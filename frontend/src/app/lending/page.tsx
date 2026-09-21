@@ -8,9 +8,11 @@ import { useAccount, useReadContract, useWaitForTransactionReceipt, useWriteCont
 import { lendingPoolAbi, liquidationConsumerAbi } from "@/generated/contracts";
 import { addresses, isLendingConfigured } from "@/lib/addresses";
 import { useToken } from "@/hooks/useToken";
+import { useLendingPosition } from "@/hooks/useLendingPosition";
 import { formatToken } from "@/lib/format";
 import { toast } from "@/lib/toast";
 import { LendingIcon } from "@/components/ui/icons";
+import { HealthFactorGauge } from "@/components/ui/HealthFactorGauge";
 
 function ActionPanel({
   title,
@@ -64,6 +66,7 @@ export default function LendingPage() {
 
   const { decimals: collDecimals, symbol: collSymbol } = useToken(addresses.collateralToken);
   const { decimals: debtDecimals, symbol: debtSymbol } = useToken(addresses.debtToken);
+  const { hasPrice, healthFactor, ltvBps, liquidationThresholdBps } = useLendingPosition();
 
   const { data: position, refetch: refetchPosition } = useReadContract({
     address: addresses.lendingPool,
@@ -211,7 +214,7 @@ export default function LendingPage() {
 
       <div className="bg-ink-900 border border-ink-800 rounded-xl p-6 mb-6">
         <h2 className="font-semibold text-white mb-4">Your Position</h2>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="p-4 rounded-lg bg-ink-800/50 border border-ink-700">
             <div className="text-xs text-ink-400 mb-1">Collateral Deposited</div>
             <div className="font-mono text-lg text-ink-100">
@@ -224,7 +227,23 @@ export default function LendingPage() {
               {debtDecimals !== undefined ? formatToken(debtAmount, debtDecimals, debtSymbol) : "…"}
             </div>
           </div>
+          <div className="p-4 rounded-lg bg-ink-800/50 border border-ink-700 flex flex-col items-center justify-center">
+            <div className="text-xs text-ink-400 mb-1 self-start">Health Factor</div>
+            <HealthFactorGauge
+              hasDebt={debtAmount > 0n}
+              hasPrice={hasPrice}
+              ltvBps={ltvBps}
+              liquidationThresholdBps={liquidationThresholdBps}
+              healthFactor={healthFactor}
+            />
+          </div>
         </div>
+        {debtAmount > 0n && !hasPrice && (
+          <p className="text-xs text-warning-400 mt-4">
+            Health Factor needs a live price feed from the liquidation-protection DON workflow — none has ever
+            reported here, so it shows as a dash rather than a fabricated number.
+          </p>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">

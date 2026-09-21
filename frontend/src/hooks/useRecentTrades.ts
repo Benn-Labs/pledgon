@@ -5,7 +5,14 @@ import { escrowVaultAbi } from "@/generated/contracts";
 import { useMyVaults, type VaultCreatedEvent } from "@/hooks/useMyVaults";
 import { useEscrowMetadataMap } from "@/hooks/useEscrowMetadataMap";
 import { useListingTitleByVault } from "@/hooks/useListingTitleByVault";
-import { deriveTradeStatus, deriveTradeProgress, type TradeLifecycleStatus, type TradeProgress } from "@/lib/tradeStatus";
+import {
+  deriveTradeStatus,
+  deriveTradeProgress,
+  deriveCurrentDeadline,
+  type TradeLifecycleStatus,
+  type TradeProgress,
+  type CurrentDeadline,
+} from "@/lib/tradeStatus";
 
 export interface RecentTrade {
   vault: Address;
@@ -20,6 +27,8 @@ export interface RecentTrade {
   description: string | undefined;
   /** The Marketplace listing's title, for trades opened via purchase() rather than Create Escrow. */
   listingTitle: string | undefined;
+  /** The one deadline currently worth a countdown badge, if any — see deriveCurrentDeadline. */
+  currentDeadline: CurrentDeadline | undefined;
 }
 
 /**
@@ -45,6 +54,7 @@ export function useRecentTrades(limit: number) {
       { address: entry.vault, abi: escrowVaultAbi, functionName: "bondDeposited" as const },
       { address: entry.vault, abi: escrowVaultAbi, functionName: "milestoneCount" as const },
       { address: entry.vault, abi: escrowVaultAbi, functionName: "cancelled" as const },
+      { address: entry.vault, abi: escrowVaultAbi, functionName: "fundingDeadline" as const },
     ]),
     query: { enabled: allMine.length > 0 },
   });
@@ -54,10 +64,11 @@ export function useRecentTrades(limit: number) {
       allMine.map(({ entry, role }, i) => ({
         entry,
         role,
-        funded: scalarResults?.[i * 4]?.result as boolean | undefined,
-        bondDeposited: scalarResults?.[i * 4 + 1]?.result as boolean | undefined,
-        milestoneCount: scalarResults?.[i * 4 + 2]?.result as bigint | undefined,
-        cancelled: scalarResults?.[i * 4 + 3]?.result as boolean | undefined,
+        funded: scalarResults?.[i * 5]?.result as boolean | undefined,
+        bondDeposited: scalarResults?.[i * 5 + 1]?.result as boolean | undefined,
+        milestoneCount: scalarResults?.[i * 5 + 2]?.result as bigint | undefined,
+        cancelled: scalarResults?.[i * 5 + 3]?.result as boolean | undefined,
+        fundingDeadline: scalarResults?.[i * 5 + 4]?.result as bigint | undefined,
       })),
     [allMine, scalarResults],
   );
@@ -80,6 +91,24 @@ export function useRecentTrades(limit: number) {
   const { data: milestoneResults, isLoading: milestonesLoading } = useReadContracts({
     contracts: milestoneQueries,
     query: { enabled: milestoneQueries.length > 0 },
+  });
+
+  const deadlineQueries = useMemo(
+    () =>
+      perVaultScalars.flatMap(({ entry, milestoneCount }) =>
+        milestoneCount === undefined
+          ? []
+          : Array.from({ length: Number(milestoneCount) }, (_, i) => [
+              { address: entry.vault, abi: escrowVaultAbi, functionName: "milestoneDeadline" as const, args: [BigInt(i)] as const },
+              { address: entry.vault, abi: escrowVaultAbi, functionName: "deliveryDeadline" as const, args: [BigInt(i)] as const },
+            ]).flat(),
+      ),
+    [perVaultScalars],
+  );
+
+  const { data: deadlineResults, isLoading: deadlinesLoading } = useReadContracts({
+    contracts: deadlineQueries,
+    query: { enabled: deadlineQueries.length > 0 },
   });
 
   const uniqueTokens = useMemo(() => [...new Set(allMine.map(({ entry }) => entry.token.toLowerCase()))] as Address[], [allMine]);
@@ -108,12 +137,18 @@ export function useRecentTrades(limit: number) {
   const trades = useMemo(() => {
     const result: RecentTrade[] = [];
     let flatIndex = 0;
-    for (const { entry, role, funded, bondDeposited, milestoneCount, cancelled } of perVaultScalars) {
+    let deadlineFlatIndex = 0;
+    for (const { entry, role, funded, bondDeposited, milestoneCount, cancelled, fundingDeadline } of perVaultScalars) {
       const statuses: number[] = [];
+      const milestoneDeadlines: (bigint | undefined)[] = [];
+      const deliveryDeadlines: (bigint | undefined)[] = [];
       for (let i = 0; i < Number(milestoneCount ?? 0n); i++) {
         const m = milestoneResults?.[flatIndex]?.result as readonly [bigint, number, `0x${string}`] | undefined;
         if (m) statuses.push(m[1]);
+        milestoneDeadlines.push(deadlineResults?.[deadlineFlatIndex]?.result as bigint | undefined);
+        deliveryDeadlines.push(deadlineResults?.[deadlineFlatIndex + 1]?.result as bigint | undefined);
         flatIndex++;
+        deadlineFlatIndex += 2;
       }
       if (funded === undefined || bondDeposited === undefined) continue;
       const info = tokenInfo.get(entry.token.toLowerCase());
@@ -128,10 +163,11 @@ export function useRecentTrades(limit: number) {
         symbol: info?.symbol,
         description: descriptionByVault.get(entry.vault.toLowerCase()),
         listingTitle: listingTitleByVault.get(entry.vault.toLowerCase()),
+        currentDeadline: deriveCurrentDeadline({ funded, cancelled, fundingDeadline, milestoneStatuses: statuses, milestoneDeadlines, deliveryDeadlines }),
       });
     }
     return result;
-  }, [perVaultScalars, milestoneResults, tokenInfo, descriptionByVault, listingTitleByVault]);
+  }, [perVaultScalars, milestoneResults, deadlineResults, tokenInfo, descriptionByVault, listingTitleByVault]);
 
-  return { trades, isLoading: vaultsLoading || scalarLoading || milestonesLoading };
+  return { trades, isLoading: vaultsLoading || scalarLoading || milestonesLoading || deadlinesLoading };
 }
