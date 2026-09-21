@@ -149,6 +149,7 @@ func setupFakeRepo(t *testing.T) string {
   "complianceConsumer": "0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
   "escrowFactory": "0xCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
   "marketplace": "0xDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD",
+  "tradeExpiryKeeper": "0x9999999999999999999999999999999999999999",
   "lendingOracleConsumer": "0x0000000000000000000000000000000000000000",
   "liquidationConsumer": "0x0000000000000000000000000000000000000000",
   "lendingPool": "0x0000000000000000000000000000000000000000"
@@ -176,6 +177,20 @@ func setupFakeRepo(t *testing.T) string {
   "gasLimitWei": 500000
 }
 `)
+	writeFile(t, filepath.Join(root, "workflows", "trade-expiry", "config.staging.json"), `{
+  "chainSelectorName": "ethereum-testnet-sepolia",
+  "escrowFactoryAddress": "0x0000000000000000000000000000000000000000",
+  "keeperAddress": "0x0000000000000000000000000000000000000000",
+  "gasLimitWei": 500000
+}
+`)
+	writeFile(t, filepath.Join(root, "workflows", "lending-oracle", "config.staging.json"), `{
+  "chainSelectorName": "ethereum-testnet-sepolia",
+  "collateralFeedLabel": "RWA/USD",
+  "consumerAddress": "0x0000000000000000000000000000000000000000",
+  "gasLimitWei": 500000
+}
+`)
 
 	return root
 }
@@ -195,6 +210,14 @@ func TestRun_WiresDeployedAddressesIntoConfigs(t *testing.T) {
 	complianceConfig := filepath.Join(root, "workflows", "compliance-check", "config.staging.json")
 	if got := readJSONField(t, complianceConfig, "consumerAddress"); got != "0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB" {
 		t.Errorf("consumerAddress = %s", got)
+	}
+
+	tradeExpiryConfig := filepath.Join(root, "workflows", "trade-expiry", "config.staging.json")
+	if got := readJSONField(t, tradeExpiryConfig, "escrowFactoryAddress"); got != "0xCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC" {
+		t.Errorf("escrowFactoryAddress = %s", got)
+	}
+	if got := readJSONField(t, tradeExpiryConfig, "keeperAddress"); got != "0x9999999999999999999999999999999999999999" {
+		t.Errorf("keeperAddress = %s", got)
 	}
 }
 
@@ -240,6 +263,11 @@ func TestRun_SkipsFieldsWithNoDeployedAddress(t *testing.T) {
 	if got := readJSONField(t, liqConfig, "consumerAddress"); got != "0x0000000000000000000000000000000000000000" {
 		t.Errorf("consumerAddress = %s, want the untouched placeholder", got)
 	}
+
+	oracleConfig := filepath.Join(root, "workflows", "lending-oracle", "config.staging.json")
+	if got := readJSONField(t, oracleConfig, "consumerAddress"); got != "0x0000000000000000000000000000000000000000" {
+		t.Errorf("consumerAddress = %s, want the untouched placeholder", got)
+	}
 }
 
 func TestRun_WiresLendingWhenDeployed(t *testing.T) {
@@ -266,6 +294,11 @@ func TestRun_WiresLendingWhenDeployed(t *testing.T) {
 	if got := readJSONField(t, liqConfig, "consumerAddress"); got != "0xF0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0F0" {
 		t.Errorf("consumerAddress = %s", got)
 	}
+
+	oracleConfig := filepath.Join(root, "workflows", "lending-oracle", "config.staging.json")
+	if got := readJSONField(t, oracleConfig, "consumerAddress"); got != "0xEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE" {
+		t.Errorf("consumerAddress = %s", got)
+	}
 }
 
 func TestRun_ErrorsIfDeploymentsFileMissing(t *testing.T) {
@@ -289,6 +322,15 @@ func TestRun_TargetSelectsCorrectConfigFile(t *testing.T) {
 `)
 	writeFile(t, filepath.Join(root, "workflows", "liquidation-protection", "config.production.json"), `{
   "lendingPoolAddress": "0x0000000000000000000000000000000000000000",
+  "consumerAddress": "0x0000000000000000000000000000000000000000"
+}
+`)
+	writeFile(t, filepath.Join(root, "workflows", "trade-expiry", "config.production.json"), `{
+  "escrowFactoryAddress": "0x0000000000000000000000000000000000000000",
+  "keeperAddress": "0x0000000000000000000000000000000000000000"
+}
+`)
+	writeFile(t, filepath.Join(root, "workflows", "lending-oracle", "config.production.json"), `{
   "consumerAddress": "0x0000000000000000000000000000000000000000"
 }
 `)

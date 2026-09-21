@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { erc20Abi, parseUnits } from "viem";
+import Link from "next/link";
+import { erc20Abi, isAddress, parseUnits } from "viem";
+import type { Address } from "viem";
 import { useAccount, useReadContract, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
-import { lendingPoolAbi } from "@/generated/contracts";
+import { lendingPoolAbi, liquidationConsumerAbi } from "@/generated/contracts";
 import { addresses, isLendingConfigured } from "@/lib/addresses";
 import { useToken } from "@/hooks/useToken";
 import { formatToken } from "@/lib/format";
@@ -112,6 +114,24 @@ export default function LendingPage() {
   const [borrowAmount, setBorrowAmount] = useState("");
   const [liquidateTarget, setLiquidateTarget] = useState("");
 
+  const liquidateTargetAddress = isAddress(liquidateTarget) ? (liquidateTarget as Address) : undefined;
+
+  const { data: targetPosition, refetch: refetchTargetPosition } = useReadContract({
+    address: addresses.lendingPool,
+    abi: lendingPoolAbi,
+    functionName: "positions",
+    args: liquidateTargetAddress ? [liquidateTargetAddress] : undefined,
+    query: { enabled: Boolean(addresses.lendingPool && liquidateTargetAddress) },
+  });
+
+  const { data: targetEligible, refetch: refetchTargetEligible } = useReadContract({
+    address: addresses.liquidationConsumer,
+    abi: liquidationConsumerAbi,
+    functionName: "isEligible",
+    args: liquidateTargetAddress ? [liquidateTargetAddress] : undefined,
+    query: { enabled: Boolean(addresses.liquidationConsumer && liquidateTargetAddress) },
+  });
+
   useEffect(() => {
     if (isSuccess) {
       toast("Transaction confirmed", "success");
@@ -120,8 +140,19 @@ export default function LendingPage() {
       refetchDebtBalance();
       refetchCollAllowance();
       refetchDebtAllowance();
+      refetchTargetPosition();
+      refetchTargetEligible();
     }
-  }, [isSuccess, refetchPosition, refetchCollBalance, refetchDebtBalance, refetchCollAllowance, refetchDebtAllowance]);
+  }, [
+    isSuccess,
+    refetchPosition,
+    refetchCollBalance,
+    refetchDebtBalance,
+    refetchCollAllowance,
+    refetchDebtAllowance,
+    refetchTargetPosition,
+    refetchTargetEligible,
+  ]);
 
   useEffect(() => {
     if (error) toast(error.message, "error");
@@ -145,25 +176,36 @@ export default function LendingPage() {
   }
 
   const [collateralAmount, debtAmount] = position ?? [0n, 0n];
+  const [, targetDebtAmount] = targetPosition ?? [0n, 0n];
   const needsCollApproval =
     collDecimals !== undefined && depositAmount ? (collAllowance ?? 0n) < parseUnits(depositAmount, collDecimals) : false;
   const needsDebtApproval =
     debtDecimals !== undefined && repayAmount ? (debtAllowance ?? 0n) < parseUnits(repayAmount, debtDecimals) : false;
+  const needsLiquidateApproval = liquidateTargetAddress ? (debtAllowance ?? 0n) < targetDebtAmount : false;
 
   return (
     <div className="fade-in max-w-4xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold tracking-tight text-white">Lending</h1>
-        <p className="text-ink-400 mt-1">Deposit collateral, borrow against it, with DON-corroborated liquidation protection</p>
+      <div className="flex items-start justify-between gap-4 mb-6">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-white">Lending</h1>
+          <p className="text-ink-400 mt-1">Deposit collateral, borrow against it, with DON-corroborated liquidation protection</p>
+        </div>
+        <Link
+          href="/faucet"
+          className="btn-press px-4 py-2.5 rounded-lg bg-ink-800 hover:bg-ink-700 border border-ink-700 text-white text-sm font-semibold shrink-0"
+        >
+          Need test tokens?
+        </Link>
       </div>
 
-      <div className="p-4 rounded-lg bg-warning-500/10 border border-warning-500/30 mb-6">
-        <p className="text-sm text-warning-400 font-medium mb-1">Borrow and Liquidate are inert in this environment</p>
+      <div className="p-4 rounded-lg bg-trust-500/10 border border-trust-500/30 mb-6">
+        <p className="text-sm text-trust-400 font-medium mb-1">Live price feed active</p>
         <p className="text-sm text-ink-300">
-          Both require a price that only a live <code className="font-mono text-xs">liquidation-protection</code>{" "}
-          DON workflow can report to <code className="font-mono text-xs">LendingOracleConsumer</code> — none is
-          registered against a real DON here, so those two calls will always revert. Deposit, withdraw, and repay
-          don&apos;t need a price and work normally.
+          The <code className="font-mono text-xs">liquidation-protection</code> DON workflow is registered and
+          reporting to <code className="font-mono text-xs">LendingOracleConsumer</code> every 5 minutes, so Borrow
+          now works. Liquidate only succeeds once{" "}
+          <code className="font-mono text-xs">LiquidationConsumer</code> has attested that specific borrower
+          eligible — most positions won&apos;t be.
         </p>
       </div>
 
@@ -307,33 +349,77 @@ export default function LendingPage() {
           />
         )}
 
-        <div className="bg-ink-900 border border-ink-800 rounded-xl p-6 opacity-50">
-          <h3 className="font-semibold text-white mb-3">Borrow</h3>
-          <input
-            disabled
-            className="w-full bg-ink-800 border border-ink-700 rounded-lg px-4 py-3 text-ink-200 font-mono mb-4 cursor-not-allowed"
-            placeholder="0.00"
-            value={borrowAmount}
-            onChange={(e) => setBorrowAmount(e.target.value)}
-          />
-          <button disabled className="w-full py-2.5 rounded-lg bg-ink-700 text-ink-500 font-semibold cursor-not-allowed">
-            Requires a live price feed
-          </button>
-        </div>
+        <ActionPanel
+          title="Borrow"
+          tokenSymbol={debtSymbol}
+          balance={debtBalance}
+          decimals={debtDecimals}
+          amount={borrowAmount}
+          setAmount={setBorrowAmount}
+          submitLabel="Borrow"
+          isPending={isPending || isConfirming}
+          onSubmit={() =>
+            addresses.lendingPool &&
+            debtDecimals !== undefined &&
+            writeContract({
+              address: addresses.lendingPool,
+              abi: lendingPoolAbi,
+              functionName: "borrow",
+              args: [parseUnits(borrowAmount || "0", debtDecimals)],
+            })
+          }
+        />
       </div>
 
-      <div className="bg-ink-900 border border-ink-800 rounded-xl p-6 opacity-50">
+      <div className="bg-ink-900 border border-ink-800 rounded-xl p-6">
         <h3 className="font-semibold text-white mb-3">Liquidate a Position</h3>
         <input
-          disabled
-          className="w-full bg-ink-800 border border-ink-700 rounded-lg px-4 py-3 text-ink-200 font-mono mb-4 cursor-not-allowed"
+          className="w-full bg-ink-800 border border-ink-700 rounded-lg px-4 py-3 text-ink-200 font-mono mb-3 focus:outline-none focus:border-trust-500"
           placeholder="Borrower address (0x…)"
           value={liquidateTarget}
           onChange={(e) => setLiquidateTarget(e.target.value)}
         />
-        <button disabled className="w-full py-2.5 rounded-lg bg-ink-700 text-ink-500 font-semibold cursor-not-allowed">
-          Requires a live DON eligibility verdict
-        </button>
+        {liquidateTargetAddress && debtDecimals !== undefined && (
+          <p className="text-xs text-ink-500 mb-4">
+            Debt owed: {formatToken(targetDebtAmount, debtDecimals, debtSymbol)} ·{" "}
+            {targetEligible ? "Eligible for liquidation" : "Not eligible"}
+          </p>
+        )}
+        {needsLiquidateApproval ? (
+          <button
+            onClick={() =>
+              addresses.lendingPool &&
+              addresses.debtToken &&
+              writeContract({
+                address: addresses.debtToken,
+                abi: erc20Abi,
+                functionName: "approve",
+                args: [addresses.lendingPool, targetDebtAmount],
+              })
+            }
+            disabled={!liquidateTargetAddress || isPending || isConfirming}
+            className="btn-press w-full py-2.5 rounded-lg bg-warning-600 hover:bg-warning-500 disabled:bg-ink-700 disabled:cursor-not-allowed text-white font-semibold"
+          >
+            Approve {debtSymbol}
+          </button>
+        ) : (
+          <button
+            onClick={() =>
+              addresses.lendingPool &&
+              liquidateTargetAddress &&
+              writeContract({
+                address: addresses.lendingPool,
+                abi: lendingPoolAbi,
+                functionName: "liquidate",
+                args: [liquidateTargetAddress],
+              })
+            }
+            disabled={!liquidateTargetAddress || !targetEligible || isPending || isConfirming}
+            className="btn-press w-full py-2.5 rounded-lg bg-trust-600 hover:bg-trust-500 disabled:bg-ink-700 disabled:cursor-not-allowed text-white font-semibold"
+          >
+            {isPending || isConfirming ? "Submitting…" : "Liquidate"}
+          </button>
+        )}
       </div>
     </div>
   );

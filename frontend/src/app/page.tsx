@@ -3,14 +3,14 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useAccount, useReadContract } from "wagmi";
-import { marketplaceAbi } from "@/generated/contracts";
+import { marketplaceAbi, complianceConsumerAbi } from "@/generated/contracts";
 import { addresses, isLendingConfigured } from "@/lib/addresses";
 import { useEscrowAttention } from "@/hooks/useEscrowAttention";
 import { useTotalValueLocked } from "@/hooks/useTotalValueLocked";
 import { useRecentTrades } from "@/hooks/useRecentTrades";
 import { useLendingPosition } from "@/hooks/useLendingPosition";
 import { formatToken, formatVaultNumber } from "@/lib/format";
-import { TradeStatusBadge } from "@/components/ui/badges";
+import { TradeStatusBadge, VerificationBadge } from "@/components/ui/badges";
 import { TradeProgressBar } from "@/components/ui/TradeProgressBar";
 import { MarketplaceIcon, EscrowIcon, LendingIcon, ShieldAlertIcon } from "@/components/ui/icons";
 
@@ -19,7 +19,7 @@ const CLOSED_STATUSES = new Set(["Completed", "Cancelled"]);
 export default function DashboardPage() {
   const { address: account, isConnected } = useAccount();
   const { activeCount, attentionCount } = useEscrowAttention();
-  const { totals: tvl, isLoading: tvlLoading } = useTotalValueLocked();
+  const { escrow: escrowTvl, lendingCollateral, lendingLiquidity, isLoading: tvlLoading } = useTotalValueLocked();
   const { trades: recentTrades, isLoading: recentLoading } = useRecentTrades(10);
   const lending = useLendingPosition();
   const [tradeTab, setTradeTab] = useState<"active" | "closed">("active");
@@ -29,6 +29,14 @@ export default function DashboardPage() {
     abi: marketplaceAbi,
     functionName: "listingCount",
     query: { enabled: Boolean(addresses.marketplace) },
+  });
+
+  const { data: tier } = useReadContract({
+    address: addresses.complianceConsumer,
+    abi: complianceConsumerAbi,
+    functionName: "tierOf",
+    args: account ? [account] : undefined,
+    query: { enabled: Boolean(addresses.complianceConsumer && account) },
   });
 
   const activeTrades = useMemo(() => recentTrades.filter((t) => !CLOSED_STATUSES.has(t.status)), [recentTrades]);
@@ -126,24 +134,68 @@ export default function DashboardPage() {
           </div>
           <div>
             <h2 className="font-semibold text-white">Total Value Locked</h2>
-            <p className="text-sm text-ink-400">Real on-chain balances across every escrow vault and the lending pool</p>
+            <p className="text-sm text-ink-400">Real on-chain balances — grouped by what the value actually is, not one pile of numbers</p>
           </div>
         </div>
+
         {tvlLoading ? (
           <p className="text-sm text-ink-400">Loading…</p>
-        ) : tvl.length === 0 ? (
-          <p className="text-sm text-ink-400">Nothing locked on the protocol yet.</p>
         ) : (
-          <div className="flex flex-wrap gap-4">
-            {tvl.map((t) => (
-              <div key={t.token} className="px-4 py-3 rounded-lg bg-ink-800/50 border border-ink-700">
-                <div className="text-xl font-bold font-mono text-white">{formatToken(t.amount, t.decimals, t.symbol)}</div>
+          <div className="space-y-5">
+            <div>
+              <div className="text-xs font-semibold text-ink-400 uppercase tracking-wide mb-2">Escrow Vaults</div>
+              {escrowTvl.length === 0 ? (
+                <p className="text-sm text-ink-500">Nothing in escrow yet.</p>
+              ) : (
+                <div className="flex flex-wrap gap-3">
+                  {escrowTvl.map((t) => (
+                    <div key={t.token} className="px-4 py-3 rounded-lg bg-ink-800/50 border border-ink-700">
+                      <div className="text-lg font-bold font-mono text-white">{formatToken(t.amount, t.decimals, t.symbol)}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <p className="text-xs text-ink-500 mt-2">
+                Payment currently in flight across trades — held by each trade&apos;s vault until milestones release it.
+              </p>
+            </div>
+
+            {(lendingCollateral || lendingLiquidity) && (
+              <div>
+                <div className="text-xs font-semibold text-ink-400 uppercase tracking-wide mb-2">Lending Pool</div>
+                <div className="flex flex-wrap gap-3">
+                  {lendingCollateral && (
+                    <div className="px-4 py-3 rounded-lg bg-ink-800/50 border border-ink-700">
+                      <div className="text-lg font-bold font-mono text-white">
+                        {formatToken(lendingCollateral.amount, lendingCollateral.decimals, lendingCollateral.symbol)}
+                      </div>
+                      <div className="text-xs text-ink-500 mt-0.5">Collateral deposited</div>
+                    </div>
+                  )}
+                  {lendingLiquidity && (
+                    <div className="px-4 py-3 rounded-lg bg-ink-800/50 border border-ink-700">
+                      <div className="text-lg font-bold font-mono text-white">
+                        {formatToken(lendingLiquidity.amount, lendingLiquidity.decimals, lendingLiquidity.symbol)}
+                      </div>
+                      <div className="text-xs text-ink-500 mt-0.5">Available to borrow</div>
+                    </div>
+                  )}
+                </div>
+                <p className="text-xs text-ink-500 mt-2">
+                  These aren&apos;t the same kind of value: <span className="text-ink-400">Collateral deposited</span> is{" "}
+                  {lendingCollateral?.symbol ?? "the collateral token"} locked by borrowers, securing what they owe — it
+                  isn&apos;t available to anyone until withdrawn or liquidated.{" "}
+                  <span className="text-ink-400">Available to borrow</span> is{" "}
+                  {lendingLiquidity?.symbol ?? "the debt token"} sitting in the pool waiting to be lent out — supply, not
+                  demand. It isn&apos;t owned or locked by any one depositor, and on this deployment it&apos;s testnet
+                  liquidity minted directly into the pool, not something users supplied.
+                </p>
               </div>
-            ))}
+            )}
           </div>
         )}
-        <p className="text-xs text-ink-500 mt-3">
-          Shown per-token rather than as one combined figure — there&apos;s no price oracle here to convert between
+        <p className="text-xs text-ink-500 mt-4 pt-3 border-t border-ink-800">
+          Never combined into one figure, within or across these groups — there&apos;s no price oracle here to convert
           different payment tokens into a common unit.
         </p>
       </div>
@@ -298,14 +350,19 @@ export default function DashboardPage() {
           <MarketplaceIcon className="w-6 h-6 text-trust-400 shrink-0" />
           <div>
             <div className="font-semibold text-white">Marketplace</div>
-            <div className="text-xs text-ink-400">Browse & create listings</div>
+            <div className="text-xs text-ink-400">
+              {listingCount !== undefined ? `${listingCount.toString()} listing${listingCount === 1n ? "" : "s"}` : "Browse & create listings"}
+            </div>
           </div>
         </Link>
         <Link href="/escrow" className="deal-card flex items-center gap-3 bg-ink-900 border border-ink-800 rounded-xl p-5">
           <EscrowIcon className="w-6 h-6 text-success-400 shrink-0" />
           <div>
             <div className="font-semibold text-white">Escrow</div>
-            <div className="text-xs text-ink-400">Manage active trades</div>
+            <div className="text-xs text-ink-400">
+              {activeCount} active trade{activeCount === 1 ? "" : "s"}
+              {attentionCount > 0 && <span className="text-warning-400"> · {attentionCount} need attention</span>}
+            </div>
           </div>
         </Link>
         <Link
@@ -338,12 +395,15 @@ export default function DashboardPage() {
             </div>
           )}
         </Link>
-        <Link href="/compliance" className="deal-card flex items-center gap-3 bg-ink-900 border border-ink-800 rounded-xl p-5">
-          <ShieldAlertIcon className="w-6 h-6 text-trust-400 shrink-0" />
-          <div>
-            <div className="font-semibold text-white">Compliance</div>
-            <div className="text-xs text-ink-400">Your KYC tier & caps</div>
+        <Link href="/compliance" className="deal-card flex items-center justify-between gap-3 bg-ink-900 border border-ink-800 rounded-xl p-5">
+          <div className="flex items-center gap-3">
+            <ShieldAlertIcon className="w-6 h-6 text-trust-400 shrink-0" />
+            <div>
+              <div className="font-semibold text-white">Compliance</div>
+              <div className="text-xs text-ink-400">Your KYC tier & caps</div>
+            </div>
           </div>
+          {tier !== undefined && <VerificationBadge tier={tier} />}
         </Link>
       </div>
     </div>

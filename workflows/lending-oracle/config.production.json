@@ -1,0 +1,11 @@
+{
+  "schedule": "0 */5 * * * *",
+  "chainSelectorName": "ethereum-testnet-sepolia",
+  "priceUrl": "https://api.coinbase.com/v2/prices/ETH-USD/spot",
+  "secretId": "LENDING_ORACLE_API_TOKEN",
+  "responsePricePath": "data.amount",
+  "priceDecimals": 8,
+  "collateralFeedLabel": "RWA/USD",
+  "consumerAddress": "0x41f7daE29c0dd8Efd7C275E379193c5450BbbF0A",
+  "gasLimitWei": 500000
+}
