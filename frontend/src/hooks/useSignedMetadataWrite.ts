@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import type { Address } from "viem";
 import { useAccount, useSignMessage } from "wagmi";
 import { supabase, isSupabaseConfigured } from "@/lib/supabaseClient";
+import type { ListingTerms } from "@/lib/listingTerms";
 
 /**
  * Builds the exact string the wallet signs. The Edge Function re-derives
@@ -105,7 +106,7 @@ export interface ListingTermsPayload extends Record<string, unknown> {
   title?: string;
   description?: string;
   thumbnailUrl?: string;
-  terms?: Record<string, string>;
+  terms?: ListingTerms;
 }
 
 export function useSignedListingMetadataWrite() {

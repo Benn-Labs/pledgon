@@ -2,17 +2,19 @@
 
 import Link from "next/link";
 import { useMemo } from "react";
-import { erc20Abi, zeroAddress, type Address } from "viem";
+import { erc20Abi, formatUnits, type Address } from "viem";
 import { useReadContract, useReadContracts } from "wagmi";
 import { marketplaceAbi } from "@/generated/contracts";
 import { addresses } from "@/lib/addresses";
-import { formatToken, sumBigints } from "@/lib/format";
+import { formatToken } from "@/lib/format";
 import { StatusBadge, LISTING_STATUS } from "@/components/ui/badges";
 import { useListingMetadataMap } from "@/hooks/useListingMetadataMap";
+import { unitLabel } from "@/lib/units";
 
-type ListingTuple = readonly [Address, Address, Address, bigint, string, number, Address];
+type ListingTuple = readonly [Address, Address, Address, string, number];
+type PricingTuple = readonly [bigint, bigint, bigint, bigint]; // totalQuantity, remainingQuantity, unitPrice, bondRatePerUnit
 
-const SOLD = 2;
+const QUANTITY_DECIMALS = 18; // matches Marketplace.QUANTITY_SCALE
 
 export default function BrowsePage() {
   const marketplace = addresses.marketplace;
@@ -40,11 +42,21 @@ export default function BrowsePage() {
     query: { enabled: ids.length > 0 },
   });
 
-  const { data: milestoneResults } = useReadContracts({
+  const { data: pricingResults } = useReadContracts({
     contracts: ids.map((id) => ({
       address: marketplace,
       abi: marketplaceAbi,
-      functionName: "listingMilestones" as const,
+      functionName: "listingPricing" as const,
+      args: [id],
+    })),
+    query: { enabled: ids.length > 0 },
+  });
+
+  const { data: milestoneBpsResults } = useReadContracts({
+    contracts: ids.map((id) => ({
+      address: marketplace,
+      abi: marketplaceAbi,
+      functionName: "listingMilestoneBps" as const,
       args: [id],
     })),
     query: { enabled: ids.length > 0 },
@@ -92,18 +104,18 @@ export default function BrowsePage() {
         {ids.map((id, i) => {
           const result = listingResults?.[i]?.result as ListingTuple | undefined;
           if (!result) return null;
-          const [seller, , , bondAmount, metadataURI, status, vault] = result;
-          const milestones = milestoneResults?.[i]?.result as readonly bigint[] | undefined;
+          const [seller, , , metadataURI, status] = result;
+          const pricing = pricingResults?.[i]?.result as PricingTuple | undefined;
+          const [totalQuantity, remainingQuantity, unitPrice, bondRatePerUnit] = pricing ?? [undefined, undefined, undefined, undefined];
+          const milestoneBps = milestoneBpsResults?.[i]?.result as readonly number[] | undefined;
           const decimals = tokenResults?.[i * 2]?.result as number | undefined;
           const symbol = tokenResults?.[i * 2 + 1]?.result as string | undefined;
-          const total = milestones ? sumBigints(milestones) : 0n;
-          const href = status === SOLD && vault !== zeroAddress ? `/escrow/${vault}` : `/marketplace/${id}`;
           const meta = listingMetadata.get(Number(id));
 
           return (
             <Link
               key={id.toString()}
-              href={href}
+              href={`/marketplace/${id}`}
               className="deal-card bg-ink-900 border border-ink-800 rounded-xl overflow-hidden block"
             >
               {meta?.thumbnailUrl && (
@@ -118,6 +130,11 @@ export default function BrowsePage() {
                 <h3 className="font-semibold text-lg mb-2 line-clamp-2 text-white">
                   {meta?.title || metadataURI || `Listing #${id}`}
                 </h3>
+                {meta?.terms.category && (
+                  <span className="inline-block px-2 py-0.5 mb-2 rounded-full bg-ink-800 border border-ink-700 text-[11px] text-ink-400">
+                    {meta.terms.category}
+                  </span>
+                )}
                 {meta?.description && <p className="text-sm text-ink-400 mb-4 line-clamp-2">{meta.description}</p>}
                 <div className="flex items-center gap-2 mb-4">
                   <div className="w-6 h-6 rounded-full bg-gradient-to-br from-trust-500 to-trust-700 flex items-center justify-center text-xs font-bold text-white shrink-0">
@@ -127,19 +144,30 @@ export default function BrowsePage() {
                     {seller.slice(0, 6)}…{seller.slice(-4)}
                   </span>
                 </div>
-                {decimals !== undefined && (
+                {decimals !== undefined && unitPrice !== undefined && (
                   <div className="space-y-2 mb-4">
                     <div className="flex justify-between text-sm">
-                      <span className="text-ink-400">Total Value</span>
-                      <span className="font-semibold font-mono text-ink-100">{formatToken(total, decimals, symbol)}</span>
+                      <span className="text-ink-400">Unit Price</span>
+                      <span className="font-mono text-ink-100">
+                        {formatToken(unitPrice, decimals, symbol)} / {unitLabel(meta?.terms.unit)}
+                      </span>
                     </div>
                     <div className="flex justify-between text-sm">
-                      <span className="text-ink-400">Seller Bond</span>
-                      <span className="font-mono text-warning-400">{formatToken(bondAmount, decimals, symbol)}</span>
+                      <span className="text-ink-400">Available</span>
+                      <span className="font-semibold font-mono text-ink-100">
+                        {formatUnits(remainingQuantity ?? 0n, QUANTITY_DECIMALS)} / {formatUnits(totalQuantity ?? 0n, QUANTITY_DECIMALS)}{" "}
+                        {unitLabel(meta?.terms.unit)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-ink-400">Bond Rate</span>
+                      <span className="font-mono text-warning-400">
+                        {formatToken(bondRatePerUnit ?? 0n, decimals, symbol)} / {unitLabel(meta?.terms.unit)}
+                      </span>
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-ink-400">Milestones</span>
-                      <span className="font-mono text-ink-100">{milestones?.length ?? 0}</span>
+                      <span className="font-mono text-ink-100">{milestoneBps?.length ?? 0}</span>
                     </div>
                   </div>
                 )}

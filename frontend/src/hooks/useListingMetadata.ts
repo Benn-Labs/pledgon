@@ -2,12 +2,13 @@ import { useEffect, useState } from "react";
 import type { Address } from "viem";
 import { useChainId } from "wagmi";
 import { supabase, isSupabaseConfigured } from "@/lib/supabaseClient";
+import type { ListingTerms } from "@/lib/listingTerms";
 
 export interface ListingMetadata {
   title: string;
   description: string;
   thumbnailUrl: string;
-  terms: Record<string, string>;
+  terms: ListingTerms;
 }
 
 const EMPTY: ListingMetadata = { title: "", description: "", thumbnailUrl: "", terms: {} };
@@ -46,7 +47,7 @@ export function useListingMetadata(marketplaceAddress: Address | undefined, list
                 title: (row.title as string | null) ?? "",
                 description: (row.description as string | null) ?? "",
                 thumbnailUrl: (row.thumbnail_url as string | null) ?? "",
-                terms: (row.terms as Record<string, string> | null) ?? {},
+                terms: (row.terms as ListingTerms | null) ?? {},
               }
             : EMPTY,
         );

@@ -34,7 +34,7 @@ export function useListingMetadataMap(marketplaceAddress: Address | undefined, l
             title: (row.title as string | null) ?? "",
             description: (row.description as string | null) ?? "",
             thumbnailUrl: (row.thumbnail_url as string | null) ?? "",
-            terms: (row.terms as Record<string, string> | null) ?? {},
+            terms: (row.terms as ListingMetadata["terms"] | null) ?? {},
           });
         }
         setMap(next);
