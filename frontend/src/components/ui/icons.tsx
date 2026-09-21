@@ -54,6 +54,27 @@ export function LendingIcon({ className = base }: IconProps) {
   );
 }
 
+export function FaucetIcon({ className = base }: IconProps) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M9 3v4a1 1 0 01-1 1H4m5-5h6l4 4v3M9 3L4 8m5 10v-4a1 1 0 011-1h6a1 1 0 011 1v4m-8 0h8m-8 0a2 2 0 104 0m4 0a2 2 0 11-4 0"
+      />
+    </svg>
+  );
+}
+
+export function SwapIcon({ className = base }: IconProps) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4M16 17H4m0 0l4 4m-4-4l4-4" />
+    </svg>
+  );
+}
+
 export function ShieldAlertIcon({ className = base }: IconProps) {
   return (
     <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">

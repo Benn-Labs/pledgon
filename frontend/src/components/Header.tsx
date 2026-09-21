@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { isLendingConfigured } from "@/lib/addresses";
-import { HomeIcon, MarketplaceIcon, EscrowIcon, LendingIcon } from "@/components/ui/icons";
+import { HomeIcon, MarketplaceIcon, EscrowIcon, LendingIcon, FaucetIcon, SwapIcon } from "@/components/ui/icons";
 import { HeaderComplianceStatus } from "@/components/HeaderComplianceStatus";
 
 const NAV = [
@@ -12,6 +12,8 @@ const NAV = [
   { href: "/marketplace", label: "Marketplace", icon: MarketplaceIcon },
   { href: "/escrow", label: "Escrow", icon: EscrowIcon },
   { href: "/lending", label: "Lending", icon: LendingIcon },
+  { href: "/faucet", label: "Faucet", icon: FaucetIcon },
+  { href: "/swap", label: "Swap", icon: SwapIcon },
 ];
 
 export function Header() {

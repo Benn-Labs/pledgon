@@ -13,6 +13,12 @@ export const addresses = {
   liquidationConsumer: process.env.NEXT_PUBLIC_LIQUIDATION_CONSUMER_ADDRESS as Address | undefined,
   collateralToken: process.env.NEXT_PUBLIC_COLLATERAL_TOKEN_ADDRESS as Address | undefined,
   debtToken: process.env.NEXT_PUBLIC_DEBT_TOKEN_ADDRESS as Address | undefined,
+  // The ad-hoc MockERC20 used for escrow test trades (not part of the
+  // Deploy.s.sol pipeline — deployed once via DeployMockToken.s.sol and
+  // reused across every escrow redeploy since, since it's a plain token,
+  // not tied to EscrowFactory/Marketplace). Optional: the Faucet's MOCK
+  // quick-select just won't populate if unset.
+  mockToken: process.env.NEXT_PUBLIC_MOCK_TOKEN_ADDRESS as Address | undefined,
 };
 
 export const isLendingConfigured = Boolean(
