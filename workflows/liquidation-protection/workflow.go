@@ -19,15 +19,21 @@ import (
 )
 
 // ─── Config ─────────────────────────────────────────────────
-// One deployment monitors one borrower's position, same shape as the RWA oracle
-// workflow monitoring one feed — see docs/architecture.md for the scaling
-// tradeoff this implies (N borrowers means N deployments, for now).
+// One deployment monitors a *list* of borrower positions, discovered offline
+// by cmd/discover-borrowers and kept in Borrowers — not queried by this
+// workflow itself. A Confidential Workflow has no persistent storage across
+// cron ticks, so discovering borrowers here (e.g. via the evm capability's
+// FilterLogs) would mean rescanning CollateralDeposited logs from the pool's
+// deployment block on every single tick, forever — an unbounded, ever-growing
+// query with no proven precedent in this codebase. Same operational shape
+// already accepted for escrow-confirmation's vaultAddresses: a config-managed
+// list, refreshed by a small external tool rather than the workflow itself.
 type Config struct {
 	Schedule string `json:"schedule"` // 6-field cron (seconds first)
 
-	ChainSelectorName  string `json:"chainSelectorName"`
-	LendingPoolAddress string `json:"lendingPoolAddress"` // deployed LendingPool
-	Borrower           string `json:"borrower"`           // the position this deployment monitors
+	ChainSelectorName  string   `json:"chainSelectorName"`
+	LendingPoolAddress string   `json:"lendingPoolAddress"` // deployed LendingPool
+	Borrowers          []string `json:"borrowers"`          // positions this deployment monitors — see cmd/discover-borrowers
 
 	// Confidential, independent price source. Corroborates LendingPool's own
 	// on-chain oracle reading before attesting eligibility — this cross-check is
@@ -194,13 +200,23 @@ func isZeroAddress(addr string) bool {
 // ─── TEE Cron Callback ──────────────────────────────────────
 // Receives a cre.TeeRuntime. The confidential leg (fetching the credential and
 // calling the independent price source) runs first; UsingTheDons() is called
-// exactly once, after which everything — the on-chain position/threshold reads
-// and the report write — uses the resulting cre.Runtime.
+// exactly once — for the whole tick, not once per borrower — after which
+// everything else (liquidationThresholdBps(), each borrower's positions()
+// read, and each report write) uses the resulting cre.Runtime. The same
+// single independent price is reused for every borrower this tick: it's one
+// external fact ("what is collateral actually worth right now"), not a
+// per-borrower one, so fetching it once and cross-checking every position
+// against it is correct, not a shortcut — and it keeps this tick to exactly
+// one confidential HTTP fetch no matter how many borrowers are configured.
 func onCronTrigger(config *Config, runtime cre.TeeRuntime, _ *cron.Payload) (string, error) {
-	if !common.IsHexAddress(config.Borrower) {
-		return "", fmt.Errorf("borrower %q is not a valid address", config.Borrower)
+	if len(config.Borrowers) == 0 {
+		return "", fmt.Errorf("borrowers is empty — nothing to check")
 	}
-	borrower := common.HexToAddress(config.Borrower)
+	for _, b := range config.Borrowers {
+		if !common.IsHexAddress(b) {
+			return "", fmt.Errorf("borrower %q is not a valid address", b)
+		}
+	}
 
 	// ── In enclave: fetch the credential ──
 	secret, err := runtime.GetSecret(&cre.SecretRequest{Id: config.SecretID}).Await()
@@ -244,21 +260,8 @@ func onCronTrigger(config *Config, runtime cre.TeeRuntime, _ *cron.Payload) (str
 	evmClient := &evm.Client{ChainSelector: chainSelector}
 	poolAddress := common.HexToAddress(config.LendingPoolAddress)
 
-	positionsCalldata, err := encodePositionsCall(borrower)
-	if err != nil {
-		return "", fmt.Errorf("encode positions() call: %w", err)
-	}
-	positionsReply, err := evmClient.CallContract(donRuntime, &evm.CallContractRequest{
-		Call: &evm.CallMsg{To: poolAddress.Bytes(), Data: positionsCalldata},
-	}).Await()
-	if err != nil {
-		return "", fmt.Errorf("read positions(%s): %w", borrower.Hex(), err)
-	}
-	collateralAmount, debtAmount, err := decodePositionsReply(positionsReply.Data)
-	if err != nil {
-		return "", fmt.Errorf("decode positions() reply: %w", err)
-	}
-
+	// liquidationThresholdBps is a pool-wide constant, not per-borrower — read
+	// it exactly once for the whole tick, not once per borrower.
 	thresholdReply, err := evmClient.CallContract(donRuntime, &evm.CallContractRequest{
 		Call: &evm.CallMsg{To: poolAddress.Bytes(), Data: selector("liquidationThresholdBps()")},
 	}).Await()
@@ -270,45 +273,100 @@ func onCronTrigger(config *Config, runtime cre.TeeRuntime, _ *cron.Payload) (str
 		return "", fmt.Errorf("decode liquidationThresholdBps() reply: %w", err)
 	}
 
-	eligible := isUndercollateralized(collateralAmount, debtAmount, price, config.PriceDecimals, thresholdBps)
 	checkedAt := donRuntime.Now().Unix()
+	skipWrite := isZeroAddress(config.ConsumerAddress)
+	consumer := common.HexToAddress(config.ConsumerAddress).Bytes()
 
-	// A false verdict is written too — like compliance-check, it's the mechanism
-	// that overwrites a stale earlier true (the borrower may have repaid or
-	// added collateral since).
-	encoded, err := encodeLiquidationReport(borrower, eligible, checkedAt)
-	if err != nil {
-		return "", fmt.Errorf("encode report payload: %w", err)
+	checked, eligibleCount, written, failed := 0, 0, 0, 0
+	var lines []string
+
+	// One borrower's failure (a bad read, a reverted write) doesn't abort the
+	// rest of the tick — same resilience as trade-expiry's per-item loop.
+	for _, addr := range config.Borrowers {
+		borrower := common.HexToAddress(addr)
+		checked++
+
+		positionsCalldata, err := encodePositionsCall(borrower)
+		if err != nil {
+			runtime.Logger().Error("encode positions() call failed", "borrower", borrower.Hex(), "error", err)
+			failed++
+			continue
+		}
+		positionsReply, err := evmClient.CallContract(donRuntime, &evm.CallContractRequest{
+			Call: &evm.CallMsg{To: poolAddress.Bytes(), Data: positionsCalldata},
+		}).Await()
+		if err != nil {
+			runtime.Logger().Error("read positions() failed", "borrower", borrower.Hex(), "error", err)
+			failed++
+			continue
+		}
+		collateralAmount, debtAmount, err := decodePositionsReply(positionsReply.Data)
+		if err != nil {
+			runtime.Logger().Error("decode positions() reply failed", "borrower", borrower.Hex(), "error", err)
+			failed++
+			continue
+		}
+
+		eligible := isUndercollateralized(collateralAmount, debtAmount, price, config.PriceDecimals, thresholdBps)
+		if eligible {
+			eligibleCount++
+		}
+
+		if skipWrite {
+			lines = append(lines, fmt.Sprintf("%s eligible=%t (no consumer configured, write skipped)", borrower.Hex(), eligible))
+			continue
+		}
+
+		// A false verdict is written too — like compliance-check, it's the
+		// mechanism that overwrites a stale earlier true (the borrower may
+		// have repaid or added collateral since).
+		encoded, err := encodeLiquidationReport(borrower, eligible, checkedAt)
+		if err != nil {
+			runtime.Logger().Error("encode report payload failed", "borrower", borrower.Hex(), "error", err)
+			failed++
+			continue
+		}
+
+		report, err := donRuntime.GenerateReport(&cre.ReportRequest{
+			EncodedPayload: encoded,
+			EncoderName:    "evm",
+			SigningAlgo:    "ecdsa",
+			HashingAlgo:    "keccak256",
+		}).Await()
+		if err != nil {
+			runtime.Logger().Error("generate report failed", "borrower", borrower.Hex(), "error", err)
+			failed++
+			continue
+		}
+
+		reply, err := evmClient.WriteReport(donRuntime, &evm.WriteCreReportRequest{
+			Receiver:  consumer,
+			Report:    report,
+			GasConfig: &evm.GasConfig{GasLimit: config.GasLimitWei},
+		}).Await()
+		if err != nil {
+			runtime.Logger().Error("write report failed", "borrower", borrower.Hex(), "error", err)
+			failed++
+			continue
+		}
+		if reply.TxStatus != evm.TxStatus_TX_STATUS_SUCCESS {
+			runtime.Logger().Error("on-chain write not successful", "borrower", borrower.Hex(), "txStatus", reply.TxStatus)
+			failed++
+			continue
+		}
+
+		written++
+		lines = append(lines, fmt.Sprintf("%s eligible=%t, tx %s", borrower.Hex(), eligible, common.BytesToHash(reply.TxHash).Hex()))
 	}
 
-	report, err := donRuntime.GenerateReport(&cre.ReportRequest{
-		EncodedPayload: encoded,
-		EncoderName:    "evm",
-		SigningAlgo:    "ecdsa",
-		HashingAlgo:    "keccak256",
-	}).Await()
-	if err != nil {
-		return "", fmt.Errorf("generate report on the DON: %w", err)
+	summary := fmt.Sprintf("checked %d borrower(s): %d eligible, %d written, %d failed", checked, eligibleCount, written, failed)
+	if len(lines) > 0 {
+		summary += "\n" + strings.Join(lines, "\n")
 	}
-
-	if isZeroAddress(config.ConsumerAddress) {
-		return fmt.Sprintf("borrower %s eligible=%t (no consumer configured, write skipped)", borrower.Hex(), eligible), nil
+	if failed > 0 && written == 0 && !skipWrite {
+		return summary, fmt.Errorf("all %d report write(s) failed", failed)
 	}
-
-	reply, err := evmClient.WriteReport(donRuntime, &evm.WriteCreReportRequest{
-		Receiver:  common.HexToAddress(config.ConsumerAddress).Bytes(),
-		Report:    report,
-		GasConfig: &evm.GasConfig{GasLimit: config.GasLimitWei},
-	}).Await()
-	if err != nil {
-		return "", fmt.Errorf("write liquidation report on-chain: %w", err)
-	}
-	if reply.TxStatus != evm.TxStatus_TX_STATUS_SUCCESS {
-		return "", fmt.Errorf("on-chain write not successful: tx status %s", reply.TxStatus)
-	}
-
-	txHash := common.BytesToHash(reply.TxHash).Hex()
-	return fmt.Sprintf("borrower %s eligible=%t, tx %s", borrower.Hex(), eligible, txHash), nil
+	return summary, nil
 }
 
 // ─── Workflow Init ──────────────────────────────────────────

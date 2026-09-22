@@ -26,7 +26,10 @@ const (
 	poolAddress      = "0x00000000000000000000000000000000000BEEF"
 )
 
-var borrowerAddress = common.HexToAddress("0x000000000000000000000000000000000B0771E")
+var (
+	borrowerAddress       = common.HexToAddress("0x000000000000000000000000000000000B0771E")
+	secondBorrowerAddress = common.HexToAddress("0x00000000000000000000000000000000BADA55E")
+)
 
 // weiAmount returns whole * 10^decimals as a *big.Int (10e18-style literals
 // overflow Go's int64 constant conversion, unlike Solidity's uint256).
@@ -40,7 +43,7 @@ func testConfig() *Config {
 		Schedule:           "0 */5 * * * *",
 		ChainSelectorName:  sepoliaChainName,
 		LendingPoolAddress: poolAddress,
-		Borrower:           borrowerAddress.Hex(),
+		Borrowers:          []string{borrowerAddress.Hex()},
 		VerificationURL:    "https://example.com/price/collateral",
 		SecretID:           "LENDING_PRICE_API_TOKEN",
 		ResponsePricePath:  "data.price",
@@ -80,9 +83,18 @@ func stubHTTP(t *testing.T, statusCode uint32, body string) *[]string {
 	return captured
 }
 
-// stubEVM registers the EVM capability, answering positions()/liquidationThresholdBps()
-// reads on poolAddress and recording any WriteReport call.
-func stubEVM(t *testing.T, collateralAmount, debtAmount, thresholdBps *big.Int, writeStatus evm.TxStatus) **evm.WriteReportRequest {
+type position struct {
+	collateral *big.Int
+	debt       *big.Int
+}
+
+// stubEVM registers the EVM capability, answering positions() per borrower
+// from the given map (unlisted borrowers read as zero/zero) and
+// liquidationThresholdBps() once for the whole pool. Returns every
+// WriteReport call made, plus how many times the threshold was read (should
+// be exactly once per tick, never once per borrower) and how many times
+// positions() failed borrowers were hit.
+func stubEVM(t *testing.T, positions map[common.Address]position, thresholdBps *big.Int, writeStatus evm.TxStatus, failPositionsFor ...common.Address) (writes *[]*evm.WriteReportRequest, thresholdCalls *int) {
 	t.Helper()
 
 	chainSelector, err := evm.ChainSelectorFromName(sepoliaChainName)
@@ -93,16 +105,33 @@ func stubEVM(t *testing.T, collateralAmount, debtAmount, thresholdBps *big.Int, 
 
 	positionsSelector := selector("positions(address)")
 	thresholdSelector := selector("liquidationThresholdBps()")
+	failing := map[common.Address]bool{}
+	for _, a := range failPositionsFor {
+		failing[a] = true
+	}
 
+	calls := 0
 	capability.CallContract = func(_ context.Context, input *evm.CallContractRequest) (*evm.CallContractReply, error) {
 		data := input.Call.Data
 		switch {
 		case len(data) >= 4 && string(data[:4]) == string(positionsSelector):
+			addrType, _ := abi.NewType("address", "", nil)
+			vals, err := (abi.Arguments{{Type: addrType}}).Unpack(data[4:])
+			require.NoError(t, err)
+			borrower := vals[0].(common.Address)
+			if failing[borrower] {
+				return nil, context.DeadlineExceeded
+			}
+			pos, ok := positions[borrower]
+			if !ok {
+				pos = position{collateral: big.NewInt(0), debt: big.NewInt(0)}
+			}
 			u256, _ := abi.NewType("uint256", "", nil)
-			packed, err := (abi.Arguments{{Type: u256}, {Type: u256}}).Pack(collateralAmount, debtAmount)
+			packed, err := (abi.Arguments{{Type: u256}, {Type: u256}}).Pack(pos.collateral, pos.debt)
 			require.NoError(t, err)
 			return &evm.CallContractReply{Data: packed}, nil
 		case len(data) >= 4 && string(data[:4]) == string(thresholdSelector):
+			calls++
 			u256, _ := abi.NewType("uint256", "", nil)
 			packed, err := (abi.Arguments{{Type: u256}}).Pack(thresholdBps)
 			require.NoError(t, err)
@@ -113,14 +142,14 @@ func stubEVM(t *testing.T, collateralAmount, debtAmount, thresholdBps *big.Int, 
 		}
 	}
 
-	captured := new(*evm.WriteReportRequest)
+	captured := &[]*evm.WriteReportRequest{}
 	capability.WriteReport = func(_ context.Context, input *evm.WriteReportRequest) (*evm.WriteReportReply, error) {
-		*captured = input
+		*captured = append(*captured, input)
 		txHash := make([]byte, 32)
-		txHash[31] = 0x7b
+		txHash[31] = byte(len(*captured))
 		return &evm.WriteReportReply{TxStatus: writeStatus, TxHash: txHash}, nil
 	}
-	return captured
+	return captured, &calls
 }
 
 // ─── Pure logic ────────────────────────────────────────────
@@ -196,7 +225,7 @@ func TestPositionsCallRoundTrips(t *testing.T) {
 
 func TestOnCronTrigger_InjectsEnclaveFetchedSecret(t *testing.T) {
 	authHeaders := stubHTTP(t, 200, `{"data":{"price":"1000"}}`)
-	stubEVM(t, weiAmount(10, 18), weiAmount(1000, 18), big.NewInt(8000), evm.TxStatus_TX_STATUS_SUCCESS)
+	stubEVM(t, map[common.Address]position{borrowerAddress: {weiAmount(10, 18), weiAmount(1000, 18)}}, big.NewInt(8000), evm.TxStatus_TX_STATUS_SUCCESS)
 	runtime := testutils.NewTeeRuntime(t, testSecrets())
 
 	_, err := onCronTrigger(testConfig(), runtime, nil)
@@ -207,7 +236,7 @@ func TestOnCronTrigger_InjectsEnclaveFetchedSecret(t *testing.T) {
 
 func TestOnCronTrigger_SkipsWriteWhenNoConsumer(t *testing.T) {
 	stubHTTP(t, 200, `{"data":{"price":"1000"}}`)
-	stubEVM(t, weiAmount(10, 18), weiAmount(1000, 18), big.NewInt(8000), evm.TxStatus_TX_STATUS_SUCCESS)
+	stubEVM(t, map[common.Address]position{borrowerAddress: {weiAmount(10, 18), weiAmount(1000, 18)}}, big.NewInt(8000), evm.TxStatus_TX_STATUS_SUCCESS)
 	runtime := testutils.NewTeeRuntime(t, testSecrets())
 
 	result, err := onCronTrigger(testConfig(), runtime, nil)
@@ -219,19 +248,19 @@ func TestOnCronTrigger_SkipsWriteWhenNoConsumer(t *testing.T) {
 
 func TestOnCronTrigger_WritesEligibleTrueOnChain(t *testing.T) {
 	stubHTTP(t, 200, `{"data":{"price":"100"}}`) // $100/token independent price -> way undercollateralized
-	captured := stubEVM(t, weiAmount(10, 18), weiAmount(1000, 18), big.NewInt(8000), evm.TxStatus_TX_STATUS_SUCCESS)
+	writes, _ := stubEVM(t, map[common.Address]position{borrowerAddress: {weiAmount(10, 18), weiAmount(1000, 18)}}, big.NewInt(8000), evm.TxStatus_TX_STATUS_SUCCESS)
 	runtime := testutils.NewTeeRuntime(t, testSecrets())
 
 	result, err := onCronTrigger(configWithConsumer(), runtime, nil)
 	require.NoError(t, err)
-	require.NotNil(t, *captured)
+	require.Len(t, *writes, 1)
 
-	assert.Equal(t, common.HexToAddress(consumerAddress).Bytes(), (*captured).Receiver)
+	assert.Equal(t, common.HexToAddress(consumerAddress).Bytes(), (*writes)[0].Receiver)
 	assert.Contains(t, result, "eligible=true, tx")
 
 	args, err := liquidationReportArgs()
 	require.NoError(t, err)
-	vals, err := args.Unpack((*captured).Report.RawReport[cre.ReportMetadataHeaderLength:])
+	vals, err := args.Unpack((*writes)[0].Report.RawReport[cre.ReportMetadataHeaderLength:])
 	require.NoError(t, err)
 	assert.Equal(t, borrowerAddress, vals[0].(common.Address))
 	assert.Equal(t, true, vals[1].(bool))
@@ -242,29 +271,29 @@ func TestOnCronTrigger_WritesEligibleTrueOnChain(t *testing.T) {
 // borrower can add collateral or repay and become safe again.
 func TestOnCronTrigger_WritesEligibleFalseOnChainToo(t *testing.T) {
 	stubHTTP(t, 200, `{"data":{"price":"1000"}}`) // healthy price -> safe
-	captured := stubEVM(t, weiAmount(10, 18), weiAmount(1000, 18), big.NewInt(8000), evm.TxStatus_TX_STATUS_SUCCESS)
+	writes, _ := stubEVM(t, map[common.Address]position{borrowerAddress: {weiAmount(10, 18), weiAmount(1000, 18)}}, big.NewInt(8000), evm.TxStatus_TX_STATUS_SUCCESS)
 	runtime := testutils.NewTeeRuntime(t, testSecrets())
 
 	result, err := onCronTrigger(configWithConsumer(), runtime, nil)
 	require.NoError(t, err)
-	require.NotNil(t, *captured, "a safe verdict must still be written on-chain")
+	require.Len(t, *writes, 1, "a safe verdict must still be written on-chain")
 	assert.Contains(t, result, "eligible=false, tx")
 
 	args, err := liquidationReportArgs()
 	require.NoError(t, err)
-	vals, err := args.Unpack((*captured).Report.RawReport[cre.ReportMetadataHeaderLength:])
+	vals, err := args.Unpack((*writes)[0].Report.RawReport[cre.ReportMetadataHeaderLength:])
 	require.NoError(t, err)
 	assert.Equal(t, false, vals[1].(bool))
 }
 
 func TestOnCronTrigger_ErrorsWhenWriteReverts(t *testing.T) {
 	stubHTTP(t, 200, `{"data":{"price":"100"}}`)
-	stubEVM(t, weiAmount(10, 18), weiAmount(1000, 18), big.NewInt(8000), evm.TxStatus_TX_STATUS_REVERTED)
+	stubEVM(t, map[common.Address]position{borrowerAddress: {weiAmount(10, 18), weiAmount(1000, 18)}}, big.NewInt(8000), evm.TxStatus_TX_STATUS_REVERTED)
 	runtime := testutils.NewTeeRuntime(t, testSecrets())
 
 	_, err := onCronTrigger(configWithConsumer(), runtime, nil)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "not successful")
+	assert.Contains(t, err.Error(), "failed")
 }
 
 func TestOnCronTrigger_ErrorsOnNon2xx(t *testing.T) {
@@ -278,7 +307,7 @@ func TestOnCronTrigger_ErrorsOnNon2xx(t *testing.T) {
 
 func TestOnCronTrigger_ErrorsOnInvalidBorrower(t *testing.T) {
 	config := testConfig()
-	config.Borrower = "not-an-address"
+	config.Borrowers = []string{"not-an-address"}
 	runtime := testutils.NewTeeRuntime(t, testSecrets())
 
 	_, err := onCronTrigger(config, runtime, nil)
@@ -286,10 +315,20 @@ func TestOnCronTrigger_ErrorsOnInvalidBorrower(t *testing.T) {
 	assert.Contains(t, err.Error(), "not a valid address")
 }
 
+func TestOnCronTrigger_ErrorsOnEmptyBorrowers(t *testing.T) {
+	config := testConfig()
+	config.Borrowers = nil
+	runtime := testutils.NewTeeRuntime(t, testSecrets())
+
+	_, err := onCronTrigger(config, runtime, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "empty")
+}
+
 func TestOnCronTrigger_DoesNotLogSecretOrResponseBody(t *testing.T) {
 	const sensitivePrice = "1234.56789"
 	stubHTTP(t, 200, `{"data":{"price":"`+sensitivePrice+`"}}`)
-	stubEVM(t, weiAmount(10, 18), weiAmount(1000, 18), big.NewInt(8000), evm.TxStatus_TX_STATUS_SUCCESS)
+	stubEVM(t, map[common.Address]position{borrowerAddress: {weiAmount(10, 18), weiAmount(1000, 18)}}, big.NewInt(8000), evm.TxStatus_TX_STATUS_SUCCESS)
 	runtime := testutils.NewTeeRuntime(t, testSecrets())
 
 	_, err := onCronTrigger(testConfig(), runtime, nil)
@@ -300,6 +339,76 @@ func TestOnCronTrigger_DoesNotLogSecretOrResponseBody(t *testing.T) {
 		assert.False(t, strings.Contains(line, apiToken), "log leaked the secret: %s", line)
 		assert.False(t, strings.Contains(line, sensitivePrice), "log leaked the raw price response: %s", line)
 	}
+}
+
+// ─── Multi-borrower ──────────────────────────────────────────
+
+func TestOnCronTrigger_MultipleBorrowers_MixedEligibility(t *testing.T) {
+	stubHTTP(t, 200, `{"data":{"price":"100"}}`) // $100/token
+	positions := map[common.Address]position{
+		borrowerAddress:       {weiAmount(10, 18), weiAmount(1000, 18)}, // $1000 worth of collateral, $1000 debt -> undercollateralized
+		secondBorrowerAddress: {weiAmount(100, 18), weiAmount(100, 18)}, // $10,000 worth of collateral, $100 debt -> safe
+	}
+	writes, _ := stubEVM(t, positions, big.NewInt(8000), evm.TxStatus_TX_STATUS_SUCCESS)
+	runtime := testutils.NewTeeRuntime(t, testSecrets())
+
+	config := configWithConsumer()
+	config.Borrowers = []string{borrowerAddress.Hex(), secondBorrowerAddress.Hex()}
+
+	result, err := onCronTrigger(config, runtime, nil)
+	require.NoError(t, err)
+	require.Len(t, *writes, 2)
+
+	assert.Contains(t, result, "checked 2 borrower(s): 1 eligible, 2 written, 0 failed")
+
+	args, err := liquidationReportArgs()
+	require.NoError(t, err)
+
+	firstVals, err := args.Unpack((*writes)[0].Report.RawReport[cre.ReportMetadataHeaderLength:])
+	require.NoError(t, err)
+	assert.Equal(t, borrowerAddress, firstVals[0].(common.Address))
+	assert.Equal(t, true, firstVals[1].(bool))
+
+	secondVals, err := args.Unpack((*writes)[1].Report.RawReport[cre.ReportMetadataHeaderLength:])
+	require.NoError(t, err)
+	assert.Equal(t, secondBorrowerAddress, secondVals[0].(common.Address))
+	assert.Equal(t, false, secondVals[1].(bool))
+}
+
+func TestOnCronTrigger_ReadsThresholdOnceRegardlessOfBorrowerCount(t *testing.T) {
+	thirdBorrower := common.HexToAddress("0x0000000000000000000000000000000000C0FFE")
+	stubHTTP(t, 200, `{"data":{"price":"1000"}}`)
+	positions := map[common.Address]position{
+		borrowerAddress:       {weiAmount(10, 18), weiAmount(100, 18)},
+		secondBorrowerAddress: {weiAmount(10, 18), weiAmount(100, 18)},
+		thirdBorrower:         {weiAmount(10, 18), weiAmount(100, 18)},
+	}
+	_, thresholdCalls := stubEVM(t, positions, big.NewInt(8000), evm.TxStatus_TX_STATUS_SUCCESS)
+	runtime := testutils.NewTeeRuntime(t, testSecrets())
+
+	config := configWithConsumer()
+	config.Borrowers = []string{borrowerAddress.Hex(), secondBorrowerAddress.Hex(), thirdBorrower.Hex()}
+
+	_, err := onCronTrigger(config, runtime, nil)
+	require.NoError(t, err)
+	assert.Equal(t, 1, *thresholdCalls, "liquidationThresholdBps() must be read once per tick, not once per borrower")
+}
+
+func TestOnCronTrigger_OneBorrowerFailingDoesNotAbortOthers(t *testing.T) {
+	stubHTTP(t, 200, `{"data":{"price":"1000"}}`)
+	positions := map[common.Address]position{
+		secondBorrowerAddress: {weiAmount(10, 18), weiAmount(100, 18)},
+	}
+	writes, _ := stubEVM(t, positions, big.NewInt(8000), evm.TxStatus_TX_STATUS_SUCCESS, borrowerAddress)
+	runtime := testutils.NewTeeRuntime(t, testSecrets())
+
+	config := configWithConsumer()
+	config.Borrowers = []string{borrowerAddress.Hex(), secondBorrowerAddress.Hex()}
+
+	result, err := onCronTrigger(config, runtime, nil)
+	require.NoError(t, err, "one borrower's read failure must not fail the whole tick when others succeed")
+	require.Len(t, *writes, 1)
+	assert.Contains(t, result, "checked 2 borrower(s): 0 eligible, 1 written, 1 failed")
 }
 
 func TestInitWorkflow_RegistersTeeHandler(t *testing.T) {

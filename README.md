@@ -28,10 +28,29 @@ go run ./cmd/wire-config --chain-id <chainId> --target staging   # or production
 ```
 
 This only ever touches those specific address fields — `vaultAddresses`,
-`borrower`, secret IDs, URLs, and everything else in each config are left
+`borrowers`, secret IDs, URLs, and everything else in each config are left
 exactly as they were, since a deployment record can't supply them. A field
 whose deployment address is the zero address (lending, when it wasn't
 deployed) is skipped rather than overwritten with a placeholder.
+
+`liquidation-protection`'s `borrowers` list isn't a deployment address either
+— it's discovered from on-chain deposit history, not wired from
+`deployments/<chainId>.json`:
+
+```bash
+go run ./cmd/discover-borrowers --chain-id <chainId> --target staging \
+  --rpc-url <url> --from-block <lendingPool's deployment block>
+```
+
+Scans `CollateralDeposited` logs on the deployed `LendingPool` for every
+address that has ever deposited, and patches the result into
+`workflows/liquidation-protection/config.<target>.json`'s `borrowers` array.
+Re-run it (and redeploy the workflow) whenever a new borrower opens a
+position — same operational shape as updating `vaultAddresses` by hand. Many
+free RPC tiers (Alchemy included) cap `eth_getLogs` at a small block range;
+`--chunk-blocks` (default 10) works around that, but a wider-range-tolerant
+public RPC (e.g. `ethereum-sepolia-rpc.publicnode.com`) with a larger
+`--chunk-blocks` scans much faster.
 
 ## Frontend
 

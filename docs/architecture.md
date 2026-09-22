@@ -86,6 +86,21 @@ operational cost worth automating later (e.g. a small service that watches
 `EscrowFactory`'s `VaultCreated` event and pushes config updates), not something
 to solve by re-architecting the trigger right now.
 
+## Known limitation: eth_getLogs range caps make log scanning chunked and slow
+
+`cmd/discover-borrowers` (see "Multi-borrower monitoring" above) needs to scan
+`CollateralDeposited` logs across the pool's entire history, but Alchemy's
+free tier caps `eth_getLogs` at a 10-block range per request — the same limit
+noted in an earlier fix for the escrow trade list, which hit it live in the
+frontend. Scanning ~16,000+ Sepolia blocks in 10-block windows is ~1,600
+requests, fast enough to also trip Alchemy's free-tier compute-unit
+throughput (`429 Too Many Requests`) if fired back-to-back. The tool's
+`--chunk-blocks` flag defaults to 10 for that RPC, but a public RPC without
+the restriction (e.g. `ethereum-sepolia-rpc.publicnode.com`, used to run this
+tool in practice) can scan the same range in a single request with a much
+larger chunk size — worth reaching for that instead of raising Alchemy's tier
+just to run an occasional operator tool.
+
 ## Known limitation: HTTP trigger delivery is not confidential
 
 Confirmed against the confidentiality-boundary docs before building
@@ -275,12 +290,32 @@ value and debt value at the liquidation threshold. Simple, but means a position
 right at the threshold offers a liquidator very little incentive to act quickly
 — a real money market would want a more deliberate bonus mechanism.
 
-**One workflow deployment per borrower** (like the RWA oracle watching one feed),
-not a list — same shape as `escrow-confirmation`'s original per-vault
-constraint, chosen for the same reason: no proven example of one cron invocation
-safely generating multiple reports in a single execution to build on, so scope
-to what's verified. Multi-borrower monitoring means either multiple deployments
-or a later, carefully-tested extension.
+**Multi-borrower monitoring, config-discovered rather than in-workflow.** This
+started as one workflow deployment per borrower (like the RWA oracle watching
+one feed), justified at the time by "no proven example of one cron invocation
+safely generating multiple reports in a single execution." That's since been
+extended, by combining two *separately* proven patterns rather than inventing
+a new one: `trade-expiry` already proves "discover N items, loop, generate +
+write one report per item, one failure doesn't abort the rest" (all in a
+plain, non-confidential `cre.Runtime`); this workflow already proved "one
+confidential HTTP fetch, cross `UsingTheDons()` exactly once." Combining them
+means the same single independently-fetched price and single
+`liquidationThresholdBps()` read (read once, not once per borrower — it's a
+pool-wide constant) get checked against every configured borrower's
+`positions()`, each producing its own report. `LiquidationConsumer` needed no
+changes at all — its `mapping(address => Verdict)` was already per-borrower.
+
+Borrower *discovery* deliberately stayed out of the workflow, though the evm
+capability's `FilterLogs` could technically do it: a Confidential Workflow has
+no persistent storage across cron ticks, so discovering borrowers in-workflow
+would mean rescanning `CollateralDeposited` logs from the pool's deployment
+block on *every single tick, forever* — unbounded and ever-growing, with no
+proven precedent here either. `cmd/discover-borrowers` scans those logs
+externally, on demand (chunked to survive free-tier `eth_getLogs` range caps —
+see the known limitation below), and patches the result into
+`Borrowers []string` in config — the same operational shape already accepted
+for `escrow-confirmation`'s `vaultAddresses`: re-run the tool to pick up a
+borrower who deposited since the last scan, then redeploy.
 
 **Confidential-workflow call ordering** — discovered while writing this
 workflow, worth keeping in mind for the next one: every proven example in this
