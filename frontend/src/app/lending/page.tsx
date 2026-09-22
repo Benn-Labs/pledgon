@@ -9,7 +9,7 @@ import { lendingPoolAbi, liquidationConsumerAbi } from "@/generated/contracts";
 import { addresses, isLendingConfigured } from "@/lib/addresses";
 import { useToken } from "@/hooks/useToken";
 import { useLendingPosition } from "@/hooks/useLendingPosition";
-import { useLendingBorrowers, useEnsureLendingBorrowerRegistered } from "@/hooks/useLendingBorrowers";
+import { useLendingBorrowers, useRegisterBorrowerFromDeposit } from "@/hooks/useLendingBorrowers";
 import { formatToken } from "@/lib/format";
 import { toast } from "@/lib/toast";
 import { LendingIcon } from "@/components/ui/icons";
@@ -69,7 +69,7 @@ export default function LendingPage() {
   const { decimals: debtDecimals, symbol: debtSymbol } = useToken(addresses.debtToken);
   const { hasPrice, healthFactor, ltvBps, liquidationThresholdBps, price, priceDecimals } = useLendingPosition();
   const { borrowers: atRiskBorrowers, isLoading: borrowersLoading } = useLendingBorrowers();
-  const ensureBorrowerRegistered = useEnsureLendingBorrowerRegistered();
+  const registerBorrowerFromDeposit = useRegisterBorrowerFromDeposit();
 
   const { data: position, refetch: refetchPosition } = useReadContract({
     address: addresses.lendingPool,
@@ -78,22 +78,6 @@ export default function LendingPage() {
     args: account ? [account] : undefined,
     query: { enabled: Boolean(addresses.lendingPool && account) },
   });
-
-  // Backfills the discovery table for positions that predate this feature —
-  // registration used to only fire right after a fresh depositCollateral()
-  // success, which left every already-open position invisible forever
-  // unless its owner happened to deposit again. Firing this whenever a
-  // connected wallet's existing position is read closes that gap: visiting
-  // this page with an open position is enough, no new deposit required.
-  // ensureBorrowerRegistered itself checks Supabase before ever prompting a
-  // signature, so this can safely re-run on every position refetch without
-  // re-asking an already-registered wallet to sign again.
-  useEffect(() => {
-    if (!account || !position) return;
-    const [collateralAmount] = position;
-    if (collateralAmount === 0n) return;
-    ensureBorrowerRegistered();
-  }, [account, position, ensureBorrowerRegistered]);
 
   const { data: collBalance, refetch: refetchCollBalance } = useReadContract({
     address: addresses.collateralToken,
@@ -164,11 +148,14 @@ export default function LendingPage() {
       refetchDebtAllowance();
       refetchTargetPosition();
       refetchTargetEligible();
-      // Borrower registration isn't handled here — refetchPosition() above
-      // updates `position`, which the backfill effect above already reacts
-      // to (and it's the one that actually checks Supabase before ever
-      // prompting a signature, deposit or not).
+      // Best-effort, silent — write-lending-borrower verifies on-chain
+      // whether this transaction actually emitted CollateralDeposited, so
+      // passing every successful tx's hash (not just known deposits) is
+      // safe: anything else just fails harmlessly server-side, and there's
+      // no wallet prompt either way to make that failure user-visible.
+      if (hash) registerBorrowerFromDeposit(hash);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- hash/registerBorrowerFromDeposit read at the moment of success, not meant to re-fire this on every render
   }, [
     isSuccess,
     refetchPosition,

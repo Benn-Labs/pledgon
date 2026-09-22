@@ -1,10 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { Address } from "viem";
-import { useAccount, useChainId, useReadContracts } from "wagmi";
+import { useChainId, useReadContracts } from "wagmi";
 import { lendingPoolAbi, liquidationConsumerAbi } from "@/generated/contracts";
 import { addresses } from "@/lib/addresses";
 import { supabase, isSupabaseConfigured } from "@/lib/supabaseClient";
-import { useSignedLendingBorrowerWrite } from "@/hooks/useSignedMetadataWrite";
 
 export type BorrowerRisk = {
   address: Address;
@@ -71,37 +70,32 @@ export function useLendingBorrowers() {
 }
 
 /**
- * Returns a function that registers the connected wallet in
- * `lending_borrowers` — but only if it isn't already there. Without this
- * check, calling the signed write directly on every "you have an open
- * position" render (e.g. every page load) would prompt a wallet signature
- * every single time, forever, for the same address — the read here is free
- * and silent (public RLS select, no wallet interaction), so it's always
- * worth doing before ever asking for a signature. Guarded per-account so it
- * only checks once per connect, not on every re-render.
+ * Returns a function that registers a depositCollateral() transaction's
+ * borrower in `lending_borrowers` — no wallet signature, no extra prompt.
+ * write-lending-borrower verifies the transaction itself on-chain (a real,
+ * mined, successful CollateralDeposited event on this pool) and takes the
+ * borrower address from that event, not from client input, so passing any
+ * other transaction's hash here just fails harmlessly server-side — safe to
+ * call after every successful lending-page transaction without first
+ * checking which action it was.
+ *
+ * This only catches deposits made *after* this mechanism shipped — a
+ * position opened earlier has no transaction hash sitting in this session to
+ * offer. Backfilling those is cmd/discover-borrowers' job (see its own
+ * comment): it reads the same CollateralDeposited history directly, with the
+ * operator's elevated trust, no per-address verification needed.
  */
-export function useEnsureLendingBorrowerRegistered() {
-  const { address: account } = useAccount();
+export function useRegisterBorrowerFromDeposit() {
   const chainId = useChainId();
-  const { write: registerBorrower } = useSignedLendingBorrowerWrite();
-  const attemptedRef = useRef<Address | null>(null);
 
-  return useCallback(() => {
-    const pool = addresses.lendingPool;
-    if (!account || !pool || !isSupabaseConfigured || !supabase) return;
-    if (attemptedRef.current === account) return;
-    attemptedRef.current = account;
-
-    supabase
-      .from("lending_borrowers")
-      .select("id")
-      .eq("chain_id", chainId)
-      .eq("lending_pool_address", pool.toLowerCase())
-      .eq("borrower_address", account.toLowerCase())
-      .maybeSingle()
-      .then(({ data }) => {
-        if (data) return; // already registered — never prompt again
-        registerBorrower({ chainId, lendingPoolAddress: pool });
+  return useCallback(
+    (txHash: `0x${string}`) => {
+      const pool = addresses.lendingPool;
+      if (!pool || !isSupabaseConfigured || !supabase) return;
+      supabase.functions.invoke("write-lending-borrower", {
+        body: { txHash, chainId, lendingPoolAddress: pool },
       });
-  }, [account, chainId, registerBorrower]);
+    },
+    [chainId],
+  );
 }

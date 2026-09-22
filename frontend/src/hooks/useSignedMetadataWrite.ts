@@ -140,28 +140,10 @@ export function useSignedEscrowMetadataWrite() {
   return { write, isPending, error };
 }
 
-export interface LendingBorrowerPayload extends Record<string, unknown> {
-  chainId: number;
-  lendingPoolAddress: Address;
-}
-
-/**
- * Registers the connected wallet as a candidate borrower for the Liquidate
- * page's discovery list — fired once, right after a depositCollateral()
- * receipt arrives (see lending/page.tsx). Pure discovery data, not
- * authoritative: see lending_borrowers' table comment in supabase/schema.sql.
- */
-export function useSignedLendingBorrowerWrite() {
-  const { address } = useAccount();
-  const { write: rawWrite, isPending, error } = useSignedMetadataWrite<LendingBorrowerPayload>("write-lending-borrower");
-  const write = useCallback(
-    (payload: LendingBorrowerPayload) =>
-      rawWrite(
-        `lending:${payload.chainId}:${payload.lendingPoolAddress.toLowerCase()}:${(address ?? "").toLowerCase()}`,
-        "register as a lending borrower for liquidation discovery",
-        payload,
-      ),
-    [rawWrite, address],
-  );
-  return { write, isPending, error };
-}
+// Lending-borrower registration deliberately does NOT go through
+// useSignedMetadataWrite — see useRegisterBorrowerFromDeposit in
+// useLendingBorrowers.ts. A depositCollateral() transaction is already
+// public, permanent on-chain data the instant it's mined, so verifying it by
+// transaction hash needs no wallet signature at all, unlike the
+// listing/escrow metadata writes above (which write content that has no
+// on-chain equivalent to verify against).
