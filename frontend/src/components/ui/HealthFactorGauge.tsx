@@ -6,8 +6,16 @@ function arcPoint(cx: number, cy: number, r: number, fraction: number) {
 function describeArc(cx: number, cy: number, r: number, startFraction: number, endFraction: number) {
   const start = arcPoint(cx, cy, r, startFraction);
   const end = arcPoint(cx, cy, r, endFraction);
-  const largeArc = endFraction - startFraction > 0.5 ? 1 : 0;
-  return `M ${start.x} ${start.y} A ${r} ${r} 0 ${largeArc} 1 ${end.x} ${end.y}`;
+  // Fractions span a 180° semicircle (0 = left, 1 = right), so the arc from
+  // startFraction to endFraction — swept in the increasing-angle direction
+  // (sweep-flag 1) — is always <=180° for any 0<=start<=end<=1. The
+  // large-arc-flag must therefore always be 0. SVG's large/small-arc choice
+  // is relative to the *full* 360° circle, not this component's 180° range,
+  // so a `> 0.5` check here sends anything over a 90° sweep (LTV over 50%)
+  // the long way around the invisible bottom half of the circle — clipped
+  // by the viewBox, rendering as two disconnected end caps instead of one
+  // continuous arc.
+  return `M ${start.x} ${start.y} A ${r} ${r} 0 0 1 ${end.x} ${end.y}`;
 }
 
 const CX = 100;
