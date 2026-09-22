@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Address } from "viem";
-import { useChainId, useReadContracts } from "wagmi";
+import { useAccount, useChainId, useReadContracts } from "wagmi";
 import { lendingPoolAbi, liquidationConsumerAbi } from "@/generated/contracts";
 import { addresses } from "@/lib/addresses";
 import { supabase, isSupabaseConfigured } from "@/lib/supabaseClient";
+import { useSignedLendingBorrowerWrite } from "@/hooks/useSignedMetadataWrite";
 
 export type BorrowerRisk = {
   address: Address;
@@ -67,4 +68,40 @@ export function useLendingBorrowers() {
     .filter((b): b is BorrowerRisk => b !== null && b.debtAmount > 0n);
 
   return { borrowers, isLoading: candidatesLoading || (candidates.length > 0 && onChainLoading) };
+}
+
+/**
+ * Returns a function that registers the connected wallet in
+ * `lending_borrowers` — but only if it isn't already there. Without this
+ * check, calling the signed write directly on every "you have an open
+ * position" render (e.g. every page load) would prompt a wallet signature
+ * every single time, forever, for the same address — the read here is free
+ * and silent (public RLS select, no wallet interaction), so it's always
+ * worth doing before ever asking for a signature. Guarded per-account so it
+ * only checks once per connect, not on every re-render.
+ */
+export function useEnsureLendingBorrowerRegistered() {
+  const { address: account } = useAccount();
+  const chainId = useChainId();
+  const { write: registerBorrower } = useSignedLendingBorrowerWrite();
+  const attemptedRef = useRef<Address | null>(null);
+
+  return useCallback(() => {
+    const pool = addresses.lendingPool;
+    if (!account || !pool || !isSupabaseConfigured || !supabase) return;
+    if (attemptedRef.current === account) return;
+    attemptedRef.current = account;
+
+    supabase
+      .from("lending_borrowers")
+      .select("id")
+      .eq("chain_id", chainId)
+      .eq("lending_pool_address", pool.toLowerCase())
+      .eq("borrower_address", account.toLowerCase())
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data) return; // already registered — never prompt again
+        registerBorrower({ chainId, lendingPoolAddress: pool });
+      });
+  }, [account, chainId, registerBorrower]);
 }

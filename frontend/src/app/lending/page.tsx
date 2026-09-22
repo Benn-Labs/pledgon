@@ -1,16 +1,15 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { erc20Abi, isAddress, parseUnits } from "viem";
 import type { Address } from "viem";
-import { useAccount, useChainId, useReadContract, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
+import { useAccount, useReadContract, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import { lendingPoolAbi, liquidationConsumerAbi } from "@/generated/contracts";
 import { addresses, isLendingConfigured } from "@/lib/addresses";
 import { useToken } from "@/hooks/useToken";
 import { useLendingPosition } from "@/hooks/useLendingPosition";
-import { useLendingBorrowers } from "@/hooks/useLendingBorrowers";
-import { useSignedLendingBorrowerWrite } from "@/hooks/useSignedMetadataWrite";
+import { useLendingBorrowers, useEnsureLendingBorrowerRegistered } from "@/hooks/useLendingBorrowers";
 import { formatToken } from "@/lib/format";
 import { toast } from "@/lib/toast";
 import { LendingIcon } from "@/components/ui/icons";
@@ -65,13 +64,12 @@ function ActionPanel({
 
 export default function LendingPage() {
   const { address: account } = useAccount();
-  const chainId = useChainId();
 
   const { decimals: collDecimals, symbol: collSymbol } = useToken(addresses.collateralToken);
   const { decimals: debtDecimals, symbol: debtSymbol } = useToken(addresses.debtToken);
   const { hasPrice, healthFactor, ltvBps, liquidationThresholdBps, price, priceDecimals } = useLendingPosition();
   const { borrowers: atRiskBorrowers, isLoading: borrowersLoading } = useLendingBorrowers();
-  const { write: registerBorrower } = useSignedLendingBorrowerWrite();
+  const ensureBorrowerRegistered = useEnsureLendingBorrowerRegistered();
 
   const { data: position, refetch: refetchPosition } = useReadContract({
     address: addresses.lendingPool,
@@ -87,16 +85,15 @@ export default function LendingPage() {
   // unless its owner happened to deposit again. Firing this whenever a
   // connected wallet's existing position is read closes that gap: visiting
   // this page with an open position is enough, no new deposit required.
-  // Guarded per-account so it fires once per connect, not on every refetch.
-  const registeredForRef = useRef<Address | null>(null);
+  // ensureBorrowerRegistered itself checks Supabase before ever prompting a
+  // signature, so this can safely re-run on every position refetch without
+  // re-asking an already-registered wallet to sign again.
   useEffect(() => {
-    if (!account || !position || !addresses.lendingPool) return;
+    if (!account || !position) return;
     const [collateralAmount] = position;
     if (collateralAmount === 0n) return;
-    if (registeredForRef.current === account) return;
-    registeredForRef.current = account;
-    registerBorrower({ chainId, lendingPoolAddress: addresses.lendingPool });
-  }, [account, position, chainId, registerBorrower]);
+    ensureBorrowerRegistered();
+  }, [account, position, ensureBorrowerRegistered]);
 
   const { data: collBalance, refetch: refetchCollBalance } = useReadContract({
     address: addresses.collateralToken,
@@ -138,9 +135,6 @@ export default function LendingPage() {
   const [repayAmount, setRepayAmount] = useState("");
   const [borrowAmount, setBorrowAmount] = useState("");
   const [liquidateTarget, setLiquidateTarget] = useState("");
-  // Only ever read inside the isSuccess effect below, never rendered — a ref
-  // avoids that effect calling setState synchronously on every success.
-  const lastActionRef = useRef<"deposit" | "other" | null>(null);
 
   const liquidateTargetAddress = isAddress(liquidateTarget) ? (liquidateTarget as Address) : undefined;
 
@@ -170,17 +164,11 @@ export default function LendingPage() {
       refetchDebtAllowance();
       refetchTargetPosition();
       refetchTargetEligible();
-      // Register this wallet as a candidate borrower for the Liquidate
-      // page's discovery list — see useLendingBorrowers.ts. Only after a
-      // deposit specifically, since that's the action that actually opens
-      // or grows a position; every other action shares this same
-      // useWriteContract instance, hence tracking which one just succeeded.
-      if (lastActionRef.current === "deposit" && addresses.lendingPool) {
-        registerBorrower({ chainId, lendingPoolAddress: addresses.lendingPool });
-      }
-      lastActionRef.current = null;
+      // Borrower registration isn't handled here — refetchPosition() above
+      // updates `position`, which the backfill effect above already reacts
+      // to (and it's the one that actually checks Supabase before ever
+      // prompting a signature, deposit or not).
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- registerBorrower/chainId read at the moment of success, not meant to re-fire this on every render
   }, [
     isSuccess,
     refetchPosition,
@@ -223,7 +211,6 @@ export default function LendingPage() {
 
   function approveCollateral() {
     if (!addresses.lendingPool || !addresses.collateralToken || collDecimals === undefined) return;
-    lastActionRef.current = "other";
     writeContract({
       address: addresses.collateralToken,
       abi: erc20Abi,
@@ -234,7 +221,6 @@ export default function LendingPage() {
 
   function depositCollateral() {
     if (!addresses.lendingPool || collDecimals === undefined) return;
-    lastActionRef.current = "deposit";
     writeContract({
       address: addresses.lendingPool,
       abi: lendingPoolAbi,
@@ -245,7 +231,6 @@ export default function LendingPage() {
 
   function withdrawCollateral() {
     if (!addresses.lendingPool || collDecimals === undefined) return;
-    lastActionRef.current = "other";
     writeContract({
       address: addresses.lendingPool,
       abi: lendingPoolAbi,
@@ -256,7 +241,6 @@ export default function LendingPage() {
 
   function approveDebtForRepay() {
     if (!addresses.lendingPool || !addresses.debtToken || debtDecimals === undefined) return;
-    lastActionRef.current = "other";
     writeContract({
       address: addresses.debtToken,
       abi: erc20Abi,
@@ -267,7 +251,6 @@ export default function LendingPage() {
 
   function repay() {
     if (!addresses.lendingPool || debtDecimals === undefined) return;
-    lastActionRef.current = "other";
     writeContract({
       address: addresses.lendingPool,
       abi: lendingPoolAbi,
@@ -278,7 +261,6 @@ export default function LendingPage() {
 
   function borrow() {
     if (!addresses.lendingPool || debtDecimals === undefined) return;
-    lastActionRef.current = "other";
     writeContract({
       address: addresses.lendingPool,
       abi: lendingPoolAbi,
@@ -289,7 +271,6 @@ export default function LendingPage() {
 
   function approveDebtForLiquidate() {
     if (!addresses.lendingPool || !addresses.debtToken) return;
-    lastActionRef.current = "other";
     writeContract({
       address: addresses.debtToken,
       abi: erc20Abi,
@@ -300,7 +281,6 @@ export default function LendingPage() {
 
   function liquidate() {
     if (!addresses.lendingPool || !liquidateTargetAddress) return;
-    lastActionRef.current = "other";
     writeContract({
       address: addresses.lendingPool,
       abi: lendingPoolAbi,
