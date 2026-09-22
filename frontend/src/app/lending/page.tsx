@@ -81,6 +81,23 @@ export default function LendingPage() {
     query: { enabled: Boolean(addresses.lendingPool && account) },
   });
 
+  // Backfills the discovery table for positions that predate this feature —
+  // registration used to only fire right after a fresh depositCollateral()
+  // success, which left every already-open position invisible forever
+  // unless its owner happened to deposit again. Firing this whenever a
+  // connected wallet's existing position is read closes that gap: visiting
+  // this page with an open position is enough, no new deposit required.
+  // Guarded per-account so it fires once per connect, not on every refetch.
+  const registeredForRef = useRef<Address | null>(null);
+  useEffect(() => {
+    if (!account || !position || !addresses.lendingPool) return;
+    const [collateralAmount] = position;
+    if (collateralAmount === 0n) return;
+    if (registeredForRef.current === account) return;
+    registeredForRef.current = account;
+    registerBorrower({ chainId, lendingPoolAddress: addresses.lendingPool });
+  }, [account, position, chainId, registerBorrower]);
+
   const { data: collBalance, refetch: refetchCollBalance } = useReadContract({
     address: addresses.collateralToken,
     abi: erc20Abi,
