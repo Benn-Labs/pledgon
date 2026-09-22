@@ -61,15 +61,17 @@ export function HealthFactorGauge({
             <path d={valuePath} fill="none" stroke="currentColor" strokeWidth={14} strokeLinecap="round" className={colorClass} />
           )}
           {thresholdPoint && (
-            <circle cx={thresholdPoint.x} cy={thresholdPoint.y} r={5} className="fill-ink-950 stroke-ink-400" strokeWidth={2} />
+            <circle cx={thresholdPoint.x} cy={thresholdPoint.y} r={5} className="fill-danger-500 stroke-ink-950" strokeWidth={1.5} />
           )}
         </svg>
         <div className="absolute inset-x-0 top-[78%] -translate-y-1/2 text-center">
-          <div className={`font-mono font-bold text-lg ${colorClass}`}>{centerLabel}</div>
+          <div className={`font-bold text-lg ${colorClass}`}>{centerLabel}</div>
         </div>
       </div>
       {thresholdFraction !== undefined && (
-        <p className="text-xs text-ink-500 mt-2 text-center leading-tight">Liquidation at {(thresholdFraction * 100).toFixed(0)}%</p>
+        <p className="text-xs text-danger-400 font-medium mt-2 text-center leading-tight">
+          Liquidation · {(thresholdFraction * 100).toFixed(0)}%
+        </p>
       )}
     </div>
   );

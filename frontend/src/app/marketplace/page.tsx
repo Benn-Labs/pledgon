@@ -83,7 +83,7 @@ export default function BrowsePage() {
     <div className="fade-in">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-white">Marketplace</h1>
+          <h1 className="text-3xl font-display text-white">Marketplace</h1>
           <p className="text-ink-400 mt-1">Browse active escrow listings with milestone-based payments</p>
         </div>
         <Link

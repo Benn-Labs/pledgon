@@ -386,7 +386,7 @@ export default function EscrowListPage() {
     <div className="fade-in">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-white">Escrow</h1>
+          <h1 className="text-3xl font-display text-white">Escrow</h1>
           <p className="text-ink-400 mt-1">Every trade you&apos;re a party to — as buyer, seller, or arbiter</p>
         </div>
         <Link

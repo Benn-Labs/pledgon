@@ -172,7 +172,7 @@ export default function ListingDetailPage() {
               <StatusBadge status={LISTING_STATUS[status ?? 0]} />
               <span className="text-sm text-ink-500 font-mono">Listing #{id}</span>
             </div>
-            <h1 className="text-2xl font-bold mb-2 text-white">{metadata.title || metadataURI || `Listing #${id}`}</h1>
+            <h1 className="text-3xl font-display mb-2 text-white">{metadata.title || metadataURI || `Listing #${id}`}</h1>
             {metadata.description && <p className="text-sm text-ink-300 mb-4">{metadata.description}</p>}
             {(metadata.terms.category || metadata.terms.location || metadata.terms.conditionNotes) && (
               <div className="flex flex-wrap gap-2 mb-4">

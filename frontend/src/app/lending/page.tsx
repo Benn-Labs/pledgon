@@ -165,7 +165,7 @@ export default function LendingPage() {
     return (
       <div className="fade-in max-w-lg mx-auto text-center py-16">
         <LendingIcon className="w-10 h-10 text-ink-600 mx-auto mb-4" />
-        <h1 className="text-xl font-bold text-white mb-2">Lending isn&apos;t deployed on this network</h1>
+        <h1 className="text-xl font-display text-white mb-2">Lending isn&apos;t deployed on this network</h1>
         <p className="text-sm text-ink-400">
           The contracts exist (<code className="font-mono text-xs">LendingPool</code>,{" "}
           <code className="font-mono text-xs">LendingOracleConsumer</code>,{" "}
@@ -190,7 +190,7 @@ export default function LendingPage() {
     <div className="fade-in max-w-4xl mx-auto">
       <div className="flex items-start justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-white">Lending</h1>
+          <h1 className="text-3xl font-display text-white">Lending</h1>
           <p className="text-ink-400 mt-1">Deposit collateral, borrow against it, with DON-corroborated liquidation protection</p>
         </div>
         <Link

@@ -16,7 +16,8 @@ import { TradeStatusBadge, VerificationBadge } from "@/components/ui/badges";
 import { TradeProgressBar } from "@/components/ui/TradeProgressBar";
 import { CountdownBadge } from "@/components/ui/CountdownBadge";
 import { HealthFactorGauge } from "@/components/ui/HealthFactorGauge";
-import { MarketplaceIcon, EscrowIcon, LendingIcon, ShieldAlertIcon, SwapIcon, FaucetIcon } from "@/components/ui/icons";
+import { TokenAmount } from "@/components/ui/TokenAmount";
+import { HomeIcon, MarketplaceIcon, EscrowIcon, LendingIcon, ShieldAlertIcon, SwapIcon, FaucetIcon } from "@/components/ui/icons";
 import type { ActivityTone } from "@/lib/activityFeed";
 
 const CLOSED_STATUSES = new Set(["Completed", "Cancelled"]);
@@ -70,7 +71,7 @@ export default function DashboardPage() {
             />
           </svg>
         </div>
-        <h1 className="text-2xl font-bold text-white mb-2">Welcome to PLEDGON</h1>
+        <h1 className="text-3xl font-display text-white mb-2">Welcome to PLEDGON</h1>
         <p className="text-ink-400">
           Milestone escrow, independently verified — connect a wallet to browse the marketplace, view your active
           trades, and see your compliance standing.
@@ -83,8 +84,8 @@ export default function DashboardPage() {
     <div className="fade-in">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <div>
-          <p className="text-xs font-semibold text-ink-500 uppercase tracking-wider mb-1">Overview</p>
-          <h1 className="text-2xl font-bold tracking-tight text-white">Dashboard</h1>
+          <p className="text-[11px] font-bold text-ink-400 uppercase tracking-[0.09em] mb-1">Overview</p>
+          <h1 className="text-3xl font-display text-white">Dashboard</h1>
           <p className="text-ink-400 mt-1">
             {account?.slice(0, 6)}…{account?.slice(-4)}
           </p>
@@ -113,9 +114,16 @@ export default function DashboardPage() {
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         <Link href="/escrow" className="deal-card block bg-ink-900 border border-ink-800 rounded-xl p-5">
-          <div className="text-3xl font-bold font-mono text-white">{activeCount}</div>
-          <div className="text-sm text-ink-400 mt-1">Active Trades</div>
-          {activeCount === 0 && <div className="text-xs text-ink-500 mt-1">No trades in progress</div>}
+          <div className="flex items-center justify-between mb-4">
+            <div className="w-9 h-9 rounded-lg bg-trust-500/15 flex items-center justify-center shrink-0">
+              <svg className="w-4 h-4 text-trust-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4l8 4-8 4-8-4 8-4zm-8 8l8 4 8-4M4 16l8 4 8-4" />
+              </svg>
+            </div>
+            <span className="text-xs font-bold text-ink-400 uppercase tracking-wider">Active Trades</span>
+          </div>
+          <div className="text-5xl font-extrabold text-white">{activeCount}</div>
+          {activeCount === 0 && <div className="text-sm text-ink-300 mt-1">No trades in progress</div>}
         </Link>
         <Link
           href="/escrow"
@@ -123,18 +131,40 @@ export default function DashboardPage() {
             attentionCount > 0 ? "bg-warning-500/10 border-warning-500/30" : "bg-ink-900 border-ink-800"
           }`}
         >
-          <div className={`text-3xl font-bold font-mono ${attentionCount > 0 ? "text-warning-400" : "text-white"}`}>
+          <div className="flex items-center justify-between mb-4">
+            <div
+              className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
+                attentionCount > 0 ? "bg-warning-500/15" : "bg-success-500/15"
+              }`}
+            >
+              {attentionCount > 0 ? (
+                <svg className="w-4 h-4 text-warning-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              ) : (
+                <svg className="w-4 h-4 text-success-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              )}
+            </div>
+            <span className={`text-xs font-bold uppercase tracking-wider ${attentionCount > 0 ? "text-warning-400" : "text-ink-400"}`}>
+              Needs Attention
+            </span>
+          </div>
+          <div className={`text-5xl font-extrabold ${attentionCount > 0 ? "text-warning-400" : "text-white"}`}>
             {attentionCount}
           </div>
-          <div className={`text-sm mt-1 ${attentionCount > 0 ? "text-warning-400" : "text-ink-400"}`}>
-            Needs Your Attention
-          </div>
-          {attentionCount === 0 && <div className="text-xs text-ink-500 mt-1">You&apos;re all caught up</div>}
+          {attentionCount === 0 && <div className="text-sm text-ink-300 mt-1">You&apos;re all caught up</div>}
         </Link>
         <Link href="/marketplace" className="deal-card block bg-ink-900 border border-ink-800 rounded-xl p-5">
-          <div className="text-3xl font-bold font-mono text-white">{listingCount?.toString() ?? "…"}</div>
-          <div className="text-sm text-ink-400 mt-1">Marketplace Listings</div>
-          {listingCount === 0n && <div className="text-xs text-ink-500 mt-1">Nothing listed yet</div>}
+          <div className="flex items-center justify-between mb-4">
+            <div className="w-9 h-9 rounded-lg bg-warning-500/15 flex items-center justify-center shrink-0">
+              <HomeIcon className="w-4 h-4 text-warning-400" />
+            </div>
+            <span className="text-xs font-bold text-ink-400 uppercase tracking-wider">Marketplace Listings</span>
+          </div>
+          <div className="text-5xl font-extrabold text-white">{listingCount?.toString() ?? "…"}</div>
+          {listingCount === 0n && <div className="text-sm text-ink-300 mt-1">Nothing listed yet</div>}
         </Link>
       </div>
 
@@ -158,93 +188,109 @@ export default function DashboardPage() {
 
       <div className="bg-ink-900 border border-ink-800 rounded-xl p-6 mb-6">
         <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 rounded-lg bg-success-500/20 flex items-center justify-center shrink-0">
-            <svg className="w-5 h-5 text-success-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="w-10 h-10 rounded-xl bg-trust-500/15 flex items-center justify-center shrink-0">
+            <svg className="w-5 h-5 text-trust-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 strokeWidth={2}
-                d="M12 8c-1.657 0-3 .672-3 1.5S10.343 11 12 11s3 .672 3 1.5-1.343 1.5-3 1.5m0-6c1.11 0 2.08.402 2.599 1M12 8V6.5m0 1.5v6m0 0V17m0-1.5c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                d="M12 4l8 4-8 4-8-4 8-4zm-8 8l8 4 8-4M4 16l8 4 8-4"
               />
             </svg>
           </div>
           <div>
             <h2 className="font-semibold text-white">Total Value Locked</h2>
-            <p className="text-sm text-ink-400">Real on-chain balances — grouped by what the value actually is, not one pile of numbers</p>
+            <p className="text-sm text-ink-400">Real on-chain balances, grouped by what the value actually is</p>
           </div>
         </div>
 
         {tvlLoading ? (
           <p className="text-sm text-ink-400">Loading…</p>
         ) : (
-          <div className="space-y-5">
+          <div className="border-t border-ink-800 pt-5 grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <div className="text-xs font-semibold text-ink-400 uppercase tracking-wide mb-2">Escrow Vaults</div>
+              <div className="flex items-center gap-1.5 text-xs font-bold text-ink-400 uppercase tracking-wider mb-3">
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
+                  />
+                </svg>
+                Escrow Vaults
+              </div>
               {escrowTvl.length === 0 ? (
-                <p className="text-sm text-ink-500">Nothing in escrow yet.</p>
+                <div className="rounded-lg border border-ink-800 py-8 px-4 flex flex-col items-center text-center">
+                  <svg className="w-7 h-7 text-ink-600 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={1.5}
+                      d="M3 8l3-5h12l3 5m-18 0v10a1 1 0 001 1h14a1 1 0 001-1V8m-18 0h18M9 12h6"
+                    />
+                  </svg>
+                  <p className="text-white font-semibold">Nothing in escrow yet</p>
+                  <p className="text-xs text-ink-500 mt-1">Held until milestones release it.</p>
+                </div>
               ) : (
                 <div className="flex flex-wrap gap-3">
                   {escrowTvl.map((t) => (
                     <div key={t.token} className="px-4 py-3 rounded-lg bg-ink-800/50 border border-ink-700">
-                      <div className="text-lg font-bold font-mono text-white">{formatToken(t.amount, t.decimals, t.symbol)}</div>
+                      <TokenAmount amount={t.amount} decimals={t.decimals} symbol={t.symbol} />
                     </div>
                   ))}
                 </div>
               )}
-              <p className="text-xs text-ink-500 mt-2">
-                Payment currently in flight across trades — held by each trade&apos;s vault until milestones release it.
-              </p>
             </div>
 
             {(lendingCollateral || lendingLiquidity) && (
               <div>
-                <div className="text-xs font-semibold text-ink-400 uppercase tracking-wide mb-2">Lending Pool</div>
-                <div className="flex flex-wrap gap-3">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-ink-400 uppercase tracking-wider mb-3">
+                  <LendingIcon className="w-3.5 h-3.5" />
+                  Lending Pool
+                </div>
+                <div className="grid grid-cols-2 gap-3">
                   {lendingCollateral && (
                     <div className="px-4 py-3 rounded-lg bg-ink-800/50 border border-ink-700">
-                      <div className="text-lg font-bold font-mono text-white">
-                        {formatToken(lendingCollateral.amount, lendingCollateral.decimals, lendingCollateral.symbol)}
+                      <div className="flex items-center gap-1.5 text-xs text-ink-400 mb-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-warning-400 shrink-0" />
+                        Collateral Deposited
                       </div>
-                      <div className="text-xs text-ink-500 mt-0.5">Collateral deposited</div>
+                      <TokenAmount amount={lendingCollateral.amount} decimals={lendingCollateral.decimals} symbol={lendingCollateral.symbol} />
                     </div>
                   )}
                   {lendingLiquidity && (
                     <div className="px-4 py-3 rounded-lg bg-ink-800/50 border border-ink-700">
-                      <div className="text-lg font-bold font-mono text-white">
-                        {formatToken(lendingLiquidity.amount, lendingLiquidity.decimals, lendingLiquidity.symbol)}
+                      <div className="flex items-center gap-1.5 text-xs text-ink-400 mb-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-trust-400 shrink-0" />
+                        Available to Borrow
                       </div>
-                      <div className="text-xs text-ink-500 mt-0.5">Available to borrow</div>
+                      <TokenAmount amount={lendingLiquidity.amount} decimals={lendingLiquidity.decimals} symbol={lendingLiquidity.symbol} />
                     </div>
                   )}
                 </div>
-                <p className="text-xs text-ink-500 mt-2">
-                  These aren&apos;t the same kind of value: <span className="text-ink-400">Collateral deposited</span> is{" "}
-                  {lendingCollateral?.symbol ?? "the collateral token"} locked by borrowers, securing what they owe — it
-                  isn&apos;t available to anyone until withdrawn or liquidated.{" "}
-                  <span className="text-ink-400">Available to borrow</span> is{" "}
-                  {lendingLiquidity?.symbol ?? "the debt token"} sitting in the pool waiting to be lent out — supply, not
-                  demand. It isn&apos;t owned or locked by any one depositor, and on this deployment it&apos;s testnet
-                  liquidity minted directly into the pool, not something users supplied.
-                </p>
+                <div className="flex items-start gap-2 mt-3 p-3 rounded-lg bg-ink-800/30 border border-ink-800">
+                  <svg className="w-3.5 h-3.5 text-ink-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <p className="text-xs text-ink-500">Different assets — never combined into one figure.</p>
+                </div>
               </div>
             )}
           </div>
         )}
-        <p className="text-xs text-ink-500 mt-4 pt-3 border-t border-ink-800">
-          Never combined into one figure, within or across these groups — there&apos;s no price oracle here to convert
-          different payment tokens into a common unit.
-        </p>
       </div>
 
       {isLendingConfigured && (
         <div className="bg-ink-900 border border-ink-800 rounded-xl p-6 mb-6">
           <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 rounded-lg bg-warning-500/20 flex items-center justify-center shrink-0">
+            <div className="w-10 h-10 rounded-lg bg-warning-500/15 flex items-center justify-center shrink-0">
               <LendingIcon className="w-5 h-5 text-warning-400" />
             </div>
             <div>
               <h2 className="font-semibold text-white">Lending Position</h2>
-              <p className="text-sm text-ink-400">Your collateral, debt, and liquidation-protection standing</p>
+              <p className="text-sm text-ink-400">Your collateral, debt, and liquidation-protection standing.</p>
             </div>
           </div>
 
@@ -252,29 +298,12 @@ export default function DashboardPage() {
             <p className="text-sm text-ink-400">No open position yet — deposit collateral on the Lending page to get started.</p>
           ) : (
             <>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div className="p-3 rounded-lg bg-ink-800/50 border border-ink-700">
-                  <div className="text-xs text-ink-400 mb-1">Collateral</div>
-                  <div className="font-mono text-sm text-ink-100">
-                    {lending.collDecimals !== undefined
-                      ? formatToken(lending.collateralAmount, lending.collDecimals, lending.collSymbol)
-                      : "…"}
+              <div className="grid grid-cols-2 sm:grid-cols-7 gap-3">
+                <div className="col-span-2 p-3 rounded-lg bg-ink-800/50 border border-ink-700 flex flex-col items-center justify-center">
+                  <div className="flex items-center gap-1.5 text-xs text-ink-400 uppercase tracking-wider font-bold mb-1 self-start">
+                    <ShieldAlertIcon className="w-3.5 h-3.5 text-success-400" />
+                    Health Factor
                   </div>
-                </div>
-                <div className="p-3 rounded-lg bg-ink-800/50 border border-ink-700">
-                  <div className="text-xs text-ink-400 mb-1">Debt</div>
-                  <div className="font-mono text-sm text-ink-100">
-                    {lending.debtDecimals !== undefined ? formatToken(lending.debtAmount, lending.debtDecimals, lending.debtSymbol) : "…"}
-                  </div>
-                </div>
-                <div className="p-3 rounded-lg bg-ink-800/50 border border-ink-700">
-                  <div className="text-xs text-ink-400 mb-1">Liquidation Threshold</div>
-                  <div className="font-mono text-sm text-ink-100">
-                    {lending.liquidationThresholdBps !== undefined ? `${Number(lending.liquidationThresholdBps) / 100}%` : "…"}
-                  </div>
-                </div>
-                <div className="p-3 rounded-lg bg-ink-800/50 border border-ink-700 flex flex-col items-center justify-center">
-                  <div className="text-xs text-ink-400 mb-1 self-start">Health Factor</div>
                   <HealthFactorGauge
                     hasDebt={lending.debtAmount > 0n}
                     hasPrice={lending.hasPrice}
@@ -283,20 +312,49 @@ export default function DashboardPage() {
                     healthFactor={lending.healthFactor}
                   />
                 </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 mt-3">
                 <div className="p-3 rounded-lg bg-ink-800/50 border border-ink-700">
-                  <div className="text-xs text-ink-400 mb-1">Current LTV</div>
-                  <div className="font-mono text-sm text-ink-100">
+                  <div className="text-xs text-ink-400 mb-1.5">Collateral</div>
+                  {lending.collDecimals !== undefined ? (
+                    <TokenAmount
+                      amount={lending.collateralAmount}
+                      decimals={lending.collDecimals}
+                      symbol={lending.collSymbol}
+                      className="text-sm font-bold text-white"
+                    />
+                  ) : (
+                    <span className="text-sm text-ink-500">…</span>
+                  )}
+                </div>
+                <div className="p-3 rounded-lg bg-ink-800/50 border border-ink-700">
+                  <div className="text-xs text-ink-400 mb-1.5">Debt</div>
+                  {lending.debtDecimals !== undefined ? (
+                    <TokenAmount
+                      amount={lending.debtAmount}
+                      decimals={lending.debtDecimals}
+                      symbol={lending.debtSymbol}
+                      className="text-sm font-bold text-white"
+                    />
+                  ) : (
+                    <span className="text-sm text-ink-500">…</span>
+                  )}
+                </div>
+                <div className="p-3 rounded-lg bg-ink-800/50 border border-ink-700">
+                  <div className="text-xs text-ink-400 mb-1.5">Liq. Threshold</div>
+                  <div className="text-sm font-bold text-white">
+                    {lending.liquidationThresholdBps !== undefined ? `${Number(lending.liquidationThresholdBps) / 100}%` : "…"}
+                  </div>
+                </div>
+                <div className="p-3 rounded-lg bg-ink-800/50 border border-ink-700">
+                  <div className="text-xs text-ink-400 mb-1.5">Current LTV</div>
+                  <div className="text-sm font-bold text-white">
                     {lending.debtAmount === 0n ? "0%" : lending.ltvBps !== undefined ? `${Number(lending.ltvBps) / 100}%` : "—"}
                   </div>
                 </div>
                 <div className="p-3 rounded-lg bg-ink-800/50 border border-ink-700">
-                  <div className="text-xs text-ink-400 mb-1">Est. Liquidation Price</div>
-                  <div className="font-mono text-sm text-ink-100">
+                  <div className="text-xs text-ink-400 mb-1.5">Est. Liq. Price</div>
+                  <div className="text-sm font-bold text-white">
                     {lending.debtAmount === 0n
-                      ? "N/A — no debt"
+                      ? "N/A"
                       : lending.liquidationPrice !== undefined
                         ? `${(Number(lending.liquidationPrice) / 10 ** lending.priceDecimals).toLocaleString(undefined, { maximumFractionDigits: 4 })} ${lending.debtSymbol ?? ""}`
                         : "—"}
@@ -305,11 +363,12 @@ export default function DashboardPage() {
               </div>
 
               {!lending.hasPrice && lending.debtAmount > 0n && (
-                <p className="text-xs text-warning-400 mt-3">
-                  Health Factor, LTV, and Liquidation Price need a live price feed from the liquidation-protection DON
-                  workflow — none has ever reported here, so these show as "—" rather than a fabricated number. They'll
-                  start showing real figures automatically the moment one does, no app update needed.
-                </p>
+                <div className="flex items-start gap-2 mt-3 p-3 rounded-lg bg-warning-500/10 border border-warning-500/20">
+                  <svg className="w-3.5 h-3.5 text-warning-400 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <p className="text-xs text-warning-400">Needs a live price feed to show real figures — none has reported yet.</p>
+                </div>
               )}
             </>
           )}
@@ -336,18 +395,46 @@ export default function DashboardPage() {
               Closed ({closedTrades.length})
             </button>
           </div>
-          <Link href="/escrow" className="text-sm text-trust-400 hover:text-trust-300 font-medium">
+          <Link href="/escrow" className="flex items-center gap-0.5 text-sm text-trust-400 hover:text-trust-300 font-medium">
             View all
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
           </Link>
         </div>
         {recentLoading ? (
           <p className="text-sm text-ink-400">Loading…</p>
         ) : visibleTrades.length === 0 ? (
-          <p className="text-sm text-ink-400">
-            {tradeTab === "active"
-              ? "No active trades — create an escrow or purchase a listing to get started."
-              : "No closed trades yet."}
-          </p>
+          <div className="rounded-lg border border-ink-800 py-10 px-4 flex flex-col items-center text-center">
+            <svg className="w-8 h-8 text-ink-600 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.5}
+                d="M3 8l3-5h12l3 5m-18 0v10a1 1 0 001 1h14a1 1 0 001-1V8m-18 0h18M9 12h6"
+              />
+            </svg>
+            <p className="text-white font-semibold">{tradeTab === "active" ? "No active trades" : "No closed trades yet"}</p>
+            {tradeTab === "active" && (
+              <>
+                <p className="text-sm text-ink-400 mt-1">Create an escrow or purchase a listing to get started.</p>
+                <div className="flex gap-2 mt-4">
+                  <Link
+                    href="/escrow/create"
+                    className="btn-press px-4 py-2 rounded-lg bg-trust-600 hover:bg-trust-500 text-white text-sm font-semibold"
+                  >
+                    Create Escrow
+                  </Link>
+                  <Link
+                    href="/marketplace"
+                    className="btn-press px-4 py-2 rounded-lg bg-ink-800 hover:bg-ink-700 border border-ink-700 text-white text-sm font-semibold"
+                  >
+                    Browse Marketplace
+                  </Link>
+                </div>
+              </>
+            )}
+          </div>
         ) : (
           <div className="space-y-3">
             {visibleTrades.map((t) => (

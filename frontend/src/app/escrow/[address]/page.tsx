@@ -196,7 +196,7 @@ export default function TradePage() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <div>
             <div className="flex items-center gap-3 mb-2 flex-wrap">
-              <h1 className="text-2xl font-bold text-white">Trade</h1>
+              <h1 className="text-3xl font-display text-white">Trade</h1>
               {lifecycleStatus && <TradeStatusBadge status={lifecycleStatus} />}
               {role && <RoleBadge role={role} />}
               {currentDeadline && <CountdownBadge deadline={currentDeadline.deadline} label={currentDeadline.label} />}

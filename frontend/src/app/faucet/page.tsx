@@ -78,7 +78,7 @@ export default function FaucetPage() {
   return (
     <div className="fade-in max-w-2xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold tracking-tight text-white">Faucet</h1>
+        <h1 className="text-3xl font-display text-white">Faucet</h1>
         <p className="text-ink-400 mt-1">
           Mint any of this deployment&apos;s test tokens directly to your wallet — no swap needed, since they&apos;re
           all freely mintable by design.

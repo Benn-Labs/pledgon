@@ -183,7 +183,7 @@ export default function CreateListingPage() {
   return (
     <div className="fade-in max-w-3xl mx-auto">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold tracking-tight text-white">Create Listing</h1>
+        <h1 className="text-3xl font-display text-white">Create Listing</h1>
         <p className="text-ink-400 mt-1">List your service or asset with milestone-based escrow protection</p>
       </div>
 

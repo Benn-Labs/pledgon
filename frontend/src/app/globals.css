@@ -1,28 +1,32 @@
 @import "tailwindcss";
 
 /* PLEDGON is a dark-only, protocol-native Ethereum dApp look — deliberately
-   not theme-switchable (see the frontend design port notes). */
+   not theme-switchable (see the frontend design port notes). Palette and
+   type ported from frontend/ui/Design.html: a neutral near-black (not
+   Tailwind's default blue-tinted slate) plus a warmer accent blue, Manrope
+   for UI text, and Fraunces italic reserved for page-title display type via
+   .font-display. */
 @theme {
   --color-ink-50: #f8fafc;
-  --color-ink-100: #f1f5f9;
-  --color-ink-200: #e2e8f0;
-  --color-ink-300: #cbd5e1;
-  --color-ink-400: #94a3b8;
-  --color-ink-500: #64748b;
-  --color-ink-600: #475569;
-  --color-ink-700: #334155;
-  --color-ink-800: #1e293b;
-  --color-ink-900: #0f172a;
-  --color-ink-950: #020617;
+  --color-ink-100: #f5f7fa;
+  --color-ink-200: #c9cfda;
+  --color-ink-300: #a8b0c0;
+  --color-ink-400: #7c8699;
+  --color-ink-500: #56607a;
+  --color-ink-600: #3d4557;
+  --color-ink-700: #2a3140;
+  --color-ink-800: #1b212c;
+  --color-ink-900: #10141d;
+  --color-ink-950: #05070c;
 
   --color-trust-50: #eff6ff;
   --color-trust-100: #dbeafe;
   --color-trust-200: #bfdbfe;
   --color-trust-300: #93c5fd;
-  --color-trust-400: #60a5fa;
-  --color-trust-500: #3b82f6;
-  --color-trust-600: #2563eb;
-  --color-trust-700: #1d4ed8;
+  --color-trust-400: #5b8af0;
+  --color-trust-500: #7ba3f5;
+  --color-trust-600: #5b8af0;
+  --color-trust-700: #2f4e9e;
 
   --color-success-50: #f0fdf4;
   --color-success-100: #dcfce7;
@@ -40,8 +44,14 @@
   --color-danger-500: #ef4444;
   --color-danger-600: #dc2626;
 
-  --font-sans: var(--font-inter);
+  --font-sans: var(--font-manrope);
   --font-mono: var(--font-jetbrains-mono);
+  --font-display: var(--font-fraunces);
+
+  /* Design.html's cards use a 16px radius, not Tailwind's default 12px for
+     rounded-xl — every "bg-ink-900 border border-ink-800 rounded-xl" panel
+     across the app picks this up automatically. */
+  --radius-xl: 1rem;
 }
 
 ::-webkit-scrollbar {
@@ -81,7 +91,16 @@
 }
 
 .glow-trust {
-  box-shadow: 0 0 20px -5px rgba(59, 130, 246, 0.4);
+  box-shadow: 0 0 20px -5px rgba(91, 138, 240, 0.4);
+}
+
+/* Page-title treatment ported from Design.html: italic Fraunces instead of
+   bold Manrope. Deliberately not applied to every heading — just the
+   top-of-page <h1>s, where a page introduces itself. */
+.font-display {
+  font-family: var(--font-display), Georgia, serif;
+  font-style: italic;
+  font-weight: 500;
 }
 
 body {
