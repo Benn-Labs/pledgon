@@ -1,14 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { erc20Abi, isAddress, parseUnits } from "viem";
 import type { Address } from "viem";
-import { useAccount, useReadContract, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
+import { useAccount, useChainId, useReadContract, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import { lendingPoolAbi, liquidationConsumerAbi } from "@/generated/contracts";
 import { addresses, isLendingConfigured } from "@/lib/addresses";
 import { useToken } from "@/hooks/useToken";
 import { useLendingPosition } from "@/hooks/useLendingPosition";
+import { useLendingBorrowers } from "@/hooks/useLendingBorrowers";
+import { useSignedLendingBorrowerWrite } from "@/hooks/useSignedMetadataWrite";
 import { formatToken } from "@/lib/format";
 import { toast } from "@/lib/toast";
 import { LendingIcon } from "@/components/ui/icons";
@@ -63,10 +65,13 @@ function ActionPanel({
 
 export default function LendingPage() {
   const { address: account } = useAccount();
+  const chainId = useChainId();
 
   const { decimals: collDecimals, symbol: collSymbol } = useToken(addresses.collateralToken);
   const { decimals: debtDecimals, symbol: debtSymbol } = useToken(addresses.debtToken);
-  const { hasPrice, healthFactor, ltvBps, liquidationThresholdBps } = useLendingPosition();
+  const { hasPrice, healthFactor, ltvBps, liquidationThresholdBps, price, priceDecimals } = useLendingPosition();
+  const { borrowers: atRiskBorrowers, isLoading: borrowersLoading } = useLendingBorrowers();
+  const { write: registerBorrower } = useSignedLendingBorrowerWrite();
 
   const { data: position, refetch: refetchPosition } = useReadContract({
     address: addresses.lendingPool,
@@ -116,6 +121,9 @@ export default function LendingPage() {
   const [repayAmount, setRepayAmount] = useState("");
   const [borrowAmount, setBorrowAmount] = useState("");
   const [liquidateTarget, setLiquidateTarget] = useState("");
+  // Only ever read inside the isSuccess effect below, never rendered — a ref
+  // avoids that effect calling setState synchronously on every success.
+  const lastActionRef = useRef<"deposit" | "other" | null>(null);
 
   const liquidateTargetAddress = isAddress(liquidateTarget) ? (liquidateTarget as Address) : undefined;
 
@@ -145,7 +153,17 @@ export default function LendingPage() {
       refetchDebtAllowance();
       refetchTargetPosition();
       refetchTargetEligible();
+      // Register this wallet as a candidate borrower for the Liquidate
+      // page's discovery list — see useLendingBorrowers.ts. Only after a
+      // deposit specifically, since that's the action that actually opens
+      // or grows a position; every other action shares this same
+      // useWriteContract instance, hence tracking which one just succeeded.
+      if (lastActionRef.current === "deposit" && addresses.lendingPool) {
+        registerBorrower({ chainId, lendingPoolAddress: addresses.lendingPool });
+      }
+      lastActionRef.current = null;
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- registerBorrower/chainId read at the moment of success, not meant to re-fire this on every render
   }, [
     isSuccess,
     refetchPosition,
@@ -185,6 +203,94 @@ export default function LendingPage() {
   const needsDebtApproval =
     debtDecimals !== undefined && repayAmount ? (debtAllowance ?? 0n) < parseUnits(repayAmount, debtDecimals) : false;
   const needsLiquidateApproval = liquidateTargetAddress ? (debtAllowance ?? 0n) < targetDebtAmount : false;
+
+  function approveCollateral() {
+    if (!addresses.lendingPool || !addresses.collateralToken || collDecimals === undefined) return;
+    lastActionRef.current = "other";
+    writeContract({
+      address: addresses.collateralToken,
+      abi: erc20Abi,
+      functionName: "approve",
+      args: [addresses.lendingPool, parseUnits(depositAmount || "0", collDecimals)],
+    });
+  }
+
+  function depositCollateral() {
+    if (!addresses.lendingPool || collDecimals === undefined) return;
+    lastActionRef.current = "deposit";
+    writeContract({
+      address: addresses.lendingPool,
+      abi: lendingPoolAbi,
+      functionName: "depositCollateral",
+      args: [parseUnits(depositAmount || "0", collDecimals)],
+    });
+  }
+
+  function withdrawCollateral() {
+    if (!addresses.lendingPool || collDecimals === undefined) return;
+    lastActionRef.current = "other";
+    writeContract({
+      address: addresses.lendingPool,
+      abi: lendingPoolAbi,
+      functionName: "withdrawCollateral",
+      args: [parseUnits(withdrawAmount || "0", collDecimals)],
+    });
+  }
+
+  function approveDebtForRepay() {
+    if (!addresses.lendingPool || !addresses.debtToken || debtDecimals === undefined) return;
+    lastActionRef.current = "other";
+    writeContract({
+      address: addresses.debtToken,
+      abi: erc20Abi,
+      functionName: "approve",
+      args: [addresses.lendingPool, parseUnits(repayAmount || "0", debtDecimals)],
+    });
+  }
+
+  function repay() {
+    if (!addresses.lendingPool || debtDecimals === undefined) return;
+    lastActionRef.current = "other";
+    writeContract({
+      address: addresses.lendingPool,
+      abi: lendingPoolAbi,
+      functionName: "repay",
+      args: [parseUnits(repayAmount || "0", debtDecimals)],
+    });
+  }
+
+  function borrow() {
+    if (!addresses.lendingPool || debtDecimals === undefined) return;
+    lastActionRef.current = "other";
+    writeContract({
+      address: addresses.lendingPool,
+      abi: lendingPoolAbi,
+      functionName: "borrow",
+      args: [parseUnits(borrowAmount || "0", debtDecimals)],
+    });
+  }
+
+  function approveDebtForLiquidate() {
+    if (!addresses.lendingPool || !addresses.debtToken) return;
+    lastActionRef.current = "other";
+    writeContract({
+      address: addresses.debtToken,
+      abi: erc20Abi,
+      functionName: "approve",
+      args: [addresses.lendingPool, targetDebtAmount],
+    });
+  }
+
+  function liquidate() {
+    if (!addresses.lendingPool || !liquidateTargetAddress) return;
+    lastActionRef.current = "other";
+    writeContract({
+      address: addresses.lendingPool,
+      abi: lendingPoolAbi,
+      functionName: "liquidate",
+      args: [liquidateTargetAddress],
+    });
+  }
 
   return (
     <div className="fade-in max-w-4xl mx-auto">
@@ -252,17 +358,7 @@ export default function LendingPage() {
             <h3 className="font-semibold text-white mb-3">Deposit Collateral</h3>
             <p className="text-sm text-ink-400 mb-4">Approve {collSymbol} before depositing.</p>
             <button
-              onClick={() =>
-                addresses.lendingPool &&
-                addresses.collateralToken &&
-                collDecimals !== undefined &&
-                writeContract({
-                  address: addresses.collateralToken,
-                  abi: erc20Abi,
-                  functionName: "approve",
-                  args: [addresses.lendingPool, parseUnits(depositAmount || "0", collDecimals)],
-                })
-              }
+              onClick={approveCollateral}
               disabled={!depositAmount || isPending || isConfirming}
               className="btn-press w-full py-2.5 rounded-lg bg-warning-600 hover:bg-warning-500 disabled:bg-ink-700 disabled:cursor-not-allowed text-white font-semibold"
             >
@@ -285,16 +381,7 @@ export default function LendingPage() {
             setAmount={setDepositAmount}
             submitLabel="Deposit"
             isPending={isPending || isConfirming}
-            onSubmit={() =>
-              addresses.lendingPool &&
-              collDecimals !== undefined &&
-              writeContract({
-                address: addresses.lendingPool,
-                abi: lendingPoolAbi,
-                functionName: "depositCollateral",
-                args: [parseUnits(depositAmount || "0", collDecimals)],
-              })
-            }
+            onSubmit={depositCollateral}
           />
         )}
 
@@ -305,16 +392,7 @@ export default function LendingPage() {
           setAmount={setWithdrawAmount}
           submitLabel="Withdraw"
           isPending={isPending || isConfirming}
-          onSubmit={() =>
-            addresses.lendingPool &&
-            collDecimals !== undefined &&
-            writeContract({
-              address: addresses.lendingPool,
-              abi: lendingPoolAbi,
-              functionName: "withdrawCollateral",
-              args: [parseUnits(withdrawAmount || "0", collDecimals)],
-            })
-          }
+          onSubmit={withdrawCollateral}
         />
 
         {needsDebtApproval ? (
@@ -322,17 +400,7 @@ export default function LendingPage() {
             <h3 className="font-semibold text-white mb-3">Repay</h3>
             <p className="text-sm text-ink-400 mb-4">Approve {debtSymbol} before repaying.</p>
             <button
-              onClick={() =>
-                addresses.lendingPool &&
-                addresses.debtToken &&
-                debtDecimals !== undefined &&
-                writeContract({
-                  address: addresses.debtToken,
-                  abi: erc20Abi,
-                  functionName: "approve",
-                  args: [addresses.lendingPool, parseUnits(repayAmount || "0", debtDecimals)],
-                })
-              }
+              onClick={approveDebtForRepay}
               disabled={!repayAmount || isPending || isConfirming}
               className="btn-press w-full py-2.5 rounded-lg bg-warning-600 hover:bg-warning-500 disabled:bg-ink-700 disabled:cursor-not-allowed text-white font-semibold"
             >
@@ -355,16 +423,7 @@ export default function LendingPage() {
             setAmount={setRepayAmount}
             submitLabel="Repay"
             isPending={isPending || isConfirming}
-            onSubmit={() =>
-              addresses.lendingPool &&
-              debtDecimals !== undefined &&
-              writeContract({
-                address: addresses.lendingPool,
-                abi: lendingPoolAbi,
-                functionName: "repay",
-                args: [parseUnits(repayAmount || "0", debtDecimals)],
-              })
-            }
+            onSubmit={repay}
           />
         )}
 
@@ -377,17 +436,58 @@ export default function LendingPage() {
           setAmount={setBorrowAmount}
           submitLabel="Borrow"
           isPending={isPending || isConfirming}
-          onSubmit={() =>
-            addresses.lendingPool &&
-            debtDecimals !== undefined &&
-            writeContract({
-              address: addresses.lendingPool,
-              abi: lendingPoolAbi,
-              functionName: "borrow",
-              args: [parseUnits(borrowAmount || "0", debtDecimals)],
-            })
-          }
+          onSubmit={borrow}
         />
+      </div>
+
+      <div className="bg-ink-900 border border-ink-800 rounded-xl p-6 mb-6">
+        <h3 className="font-semibold text-white mb-1">Positions at Risk</h3>
+        <p className="text-xs text-ink-500 mb-4">
+          Every wallet that has ever deposited collateral, ranked by current LTV — pure discovery, always re-checked
+          live on-chain before anything acts on it. Click a row to load it below.
+        </p>
+        {borrowersLoading ? (
+          <p className="text-sm text-ink-400">Loading…</p>
+        ) : atRiskBorrowers.length === 0 ? (
+          <p className="text-sm text-ink-400">No open positions with debt discovered yet.</p>
+        ) : (
+          <div className="space-y-2">
+            {atRiskBorrowers
+              .map((b) => {
+                const collateralValue = hasPrice ? (b.collateralAmount * price) / 10n ** BigInt(priceDecimals) : undefined;
+                const rowLtvBps = collateralValue && collateralValue > 0n ? (b.debtAmount * 10_000n) / collateralValue : undefined;
+                return { ...b, rowLtvBps };
+              })
+              .sort((a, b) => {
+                if (a.eligible !== b.eligible) return a.eligible ? -1 : 1;
+                return Number((b.rowLtvBps ?? 0n) - (a.rowLtvBps ?? 0n));
+              })
+              .map((b) => (
+                <button
+                  key={b.address}
+                  onClick={() => setLiquidateTarget(b.address)}
+                  className={`btn-press w-full flex items-center justify-between gap-3 p-3 rounded-lg border text-left ${
+                    b.eligible ? "bg-danger-500/10 border-danger-500/30" : "bg-ink-800/40 border-ink-700"
+                  }`}
+                >
+                  <span className="font-mono text-xs text-ink-300">
+                    {b.address.slice(0, 6)}…{b.address.slice(-4)}
+                  </span>
+                  <span className="flex items-center gap-3 text-xs">
+                    {debtDecimals !== undefined && (
+                      <span className="text-ink-400">{formatToken(b.debtAmount, debtDecimals, debtSymbol)} owed</span>
+                    )}
+                    <span className="font-mono text-ink-300">{b.rowLtvBps !== undefined ? `${Number(b.rowLtvBps) / 100}% LTV` : "—"}</span>
+                    {b.eligible ? (
+                      <span className="text-danger-400 font-semibold">Eligible</span>
+                    ) : (
+                      <span className="text-ink-500">Not eligible</span>
+                    )}
+                  </span>
+                </button>
+              ))}
+          </div>
+        )}
       </div>
 
       <div className="bg-ink-900 border border-ink-800 rounded-xl p-6">
@@ -406,16 +506,7 @@ export default function LendingPage() {
         )}
         {needsLiquidateApproval ? (
           <button
-            onClick={() =>
-              addresses.lendingPool &&
-              addresses.debtToken &&
-              writeContract({
-                address: addresses.debtToken,
-                abi: erc20Abi,
-                functionName: "approve",
-                args: [addresses.lendingPool, targetDebtAmount],
-              })
-            }
+            onClick={approveDebtForLiquidate}
             disabled={!liquidateTargetAddress || isPending || isConfirming}
             className="btn-press w-full py-2.5 rounded-lg bg-warning-600 hover:bg-warning-500 disabled:bg-ink-700 disabled:cursor-not-allowed text-white font-semibold"
           >
@@ -423,16 +514,7 @@ export default function LendingPage() {
           </button>
         ) : (
           <button
-            onClick={() =>
-              addresses.lendingPool &&
-              liquidateTargetAddress &&
-              writeContract({
-                address: addresses.lendingPool,
-                abi: lendingPoolAbi,
-                functionName: "liquidate",
-                args: [liquidateTargetAddress],
-              })
-            }
+            onClick={liquidate}
             disabled={!liquidateTargetAddress || !targetEligible || isPending || isConfirming}
             className="btn-press w-full py-2.5 rounded-lg bg-trust-600 hover:bg-trust-500 disabled:bg-ink-700 disabled:cursor-not-allowed text-white font-semibold"
           >

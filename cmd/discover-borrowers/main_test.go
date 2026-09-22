@@ -3,11 +3,13 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"math/big"
 	"os"
 	"path/filepath"
 	"testing"
 
 	ethereum "github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/assert"
@@ -174,12 +176,120 @@ func TestRun_ErrorsIfLendingPoolNotDeployed(t *testing.T) {
 }
 `)
 
-	err := run(root, "11155111", "staging", "https://example.com/rpc", 100, 10)
+	err := run(root, "11155111", "staging", "https://example.com/rpc", 100, 10, 2000)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not deployed")
 }
 
 func TestRun_ErrorsIfDeploymentsFileMissing(t *testing.T) {
-	err := run(t.TempDir(), "11155111", "staging", "https://example.com/rpc", 100, 10)
+	err := run(t.TempDir(), "11155111", "staging", "https://example.com/rpc", 100, 10, 2000)
 	require.Error(t, err)
+}
+
+// ─── risk classification ────────────────────────────────────
+
+type stubCaller struct {
+	t             *testing.T
+	pool          common.Address
+	oracle        common.Address
+	thresholdBps  *big.Int
+	feedID        [32]byte
+	price         *big.Int
+	priceDecimals uint8
+	updatedAt     *big.Int
+	positions     map[common.Address][2]*big.Int // borrower -> [collateral, debt]
+}
+
+func (s *stubCaller) CallContract(_ context.Context, call ethereum.CallMsg, _ *big.Int) ([]byte, error) {
+	data := call.Data
+	to := *call.To
+	switch {
+	case to == s.pool && len(data) >= 4 && string(data[:4]) == string(selector("liquidationThresholdBps()")):
+		u256, _ := abi.NewType("uint256", "", nil)
+		return (abi.Arguments{{Type: u256}}).Pack(s.thresholdBps)
+	case to == s.pool && len(data) >= 4 && string(data[:4]) == string(selector("collateralFeedId()")):
+		bytes32, _ := abi.NewType("bytes32", "", nil)
+		return (abi.Arguments{{Type: bytes32}}).Pack(s.feedID)
+	case to == s.oracle && len(data) >= 4 && string(data[:4]) == string(selector("latestRound(bytes32)")):
+		u256, _ := abi.NewType("uint256", "", nil)
+		u8, _ := abi.NewType("uint8", "", nil)
+		return (abi.Arguments{{Type: u256}, {Type: u8}, {Type: u256}}).Pack(s.price, s.priceDecimals, s.updatedAt)
+	case to == s.pool && len(data) >= 4 && string(data[:4]) == string(selector("positions(address)")):
+		addrType, _ := abi.NewType("address", "", nil)
+		vals, err := (abi.Arguments{{Type: addrType}}).Unpack(data[4:])
+		require.NoError(s.t, err)
+		borrower := vals[0].(common.Address)
+		pos, ok := s.positions[borrower]
+		if !ok {
+			pos = [2]*big.Int{big.NewInt(0), big.NewInt(0)}
+		}
+		u256, _ := abi.NewType("uint256", "", nil)
+		return (abi.Arguments{{Type: u256}, {Type: u256}}).Pack(pos[0], pos[1])
+	default:
+		s.t.Fatalf("unexpected call to %s: %x", to.Hex(), data)
+		return nil, nil
+	}
+}
+
+func TestIsCloseWatch(t *testing.T) {
+	price := big.NewInt(100_000_000_000) // $1000.00000000, 8 decimals
+	thresholdBps := big.NewInt(8000)     // 80%
+	marginBps := big.NewInt(2000)        // close-watch within 20 points -> cutoff 60%
+
+	t.Run("no debt is always safe", func(t *testing.T) {
+		assert.False(t, isCloseWatch(big.NewInt(0), big.NewInt(0), price, 8, true, thresholdBps, marginBps))
+	})
+	t.Run("no price is close-watch regardless of LTV", func(t *testing.T) {
+		assert.True(t, isCloseWatch(weiAmount(100, 18), weiAmount(1, 18), price, 8, false, thresholdBps, marginBps))
+	})
+	t.Run("far from threshold is safe", func(t *testing.T) {
+		collateral := weiAmount(100, 18) // $100,000 worth
+		debt := weiAmount(1000, 18)      // 1% LTV, well under the 60% cutoff
+		assert.False(t, isCloseWatch(collateral, debt, price, 8, true, thresholdBps, marginBps))
+	})
+	t.Run("within margin of threshold is close-watch", func(t *testing.T) {
+		collateral := weiAmount(10, 18) // $10,000 worth
+		debt := weiAmount(6500, 18)     // 65% LTV, within the 60%-80% close-watch band
+		assert.True(t, isCloseWatch(collateral, debt, price, 8, true, thresholdBps, marginBps))
+	})
+	t.Run("margin larger than threshold clamps to always close-watch when indebted", func(t *testing.T) {
+		collateral := weiAmount(1000, 18) // tiny LTV
+		debt := weiAmount(1, 18)
+		hugeMargin := big.NewInt(9000) // threshold(8000) - margin(9000) would be negative -> clamped to 0
+		assert.True(t, isCloseWatch(collateral, debt, price, 8, true, thresholdBps, hugeMargin))
+	})
+}
+
+func weiAmount(whole int64, decimals uint) *big.Int {
+	scale := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(decimals)), nil)
+	return new(big.Int).Mul(big.NewInt(whole), scale)
+}
+
+func TestClassifyByRisk_SplitsIntoTiersUsingSharedThresholdAndPrice(t *testing.T) {
+	pool := common.HexToAddress("0x00000000000000000000000000000000000BEEF")
+	oracle := common.HexToAddress("0x00000000000000000000000000000000000FEED")
+	a := common.HexToAddress("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") // no debt -> safe
+	b := common.HexToAddress("0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb") // 1% LTV -> safe
+	c := common.HexToAddress("0xcccccccccccccccccccccccccccccccccccccc")   // 65% LTV -> close-watch
+
+	stub := &stubCaller{
+		t:             t,
+		pool:          pool,
+		oracle:        oracle,
+		thresholdBps:  big.NewInt(8000),
+		feedID:        [32]byte{0x01},
+		price:         big.NewInt(100_000_000_000),
+		priceDecimals: 8,
+		updatedAt:     big.NewInt(1_700_000_000),
+		positions: map[common.Address][2]*big.Int{
+			a: {big.NewInt(0), big.NewInt(0)},
+			b: {weiAmount(100, 18), weiAmount(1000, 18)},
+			c: {weiAmount(10, 18), weiAmount(6500, 18)},
+		},
+	}
+
+	closeWatch, safe, err := classifyByRisk(stub, pool, oracle, 2000, []string{a.Hex(), b.Hex(), c.Hex()})
+	require.NoError(t, err)
+	assert.Equal(t, []string{c.Hex()}, closeWatch)
+	assert.Equal(t, []string{a.Hex(), b.Hex()}, safe)
 }

@@ -19,3 +19,22 @@ production-settings:
       url: ${CRE_RPC_SEPOLIA}
     - chain-name: ethereum-mainnet
       url: https://ethereum-rpc.publicnode.com
+
+# ==========================================================================
+# liquidation-protection's slower-cadence "safe" tier deployments (see its
+# workflow.yaml and cmd/discover-borrowers) — same RPCs as staging/production,
+# just a separate named target so that tier can be deployed independently.
+staging-safe-settings:
+  rpcs:
+    - chain-name: ethereum-testnet-sepolia
+      url: ${CRE_RPC_SEPOLIA}
+    - chain-name: ethereum-mainnet
+      url: https://ethereum-rpc.publicnode.com
+
+# ==========================================================================
+production-safe-settings:
+  rpcs:
+    - chain-name: ethereum-testnet-sepolia
+      url: ${CRE_RPC_SEPOLIA}
+    - chain-name: ethereum-mainnet
+      url: https://ethereum-rpc.publicnode.com

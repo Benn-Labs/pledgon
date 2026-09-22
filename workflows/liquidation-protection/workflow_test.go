@@ -315,14 +315,17 @@ func TestOnCronTrigger_ErrorsOnInvalidBorrower(t *testing.T) {
 	assert.Contains(t, err.Error(), "not a valid address")
 }
 
-func TestOnCronTrigger_ErrorsOnEmptyBorrowers(t *testing.T) {
+// An empty close-watch tier is a normal outcome of cmd/discover-borrowers'
+// LTV-based classification (nobody's currently near the threshold) — not a
+// misconfiguration, so this must succeed, not error.
+func TestOnCronTrigger_EmptyBorrowersSucceedsAsNoOp(t *testing.T) {
 	config := testConfig()
 	config.Borrowers = nil
 	runtime := testutils.NewTeeRuntime(t, testSecrets())
 
-	_, err := onCronTrigger(config, runtime, nil)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "empty")
+	result, err := onCronTrigger(config, runtime, nil)
+	require.NoError(t, err)
+	assert.Contains(t, result, "no borrowers configured")
 }
 
 func TestOnCronTrigger_DoesNotLogSecretOrResponseBody(t *testing.T) {

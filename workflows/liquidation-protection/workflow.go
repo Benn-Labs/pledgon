@@ -209,8 +209,13 @@ func isZeroAddress(addr string) bool {
 // against it is correct, not a shortcut — and it keeps this tick to exactly
 // one confidential HTTP fetch no matter how many borrowers are configured.
 func onCronTrigger(config *Config, runtime cre.TeeRuntime, _ *cron.Payload) (string, error) {
+	// Empty is a normal, expected state now that cmd/discover-borrowers
+	// splits borrowers into tiers (see its file-level comment) — the
+	// close-watch tier is legitimately empty whenever nobody's current LTV is
+	// near the threshold. Not a misconfiguration, so not an error; skip the
+	// confidential price fetch entirely rather than spend it on nothing.
 	if len(config.Borrowers) == 0 {
-		return "", fmt.Errorf("borrowers is empty — nothing to check")
+		return "no borrowers configured — nothing to check", nil
 	}
 	for _, b := range config.Borrowers {
 		if !common.IsHexAddress(b) {

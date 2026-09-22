@@ -19,3 +19,27 @@ production-settings:
     workflow-path: "."
     config-path: "./config.production.json"
     secrets-path: "../../secrets.yaml"
+
+# ==========================================================================
+# Same workflow code, deployed a second time at a slower cadence for
+# borrowers cmd/discover-borrowers classified as "safe" (LTV well under the
+# liquidation threshold) — see that tool's file-level comment for why. The
+# "close-watch" tier above keeps the fast 5-minute schedule.
+staging-safe-settings:
+  user-workflow:
+    workflow-name: "liquidation-protection-staging-safe"
+    deployment-registry: "private"
+  workflow-artifacts:
+    workflow-path: "."
+    config-path: "./config.staging-safe.json"
+    secrets-path: "../../secrets.yaml"
+
+# ==========================================================================
+production-safe-settings:
+  user-workflow:
+    workflow-name: "liquidation-protection-production-safe"
+    deployment-registry: "private"
+  workflow-artifacts:
+    workflow-path: "."
+    config-path: "./config.production-safe.json"
+    secrets-path: "../../secrets.yaml"

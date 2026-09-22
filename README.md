@@ -43,11 +43,16 @@ go run ./cmd/discover-borrowers --chain-id <chainId> --target staging \
 ```
 
 Scans `CollateralDeposited` logs on the deployed `LendingPool` for every
-address that has ever deposited, and patches the result into
-`workflows/liquidation-protection/config.<target>.json`'s `borrowers` array.
-Re-run it (and redeploy the workflow) whenever a new borrower opens a
-position — same operational shape as updating `vaultAddresses` by hand. Many
-free RPC tiers (Alchemy included) cap `eth_getLogs` at a small block range;
+address that has ever deposited, classifies each by current LTV, and patches
+the two tiers into **both** `config.<target>.json` (close-watch — within
+`--ltv-margin-bps`, default 2000, of the liquidation threshold; checked every
+5 minutes) and `config.<target>-safe.json` (everyone else; checked hourly —
+see `workflow.yaml`'s `staging-safe-settings`/`production-safe-settings`
+targets). Redeploy **both** targets after re-running this — a borrower can
+move tiers as their LTV changes, not just join the list for the first time.
+Re-run it (and redeploy) whenever a new borrower opens a position, or
+periodically to keep both tiers current — same operational shape as updating
+`vaultAddresses` by hand. Many free RPC tiers (Alchemy included) cap `eth_getLogs` at a small block range;
 `--chunk-blocks` (default 10) works around that, but a wider-range-tolerant
 public RPC (e.g. `ethereum-sepolia-rpc.publicnode.com`) with a larger
 `--chunk-blocks` scans much faster.

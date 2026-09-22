@@ -317,6 +317,32 @@ see the known limitation below), and patches the result into
 for `escrow-confirmation`'s `vaultAddresses`: re-run the tool to pick up a
 borrower who deposited since the last scan, then redeploy.
 
+**Risk-tiered scheduling, not "check everyone every 5 minutes forever."**
+Checking every borrower on every tick regardless of how far they actually are
+from liquidation is correct but wasteful — in a healthy system most positions
+are nowhere near the threshold. `cmd/discover-borrowers` now also classifies
+each discovered borrower by current LTV: "close-watch" (within
+`--ltv-margin-bps`, default 2000, of `liquidationThresholdBps()`) stays on the
+existing 5-minute `staging-settings`/`production-settings` deployments;
+everyone else goes to `Borrowers` in `config.<target>-safe.json`, deployed as
+a *second instance of the same workflow code* — `staging-safe-settings`/
+`production-safe-settings` in `workflow.yaml`, hourly cron — rather than a
+new code path. No debt is always safe regardless of price (nothing to
+liquidate); a stale or never-reported price can't be assessed, so it's
+conservatively close-watch, not assumed safe. Classification happens in the
+tool, not the workflow, for the same persistent-storage reason discovery
+does: a workflow can't remember which tier a borrower was in last time
+without asking an external system, so re-deriving both tiers from scratch
+each run is simpler and always reflects current state, never stale history.
+
+One consequence worth flagging: the close-watch tier can legitimately be
+*empty* (nobody's currently near the threshold) — `onCronTrigger` treats that
+as a successful no-op, skipping the confidential price fetch entirely, not an
+error. It used to hard-error on an empty `Borrowers`, back when the list was
+never supposed to be empty (a single hardcoded borrower, always present);
+that assumption stopped holding the moment "safe" became a real, expected
+tier.
+
 **Confidential-workflow call ordering** — discovered while writing this
 workflow, worth keeping in mind for the next one: every proven example in this
 codebase calls `runtime.UsingTheDons()` exactly once, at the end, after all
