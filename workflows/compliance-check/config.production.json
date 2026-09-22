@@ -4,6 +4,6 @@
   "secretId": "COMPLIANCE_API_TOKEN",
   "responseTierPath": "tier",
   "chainSelectorName": "ethereum-testnet-sepolia",
-  "consumerAddress": "0x0000000000000000000000000000000000000000",
+  "consumerAddress": "0xB53debF35709B1C040bAbf0B41b3f5A92B908E0c",
   "gasLimitWei": 500000
 }

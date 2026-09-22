@@ -4,6 +4,6 @@
   "verificationUrl": "https://example.com/verify",
   "secretId": "VERIFICATION_API_TOKEN",
   "responseConfirmedPath": "verified",
-  "confirmationConsumerAddress": "0x0000000000000000000000000000000000000000",
+  "confirmationConsumerAddress": "0x075846414E0D911B3A1aF83AC85CF04bd09A953a",
   "gasLimitWei": 500000
 }
