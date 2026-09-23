@@ -95,15 +95,15 @@ export default function CompliancePage() {
 
         {tier0CapUsd !== undefined && tier1CapUsd !== undefined && (
           <div className="grid grid-cols-3 gap-3 text-center mb-4">
-            <div className={`p-3 rounded-lg border ${tier === 0 ? "border-trust-500/40 bg-trust-500/10" : "border-ink-700 bg-ink-800/50"}`}>
+            <div className={`p-3 rounded-lg border ${tier === 0 ? "border-trust-500/40 bg-trust-500/10" : "border-ink-800 bg-ink-950/60"}`}>
               <div className="text-xs text-ink-400 mb-1">Tier 0 · Unverified</div>
               <div className="font-mono text-sm text-ink-100">${tier0CapUsd.toString()} / 30d</div>
             </div>
-            <div className={`p-3 rounded-lg border ${tier === 1 ? "border-trust-500/40 bg-trust-500/10" : "border-ink-700 bg-ink-800/50"}`}>
+            <div className={`p-3 rounded-lg border ${tier === 1 ? "border-trust-500/40 bg-trust-500/10" : "border-ink-800 bg-ink-950/60"}`}>
               <div className="text-xs text-ink-400 mb-1">Tier 1 · Basic KYC</div>
               <div className="font-mono text-sm text-ink-100">${tier1CapUsd.toString()} / 30d</div>
             </div>
-            <div className={`p-3 rounded-lg border ${tier === 2 ? "border-trust-500/40 bg-trust-500/10" : "border-ink-700 bg-ink-800/50"}`}>
+            <div className={`p-3 rounded-lg border ${tier === 2 ? "border-trust-500/40 bg-trust-500/10" : "border-ink-800 bg-ink-950/60"}`}>
               <div className="text-xs text-ink-400 mb-1">Tier 2 · Enhanced</div>
               <div className="font-mono text-sm text-ink-100">Uncapped</div>
             </div>
@@ -111,11 +111,11 @@ export default function CompliancePage() {
         )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div className="p-3 rounded-lg bg-ink-800/50 border border-ink-700">
+          <div className="p-3 rounded-lg bg-ink-950/60 border border-ink-800 shadow-[inset_0_1px_2px_rgba(0,0,0,0.3)]">
             <div className="text-xs text-ink-400 mb-1">Verified At</div>
             <div className="font-mono text-sm text-ink-100">{verifiedAt !== undefined ? formatTimestamp(verifiedAt) : "…"}</div>
           </div>
-          <div className="p-3 rounded-lg bg-ink-800/50 border border-ink-700">
+          <div className="p-3 rounded-lg bg-ink-950/60 border border-ink-800 shadow-[inset_0_1px_2px_rgba(0,0,0,0.3)]">
             <div className="text-xs text-ink-400 mb-1">Verdict Expires</div>
             <div className={`font-mono text-sm ${expired ? "text-warning-400" : "text-ink-100"}`}>
               {expiresAt !== undefined ? formatTimestamp(expiresAt) : "never verified"}
@@ -136,7 +136,7 @@ export default function CompliancePage() {
           What EscrowFactory has recorded against you in the current 30-day bucket — checked against your tier's cap
           every time you call <code className="text-trust-400">fund()</code>.
         </p>
-        <div className="p-4 rounded-lg bg-ink-800/50 border border-ink-700">
+        <div className="p-4 rounded-lg bg-ink-950/60 border border-ink-800 shadow-[inset_0_1px_2px_rgba(0,0,0,0.3)]">
           <div className="text-2xl font-bold font-mono text-white">{periodVolume?.toString() ?? "…"}</div>
           <div className="text-xs text-ink-500 mt-1">
             Raw token units, summed across every escrow token you&apos;ve funded with this period — not USD, and not

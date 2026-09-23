@@ -398,7 +398,7 @@ export default function LendingPage() {
           grows in place, nothing to claim separately.
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6">
-          <div className="p-4 rounded-lg bg-ink-800/50 border border-ink-700">
+          <div className="p-4 rounded-lg bg-ink-950/60 border border-ink-800 shadow-[inset_0_1px_2px_rgba(0,0,0,0.3)]">
             <div className="text-xs text-ink-400 mb-1">Total Supplied</div>
             <div className="font-mono text-lg text-ink-100">
               {debtDecimals !== undefined && poolTotalSupply !== undefined
@@ -406,7 +406,7 @@ export default function LendingPage() {
                 : "…"}
             </div>
           </div>
-          <div className="p-4 rounded-lg bg-ink-800/50 border border-ink-700">
+          <div className="p-4 rounded-lg bg-ink-950/60 border border-ink-800 shadow-[inset_0_1px_2px_rgba(0,0,0,0.3)]">
             <div className="text-xs text-ink-400 mb-1">Total Borrowed</div>
             <div className="font-mono text-lg text-ink-100">
               {debtDecimals !== undefined && poolTotalBorrows !== undefined
@@ -414,13 +414,13 @@ export default function LendingPage() {
                 : "…"}
             </div>
           </div>
-          <div className="p-4 rounded-lg bg-ink-800/50 border border-ink-700">
+          <div className="p-4 rounded-lg bg-ink-950/60 border border-ink-800 shadow-[inset_0_1px_2px_rgba(0,0,0,0.3)]">
             <div className="text-xs text-ink-400 mb-1">Fixed Rate (APR)</div>
             <div className="font-mono text-lg text-ink-100">
               {borrowRateBps !== undefined ? `${Number(borrowRateBps) / 100}%` : "…"}
             </div>
           </div>
-          <div className="p-4 rounded-lg bg-ink-800/50 border border-ink-700">
+          <div className="p-4 rounded-lg bg-ink-950/60 border border-ink-800 shadow-[inset_0_1px_2px_rgba(0,0,0,0.3)]">
             <div className="text-xs text-ink-400 mb-1">Your Supplied Balance</div>
             <div className="font-mono text-lg text-ink-100">
               {debtDecimals !== undefined && lenderBalance !== undefined
@@ -431,7 +431,7 @@ export default function LendingPage() {
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {needsSupplyApproval ? (
-            <div className="bg-ink-800/50 border border-ink-700 rounded-xl p-6">
+            <div className="bg-ink-950/60 border border-ink-800 shadow-[inset_0_1px_2px_rgba(0,0,0,0.3)] rounded-xl p-6">
               <h3 className="font-semibold text-white mb-3">Supply Liquidity</h3>
               <p className="text-sm text-ink-400 mb-4">Approve {debtSymbol} before supplying.</p>
               <button
@@ -480,19 +480,19 @@ export default function LendingPage() {
       <div className="bg-ink-900 border border-ink-800 rounded-xl p-6 mb-6">
         <h2 className="font-semibold text-white mb-4">Your Position</h2>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="p-4 rounded-lg bg-ink-800/50 border border-ink-700">
+          <div className="p-4 rounded-lg bg-ink-950/60 border border-ink-800 shadow-[inset_0_1px_2px_rgba(0,0,0,0.3)]">
             <div className="text-xs text-ink-400 mb-1">Collateral Deposited</div>
             <div className="font-mono text-lg text-ink-100">
               {collDecimals !== undefined ? formatToken(collateralAmount, collDecimals, collSymbol) : "…"}
             </div>
           </div>
-          <div className="p-4 rounded-lg bg-ink-800/50 border border-ink-700">
+          <div className="p-4 rounded-lg bg-ink-950/60 border border-ink-800 shadow-[inset_0_1px_2px_rgba(0,0,0,0.3)]">
             <div className="text-xs text-ink-400 mb-1">Debt Owed</div>
             <div className="font-mono text-lg text-ink-100">
               {debtDecimals !== undefined ? formatToken(debtAmount, debtDecimals, debtSymbol, 2) : "…"}
             </div>
           </div>
-          <div className="p-4 rounded-lg bg-ink-800/50 border border-ink-700 flex flex-col items-center justify-center">
+          <div className="p-4 rounded-lg bg-ink-950/60 border border-ink-800 shadow-[inset_0_1px_2px_rgba(0,0,0,0.3)] flex flex-col items-center justify-center">
             <div className="text-xs text-ink-400 mb-1 self-start">Health Factor</div>
             <HealthFactorGauge
               hasDebt={debtAmount > 0n}

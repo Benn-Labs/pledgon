@@ -62,7 +62,7 @@ export function EditListingMetadata({
   }
 
   return (
-    <div className="p-4 rounded-lg bg-ink-800/50 border border-ink-700 space-y-3">
+    <div className="p-4 rounded-lg bg-ink-950/60 border border-ink-800 shadow-[inset_0_1px_2px_rgba(0,0,0,0.3)] space-y-3">
       <div>
         <label className="block text-xs text-ink-400 mb-1">Title</label>
         <input

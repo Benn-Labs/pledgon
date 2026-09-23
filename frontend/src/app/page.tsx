@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useAccount, useReadContract } from "wagmi";
 import { marketplaceAbi, complianceConsumerAbi } from "@/generated/contracts";
@@ -12,7 +12,7 @@ import { useLendingPosition } from "@/hooks/useLendingPosition";
 import { useActivityFeed } from "@/hooks/useActivityFeed";
 import { formatToken, formatVaultNumber } from "@/lib/format";
 import { useNow, formatRelativeTime } from "@/lib/countdown";
-import { TradeStatusBadge, VerificationBadge } from "@/components/ui/badges";
+import { TradeStatusBadge } from "@/components/ui/badges";
 import { TradeProgressBar } from "@/components/ui/TradeProgressBar";
 import { CountdownBadge } from "@/components/ui/CountdownBadge";
 import { HealthFactorGauge } from "@/components/ui/HealthFactorGauge";
@@ -28,6 +28,35 @@ const ACTIVITY_DOT: Record<ActivityTone, string> = {
   warning: "bg-warning-400",
   danger: "bg-danger-400",
 };
+
+function QuickAccessTile({
+  href,
+  icon,
+  iconBg,
+  title,
+  caption,
+  dim = false,
+}: {
+  href: string;
+  icon: ReactNode;
+  iconBg: string;
+  title: string;
+  caption: ReactNode;
+  dim?: boolean;
+}) {
+  return (
+    <Link href={href} className={`deal-card block bg-ink-900 border border-ink-800 rounded-xl p-5 ${dim ? "opacity-50" : ""}`}>
+      <div className="flex items-center justify-between mb-4">
+        <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${iconBg}`}>{icon}</div>
+        <svg className="w-4 h-4 text-ink-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+        </svg>
+      </div>
+      <div className="font-semibold text-white">{title}</div>
+      <div className="text-sm text-ink-300 mt-0.5">{caption}</div>
+    </Link>
+  );
+}
 
 export default function DashboardPage() {
   const { address: account, isConnected } = useAccount();
@@ -236,7 +265,7 @@ export default function DashboardPage() {
               ) : (
                 <div className="flex flex-wrap gap-3">
                   {escrowTvl.map((t) => (
-                    <div key={t.token} className="px-4 py-3 rounded-lg bg-ink-800/50 border border-ink-700">
+                    <div key={t.token} className="px-4 py-3 rounded-lg bg-ink-950/60 border border-ink-800 shadow-[inset_0_1px_2px_rgba(0,0,0,0.3)]">
                       <TokenAmount amount={t.amount} decimals={t.decimals} symbol={t.symbol} />
                     </div>
                   ))}
@@ -252,7 +281,7 @@ export default function DashboardPage() {
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   {lendingCollateral && (
-                    <div className="px-4 py-3 rounded-lg bg-ink-800/50 border border-ink-700">
+                    <div className="px-4 py-3 rounded-lg bg-ink-950/60 border border-ink-800 shadow-[inset_0_1px_2px_rgba(0,0,0,0.3)]">
                       <div className="flex items-center gap-1.5 text-xs text-ink-400 mb-1.5">
                         <span className="w-1.5 h-1.5 rounded-full bg-warning-400 shrink-0" />
                         Collateral Deposited
@@ -261,7 +290,7 @@ export default function DashboardPage() {
                     </div>
                   )}
                   {lendingLiquidity && (
-                    <div className="px-4 py-3 rounded-lg bg-ink-800/50 border border-ink-700">
+                    <div className="px-4 py-3 rounded-lg bg-ink-950/60 border border-ink-800 shadow-[inset_0_1px_2px_rgba(0,0,0,0.3)]">
                       <div className="flex items-center gap-1.5 text-xs text-ink-400 mb-1.5">
                         <span className="w-1.5 h-1.5 rounded-full bg-trust-400 shrink-0" />
                         Available to Borrow
@@ -299,7 +328,7 @@ export default function DashboardPage() {
           ) : (
             <>
               <div className="grid grid-cols-2 sm:grid-cols-7 gap-3">
-                <div className="col-span-2 p-3 rounded-lg bg-ink-800/50 border border-ink-700 flex flex-col items-center justify-center">
+                <div className="col-span-2 p-3 rounded-lg bg-ink-950/60 border border-ink-800 shadow-[inset_0_1px_2px_rgba(0,0,0,0.3)] flex flex-col items-center justify-center">
                   <div className="flex items-center gap-1.5 text-xs text-ink-400 uppercase tracking-wider font-bold mb-1 self-start">
                     <ShieldAlertIcon className="w-3.5 h-3.5 text-success-400" />
                     Health Factor
@@ -312,7 +341,7 @@ export default function DashboardPage() {
                     healthFactor={lending.healthFactor}
                   />
                 </div>
-                <div className="p-3 rounded-lg bg-ink-800/50 border border-ink-700">
+                <div className="p-3 rounded-lg bg-ink-950/60 border border-ink-800 shadow-[inset_0_1px_2px_rgba(0,0,0,0.3)]">
                   <div className="text-xs text-ink-400 mb-1.5">Collateral</div>
                   {lending.collDecimals !== undefined ? (
                     <TokenAmount
@@ -325,7 +354,7 @@ export default function DashboardPage() {
                     <span className="text-sm text-ink-500">…</span>
                   )}
                 </div>
-                <div className="p-3 rounded-lg bg-ink-800/50 border border-ink-700">
+                <div className="p-3 rounded-lg bg-ink-950/60 border border-ink-800 shadow-[inset_0_1px_2px_rgba(0,0,0,0.3)]">
                   <div className="text-xs text-ink-400 mb-1.5">Debt</div>
                   {lending.debtDecimals !== undefined ? (
                     <TokenAmount
@@ -339,19 +368,19 @@ export default function DashboardPage() {
                     <span className="text-sm text-ink-500">…</span>
                   )}
                 </div>
-                <div className="p-3 rounded-lg bg-ink-800/50 border border-ink-700">
+                <div className="p-3 rounded-lg bg-ink-950/60 border border-ink-800 shadow-[inset_0_1px_2px_rgba(0,0,0,0.3)]">
                   <div className="text-xs text-ink-400 mb-1.5">Liq. Threshold</div>
                   <div className="text-sm font-bold text-white">
                     {lending.liquidationThresholdBps !== undefined ? `${Number(lending.liquidationThresholdBps) / 100}%` : "…"}
                   </div>
                 </div>
-                <div className="p-3 rounded-lg bg-ink-800/50 border border-ink-700">
+                <div className="p-3 rounded-lg bg-ink-950/60 border border-ink-800 shadow-[inset_0_1px_2px_rgba(0,0,0,0.3)]">
                   <div className="text-xs text-ink-400 mb-1.5">Current LTV</div>
                   <div className="text-sm font-bold text-white">
                     {lending.debtAmount === 0n ? "0%" : lending.ltvBps !== undefined ? `${Number(lending.ltvBps) / 100}%` : "—"}
                   </div>
                 </div>
-                <div className="p-3 rounded-lg bg-ink-800/50 border border-ink-700">
+                <div className="p-3 rounded-lg bg-ink-950/60 border border-ink-800 shadow-[inset_0_1px_2px_rgba(0,0,0,0.3)]">
                   <div className="text-xs text-ink-400 mb-1.5">Est. Liq. Price</div>
                   <div className="text-sm font-bold text-white">
                     {lending.debtAmount === 0n
@@ -470,80 +499,63 @@ export default function DashboardPage() {
         )}
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        <Link href="/marketplace" className="deal-card flex items-center gap-3 bg-ink-900 border border-ink-800 rounded-xl p-5">
-          <MarketplaceIcon className="w-6 h-6 text-trust-400 shrink-0" />
-          <div>
-            <div className="font-semibold text-white">Marketplace</div>
-            <div className="text-xs text-ink-400">
-              {listingCount !== undefined ? `${listingCount.toString()} listing${listingCount === 1n ? "" : "s"}` : "Browse & create listings"}
-            </div>
-          </div>
-        </Link>
-        <Link href="/escrow" className="deal-card flex items-center gap-3 bg-ink-900 border border-ink-800 rounded-xl p-5">
-          <EscrowIcon className="w-6 h-6 text-success-400 shrink-0" />
-          <div>
-            <div className="font-semibold text-white">Escrow</div>
-            <div className="text-xs text-ink-400">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <QuickAccessTile
+          href="/marketplace"
+          icon={<MarketplaceIcon className="w-4 h-4 text-warning-400" />}
+          iconBg="bg-warning-500/15"
+          title="Marketplace"
+          caption={listingCount !== undefined ? `${listingCount.toString()} listing${listingCount === 1n ? "" : "s"}` : "Browse & create listings"}
+        />
+        <QuickAccessTile
+          href="/escrow"
+          icon={<EscrowIcon className="w-4 h-4 text-success-400" />}
+          iconBg="bg-success-500/15"
+          title="Escrow"
+          caption={
+            <>
               {activeCount} active trade{activeCount === 1 ? "" : "s"}
               {attentionCount > 0 && <span className="text-warning-400"> · {attentionCount} need attention</span>}
-            </div>
-          </div>
-        </Link>
-        <Link
+            </>
+          }
+        />
+        <QuickAccessTile
           href="/lending"
-          className={`deal-card flex flex-col gap-2 bg-ink-900 border border-ink-800 rounded-xl p-5 ${!isLendingConfigured ? "opacity-50" : ""}`}
-        >
-          <div className="flex items-center gap-3">
-            <LendingIcon className="w-6 h-6 text-warning-400 shrink-0" />
-            <div className="font-semibold text-white">Lending</div>
-          </div>
-          {!isLendingConfigured ? (
-            <div className="text-xs text-ink-400">Not deployed yet</div>
-          ) : !lending.hasPosition ? (
-            <div className="text-xs text-ink-400">No open position — deposit to get started</div>
-          ) : (
-            <div className="text-xs text-ink-400 space-y-0.5">
-              <div>
-                Collateral:{" "}
-                <span className="font-mono text-ink-200">
-                  {lending.collDecimals !== undefined ? formatToken(lending.collateralAmount, lending.collDecimals, lending.collSymbol) : "…"}
-                </span>
-              </div>
-              <div>
-                Debt:{" "}
-                <span className="font-mono text-ink-200">
-                  {lending.debtDecimals !== undefined ? formatToken(lending.debtAmount, lending.debtDecimals, lending.debtSymbol) : "…"}
-                </span>
-              </div>
-              {lending.debtAmount > 0n && <div className="text-warning-400 pt-0.5">Liquidation protection needs a live price feed</div>}
-            </div>
-          )}
-        </Link>
-        <Link href="/compliance" className="deal-card flex items-center justify-between gap-3 bg-ink-900 border border-ink-800 rounded-xl p-5">
-          <div className="flex items-center gap-3">
-            <ShieldAlertIcon className="w-6 h-6 text-trust-400 shrink-0" />
-            <div>
-              <div className="font-semibold text-white">Compliance</div>
-              <div className="text-xs text-ink-400">Your KYC tier & caps</div>
-            </div>
-          </div>
-          {tier !== undefined && <VerificationBadge tier={tier} />}
-        </Link>
-        <Link href="/swap" className="deal-card flex items-center gap-3 bg-ink-900 border border-ink-800 rounded-xl p-5">
-          <SwapIcon className="w-6 h-6 text-trust-400 shrink-0" />
-          <div>
-            <div className="font-semibold text-white">Swap</div>
-            <div className="text-xs text-ink-400">Trade real, liquid assets</div>
-          </div>
-        </Link>
-        <Link href="/faucet" className="deal-card flex items-center gap-3 bg-ink-900 border border-ink-800 rounded-xl p-5">
-          <FaucetIcon className="w-6 h-6 text-success-400 shrink-0" />
-          <div>
-            <div className="font-semibold text-white">Faucet</div>
-            <div className="text-xs text-ink-400">Mint testnet tokens</div>
-          </div>
-        </Link>
+          icon={<LendingIcon className="w-4 h-4 text-warning-400" />}
+          iconBg="bg-warning-500/15"
+          title="Lending"
+          dim={!isLendingConfigured}
+          caption={
+            !isLendingConfigured
+              ? "Not deployed yet"
+              : !lending.hasPosition
+                ? "No open position — deposit to get started"
+                : `Collateral ${lending.collDecimals !== undefined ? formatToken(lending.collateralAmount, lending.collDecimals, lending.collSymbol) : "…"} · Debt ${
+                    lending.debtDecimals !== undefined ? formatToken(lending.debtAmount, lending.debtDecimals, lending.debtSymbol) : "…"
+                  }`
+          }
+        />
+        <QuickAccessTile
+          href="/compliance"
+          icon={<ShieldAlertIcon className="w-4 h-4 text-trust-400" />}
+          iconBg="bg-trust-500/15"
+          title="Compliance"
+          caption={tier !== undefined ? `Tier ${tier} · your KYC tier & caps` : "Your KYC tier & caps"}
+        />
+        <QuickAccessTile
+          href="/swap"
+          icon={<SwapIcon className="w-4 h-4 text-trust-400" />}
+          iconBg="bg-trust-500/15"
+          title="Swap"
+          caption="Trade real, liquid assets"
+        />
+        <QuickAccessTile
+          href="/faucet"
+          icon={<FaucetIcon className="w-4 h-4 text-success-400" />}
+          iconBg="bg-success-500/15"
+          title="Faucet"
+          caption="Mint testnet tokens"
+        />
       </div>
     </div>
   );

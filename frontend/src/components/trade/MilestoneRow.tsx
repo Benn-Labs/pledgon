@@ -193,7 +193,7 @@ export function MilestoneRow({
           return (
             <div
               className={`flex items-center justify-between gap-3 flex-wrap p-3 rounded-lg mb-3 ${
-                timeLeft.expired ? "bg-danger-500/10 border border-danger-500/30" : "bg-ink-800/50 border border-ink-700"
+                timeLeft.expired ? "bg-danger-500/10 border border-danger-500/30" : "bg-ink-950/60 border border-ink-800 shadow-[inset_0_1px_2px_rgba(0,0,0,0.3)]"
               }`}
             >
               <p className={`text-xs ${timeLeft.expired ? "text-danger-400" : "text-ink-400"}`}>
@@ -225,7 +225,7 @@ export function MilestoneRow({
           return (
             <div
               className={`flex items-center justify-between gap-3 flex-wrap p-3 rounded-lg mb-3 ${
-                timeLeft.expired ? "bg-warning-500/10 border border-warning-500/30" : "bg-ink-800/50 border border-ink-700"
+                timeLeft.expired ? "bg-warning-500/10 border border-warning-500/30" : "bg-ink-950/60 border border-ink-800 shadow-[inset_0_1px_2px_rgba(0,0,0,0.3)]"
               }`}
             >
               <p className={`text-xs ${timeLeft.expired ? "text-warning-400" : "text-ink-400"}`}>

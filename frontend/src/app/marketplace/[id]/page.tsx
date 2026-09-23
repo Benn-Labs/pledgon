@@ -195,7 +195,7 @@ export default function ListingDetailPage() {
             )}
 
             {tokenReady && decimals !== undefined && totalQuantity !== undefined && (
-              <div className="p-4 rounded-lg bg-ink-800/50 border border-ink-700 mb-4">
+              <div className="p-4 rounded-lg bg-ink-950/60 border border-ink-800 shadow-[inset_0_1px_2px_rgba(0,0,0,0.3)] mb-4">
                 <div className="flex items-center justify-between text-sm mb-2">
                   <span className="text-ink-400">Unit Price</span>
                   <span className="font-mono text-ink-100">
@@ -224,13 +224,13 @@ export default function ListingDetailPage() {
               </div>
             )}
             <div className="grid grid-cols-2 gap-4 mb-6">
-              <div className="p-4 rounded-lg bg-ink-800/50 border border-ink-700">
+              <div className="p-4 rounded-lg bg-ink-950/60 border border-ink-800 shadow-[inset_0_1px_2px_rgba(0,0,0,0.3)]">
                 <div className="text-xs text-ink-400 mb-1">Seller</div>
                 <span className="addr text-ink-200 font-mono text-xs">
                   {seller?.slice(0, 6)}…{seller?.slice(-4)}
                 </span>
               </div>
-              <div className="p-4 rounded-lg bg-ink-800/50 border border-ink-700">
+              <div className="p-4 rounded-lg bg-ink-950/60 border border-ink-800 shadow-[inset_0_1px_2px_rgba(0,0,0,0.3)]">
                 <div className="text-xs text-ink-400 mb-1">Arbiter</div>
                 <span className="addr text-ink-200 font-mono text-xs">
                   {arbiter?.slice(0, 6)}…{arbiter?.slice(-4)}

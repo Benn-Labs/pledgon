@@ -219,21 +219,21 @@ export default function TradePage() {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="p-4 rounded-lg bg-ink-800/50 border border-ink-700 text-center">
+          <div className="p-4 rounded-lg bg-ink-950/60 border border-ink-800 shadow-[inset_0_1px_2px_rgba(0,0,0,0.3)] text-center">
             <div className="text-xs text-ink-400 mb-1">Buyer</div>
             <div className="addr text-ink-200 font-mono text-xs">
               {buyer.slice(0, 6)}…{buyer.slice(-4)}
             </div>
             {isBuyer && <div className="text-xs text-trust-400 mt-1">You</div>}
           </div>
-          <div className="p-4 rounded-lg bg-ink-800/50 border border-ink-700 text-center">
+          <div className="p-4 rounded-lg bg-ink-950/60 border border-ink-800 shadow-[inset_0_1px_2px_rgba(0,0,0,0.3)] text-center">
             <div className="text-xs text-ink-400 mb-1">Seller</div>
             <div className="addr text-ink-200 font-mono text-xs">
               {seller.slice(0, 6)}…{seller.slice(-4)}
             </div>
             {isSeller && <div className="text-xs text-success-400 mt-1">You</div>}
           </div>
-          <div className="p-4 rounded-lg bg-ink-800/50 border border-ink-700 text-center">
+          <div className="p-4 rounded-lg bg-ink-950/60 border border-ink-800 shadow-[inset_0_1px_2px_rgba(0,0,0,0.3)] text-center">
             <div className="text-xs text-ink-400 mb-1">Arbiter</div>
             {hasArbiter ? (
               <>

@@ -479,7 +479,7 @@ export default function CreateListingPage() {
           </p>
           <div className="space-y-3">
             {milestonePercentInputs.map((value, i) => (
-              <div key={i} className="p-3 rounded-lg bg-ink-800/50 border border-ink-700 space-y-2">
+              <div key={i} className="p-3 rounded-lg bg-ink-950/60 border border-ink-800 shadow-[inset_0_1px_2px_rgba(0,0,0,0.3)] space-y-2">
                 <div className="flex gap-2 items-center">
                   <input
                     type="text"
