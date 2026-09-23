@@ -3,9 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { decodeEventLog, formatUnits, parseUnits, type Address } from "viem";
+import { decodeEventLog, formatEther, formatUnits, parseUnits, type Address } from "viem";
 import { useAccount, useReadContract, useReadContracts, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
-import { marketplaceAbi } from "@/generated/contracts";
+import { marketplaceAbi, escrowFactoryAbi } from "@/generated/contracts";
 import { addresses } from "@/lib/addresses";
 import { useToken } from "@/hooks/useToken";
 import { formatToken } from "@/lib/format";
@@ -115,6 +115,13 @@ export default function ListingDetailPage() {
     query: { enabled: Boolean(marketplace) && quantityValid && status === 0 },
   });
   const [previewAmounts, previewBond, previewTotal] = preview ?? [];
+
+  const { data: vaultCreationFee } = useReadContract({
+    address: addresses.escrowFactory,
+    abi: escrowFactoryAbi,
+    functionName: "vaultCreationFee",
+    query: { enabled: Boolean(addresses.escrowFactory) },
+  });
 
   const { writeContract, data: hash, isPending, error } = useWriteContract();
   const { data: receipt, isLoading: isConfirming } = useWaitForTransactionReceipt({ hash });
@@ -360,6 +367,7 @@ export default function ListingDetailPage() {
                       abi: marketplaceAbi,
                       functionName: "purchase",
                       args: [listingId, purchaseQuantity],
+                      value: vaultCreationFee ?? 0n,
                     })
                   }
                   disabled={!quantityValid || isPending || isConfirming}
@@ -367,6 +375,11 @@ export default function ListingDetailPage() {
                 >
                   {isPending || isConfirming ? "Purchasing…" : "Purchase & Open Escrow"}
                 </button>
+                {vaultCreationFee !== undefined && vaultCreationFee > 0n && (
+                  <p className="text-xs text-ink-500 text-center mt-2">
+                    Plus a {formatEther(vaultCreationFee)} ETH vault-creation fee.
+                  </p>
+                )}
                 <p className="text-xs text-ink-500 text-center mt-3">
                   This will open an escrow vault with milestone-based release
                 </p>

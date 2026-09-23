@@ -36,6 +36,14 @@ import {LendingPool} from "../src/lending/LendingPool.sol";
 ///                               no fallback default, since silently pointing
 ///                               this at nothing would leave every trade with
 ///                               an arbiter that can never actually rule.
+///   OWNER_ADDRESS               Owns ArbitratorRegistry and EscrowFactory
+///                               (accreditation, vault-creation fee/recipient)
+///                               after deploy — typically the deployer's own
+///                               address (`cast wallet address --account ...`),
+///                               a multisig, or whoever should hold admin
+///                               rights going forward. Not defaulted to
+///                               `msg.sender`: see `run()`'s doc comment for
+///                               why that's unsafe inside a forge script.
 ///
 /// Optional env vars (lending is skipped entirely unless both token addresses
 /// are set):
@@ -55,6 +63,13 @@ import {LendingPool} from "../src/lending/LendingPool.sol";
 ///   TIER1_CAP_USD                  default 10000 — cap once tier-1 (basic KYC)
 ///                                   verified; tier 2 (enhanced) is uncapped
 ///
+/// Optional env vars for the vault-creation fee (see EscrowFactory.sol's
+/// contract-level doc comment for why it's ETH, owner-adjustable, and
+/// pull-withdrawn rather than pushed):
+///   FEE_RECIPIENT_ADDRESS      default: the broadcasting account
+///   VAULT_CREATION_FEE_WEI     default 0 (fees off) — wei required as
+///                               msg.value on every createTrade/createTradeFor
+///
 /// Usage:
 ///   forge script script/Deploy.s.sol --rpc-url <url> --private-key $PRIVATE_KEY --broadcast
 ///
@@ -65,21 +80,45 @@ contract Deploy is Script {
     function run() external {
         address forwarder = vm.envAddress("FORWARDER_ADDRESS");
         address defaultArbiter = vm.envAddress("DEFAULT_ARBITER_ADDRESS");
+        // The account that ends up owning ArbitratorRegistry and EscrowFactory
+        // — deliberately NOT defaulted to `msg.sender`. Inside a forge script,
+        // `msg.sender` is forge-std's fixed DEFAULT_SENDER
+        // (0x1804c8AB1F12E6bbf3894d4083f33e07309d1f38), not whoever
+        // `--account`/`--private-key` actually broadcasts as; nobody holds
+        // that address's key, so anything owned by it is permanently locked
+        // out of every onlyOwner function. Pass the real address explicitly
+        // (e.g. from `cast wallet address --account deployer`) — see
+        // DeployEscrowFactory.s.sol's doc comment, where this was first
+        // caught after it actually happened.
+        address owner = vm.envAddress("OWNER_ADDRESS");
 
         uint256 maxValidity = vm.envOr("COMPLIANCE_MAX_VALIDITY_DAYS", uint256(180)) * 1 days;
         uint256 tier0CapUsd = vm.envOr("TIER0_CAP_USD", uint256(999));
         uint256 tier1CapUsd = vm.envOr("TIER1_CAP_USD", uint256(10_000));
+        address feeRecipient = vm.envOr("FEE_RECIPIENT_ADDRESS", owner);
+        uint256 vaultCreationFee = vm.envOr("VAULT_CREATION_FEE_WEI", uint256(0));
 
         vm.startBroadcast();
 
         EscrowConfirmationConsumer confirmationConsumer = new EscrowConfirmationConsumer(forwarder);
         ComplianceConsumer complianceConsumer = new ComplianceConsumer(forwarder, maxValidity);
-        // Owned by the broadcasting account — transfer ownership afterwards
-        // (ArbitratorRegistry.transferOwnership) if accreditation decisions
-        // should live with a different key.
-        ArbitratorRegistry arbitratorRegistry = new ArbitratorRegistry(msg.sender);
-        EscrowFactory factory =
-            new EscrowFactory(confirmationConsumer, complianceConsumer, tier0CapUsd, tier1CapUsd, arbitratorRegistry, defaultArbiter);
+        // Transfer ownership afterwards (ArbitratorRegistry.transferOwnership)
+        // if accreditation decisions should live with a different key.
+        ArbitratorRegistry arbitratorRegistry = new ArbitratorRegistry(owner);
+        // EscrowFactory's own ownership (vault-creation fee/recipient) is
+        // separate from ArbitratorRegistry's — same "owner, transfer later if
+        // needed" default, via EscrowFactory.transferOwnership.
+        EscrowFactory factory = new EscrowFactory(
+            confirmationConsumer,
+            complianceConsumer,
+            tier0CapUsd,
+            tier1CapUsd,
+            arbitratorRegistry,
+            defaultArbiter,
+            owner,
+            feeRecipient,
+            vaultCreationFee
+        );
         Marketplace marketplace = new Marketplace(factory);
         TradeExpiryKeeper tradeExpiryKeeper = new TradeExpiryKeeper(forwarder);
 

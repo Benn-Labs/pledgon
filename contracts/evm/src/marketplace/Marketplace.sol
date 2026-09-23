@@ -164,10 +164,13 @@ contract Marketplace {
     /// escrow trade sized to exactly that quantity, with the caller as
     /// buyer. The caller must still call `fund()` (and the seller
     /// `depositBond()`) on the returned vault — purchasing does not move
-    /// funds. The listing stays `Active` (purchasable again, by anyone) as
-    /// long as quantity remains; it flips to `Sold` only once this purchase
-    /// exhausts it exactly.
-    function purchase(uint256 listingId, uint256 quantity) external returns (address vault) {
+    /// `token` funds, only the vault-creation fee. The listing stays `Active`
+    /// (purchasable again, by anyone) as long as quantity remains; it flips to
+    /// `Sold` only once this purchase exhausts it exactly. Requires exactly
+    /// `factory.vaultCreationFee()` wei as `msg.value` — this contract is only
+    /// a pass-through, forwarded straight to `EscrowFactory.createTradeFor`,
+    /// which is what actually enforces the amount.
+    function purchase(uint256 listingId, uint256 quantity) external payable returns (address vault) {
         Listing storage listing = _mustGet(listingId);
         if (listing.status != ListingStatus.Active) revert ListingNotActive(listingId, listing.status);
         if (quantity == 0 || quantity > listing.remainingQuantity) {
@@ -182,7 +185,7 @@ contract Marketplace {
 
         (uint256[] memory milestoneAmounts, uint256 bondAmount, uint256 totalAmount) = _computeAmounts(listing, quantity);
 
-        vault = factory.createTradeFor(
+        vault = factory.createTradeFor{value: msg.value}(
             msg.sender,
             listing.seller,
             listing.arbiter,

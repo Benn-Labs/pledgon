@@ -252,6 +252,9 @@ export const escrowFactoryAbi = [
         type: 'address',
       },
       { name: '_defaultArbiter', internalType: 'address', type: 'address' },
+      { name: '_owner', internalType: 'address', type: 'address' },
+      { name: '_feeRecipient', internalType: 'address', type: 'address' },
+      { name: '_vaultCreationFee', internalType: 'uint256', type: 'uint256' },
     ],
     stateMutability: 'nonpayable',
   },
@@ -330,7 +333,7 @@ export const escrowFactoryAbi = [
     ],
     name: 'createTrade',
     outputs: [{ name: 'vault', internalType: 'address', type: 'address' }],
-    stateMutability: 'nonpayable',
+    stateMutability: 'payable',
   },
   {
     type: 'function',
@@ -355,7 +358,7 @@ export const escrowFactoryAbi = [
     ],
     name: 'createTradeFor',
     outputs: [{ name: 'vault', internalType: 'address', type: 'address' }],
-    stateMutability: 'nonpayable',
+    stateMutability: 'payable',
   },
   {
     type: 'function',
@@ -373,9 +376,23 @@ export const escrowFactoryAbi = [
   },
   {
     type: 'function',
+    inputs: [],
+    name: 'feeRecipient',
+    outputs: [{ name: '', internalType: 'address', type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
     inputs: [{ name: '', internalType: 'address', type: 'address' }],
     name: 'isVault',
     outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'owner',
+    outputs: [{ name: '', internalType: 'address', type: 'address' }],
     stateMutability: 'view',
   },
   {
@@ -388,6 +405,22 @@ export const escrowFactoryAbi = [
     outputs: [
       { name: 'periodVolume', internalType: 'uint256', type: 'uint256' },
     ],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'newRecipient', internalType: 'address', type: 'address' },
+    ],
+    name: 'setFeeRecipient',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'newFee', internalType: 'uint256', type: 'uint256' }],
+    name: 'setVaultCreationFee',
+    outputs: [],
     stateMutability: 'nonpayable',
   },
   {
@@ -406,8 +439,22 @@ export const escrowFactoryAbi = [
   },
   {
     type: 'function',
+    inputs: [{ name: 'newOwner', internalType: 'address', type: 'address' }],
+    name: 'transferOwnership',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
     inputs: [],
     name: 'vaultCount',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'vaultCreationFee',
     outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
     stateMutability: 'view',
   },
@@ -430,6 +477,70 @@ export const escrowFactoryAbi = [
     name: 'vaultsBySeller',
     outputs: [{ name: '', internalType: 'address', type: 'address' }],
     stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'withdrawFees',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'previousRecipient',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      {
+        name: 'newRecipient',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+    ],
+    name: 'FeeRecipientUpdated',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'recipient',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      {
+        name: 'amount',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: false,
+      },
+    ],
+    name: 'FeesWithdrawn',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'previousOwner',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      {
+        name: 'newOwner',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+    ],
+    name: 'OwnershipTransferred',
   },
   {
     type: 'event',
@@ -475,6 +586,34 @@ export const escrowFactoryAbi = [
     name: 'VaultCreated',
   },
   {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'previousFee',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: false,
+      },
+      {
+        name: 'newFee',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: false,
+      },
+    ],
+    name: 'VaultCreationFeeUpdated',
+  },
+  { type: 'error', inputs: [], name: 'FeeTransferFailed' },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'sent', internalType: 'uint256', type: 'uint256' },
+      { name: 'required', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'IncorrectFeeAmount',
+  },
+  {
     type: 'error',
     inputs: [
       { name: 'tier0CapUsd', internalType: 'uint256', type: 'uint256' },
@@ -491,6 +630,11 @@ export const escrowFactoryAbi = [
     type: 'error',
     inputs: [{ name: 'arbiter', internalType: 'address', type: 'address' }],
     name: 'NotAccreditedArbiter',
+  },
+  {
+    type: 'error',
+    inputs: [{ name: 'caller', internalType: 'address', type: 'address' }],
+    name: 'NotOwner',
   },
   { type: 'error', inputs: [], name: 'ZeroAddress' },
 ] as const
@@ -2068,7 +2212,7 @@ export const marketplaceAbi = [
     ],
     name: 'purchase',
     outputs: [{ name: 'vault', internalType: 'address', type: 'address' }],
-    stateMutability: 'nonpayable',
+    stateMutability: 'payable',
   },
   {
     type: 'event',

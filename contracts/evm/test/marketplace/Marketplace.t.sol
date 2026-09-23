@@ -20,6 +20,7 @@ contract MarketplaceTest is Test {
     address arbiter = makeAddr("arbiter");
     address buyer = makeAddr("buyer");
     address defaultArbiter = makeAddr("defaultArbiter");
+    address feeRecipient = makeAddr("feeRecipient");
 
     EscrowFactory factory;
     ArbitratorRegistry registry;
@@ -31,7 +32,9 @@ contract MarketplaceTest is Test {
         ComplianceConsumer complianceConsumer = new ComplianceConsumer(forwarder, 180 days);
         registry = new ArbitratorRegistry(address(this));
         registry.accredit(arbiter);
-        factory = new EscrowFactory(confirmationConsumer, complianceConsumer, 999, 10_000, registry, defaultArbiter);
+        factory = new EscrowFactory(
+            confirmationConsumer, complianceConsumer, 999, 10_000, registry, defaultArbiter, address(this), feeRecipient, 0
+        );
         marketplace = new Marketplace(factory);
         token = new MockERC20(6);
     }
@@ -417,5 +420,29 @@ contract MarketplaceTest is Test {
         uint256 listingId = _createListing(_singleBps(), 100 * Q, 1e6, 0);
         vm.expectRevert(abi.encodeWithSelector(Marketplace.InvalidQuantity.selector, 0, 100 * Q));
         marketplace.previewPurchase(listingId, 0);
+    }
+
+    // ─── Vault creation fee pass-through ───────────────────────
+
+    function test_Purchase_ForwardsExactFeeToFactory() public {
+        factory.setVaultCreationFee(0.01 ether);
+        uint256 listingId = _createListing(_singleBps(), 100 * Q, 1e6, 0);
+        vm.deal(buyer, 1 ether);
+
+        vm.prank(buyer);
+        address vault = marketplace.purchase{value: 0.01 ether}(listingId, 100 * Q);
+
+        assertTrue(vault != address(0));
+        assertEq(address(factory).balance, 0.01 ether);
+    }
+
+    function test_Purchase_RevertsIfValueDoesNotMatchFactoryFee() public {
+        factory.setVaultCreationFee(0.01 ether);
+        uint256 listingId = _createListing(_singleBps(), 100 * Q, 1e6, 0);
+        vm.deal(buyer, 1 ether);
+
+        vm.prank(buyer);
+        vm.expectRevert(abi.encodeWithSelector(EscrowFactory.IncorrectFeeAmount.selector, 0, 0.01 ether));
+        marketplace.purchase(listingId, 100 * Q);
     }
 }

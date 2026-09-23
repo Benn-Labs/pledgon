@@ -28,6 +28,21 @@ import {ArbitratorRegistry} from "./ArbitratorRegistry.sol";
 /// Tier caps assume `token` is a stablecoin pegged ~1:1 to USD: they're computed
 /// from the token's `decimals()`, not a price feed. A trade in a non-stablecoin
 /// token needs its own USD-conversion step before these caps are meaningful.
+///
+/// `owner`/`vaultCreationFee`/`feeRecipient` are the one mutable, admin-gated
+/// corner of this contract — everything else here is immutable, matching the
+/// rest of this codebase's "no admin" pattern (see ComplianceConsumer,
+/// LendingPool). A flat per-vault fee, paid in native ETH rather than `token`,
+/// is the one case that needs adjustability without a redeploy: charging in
+/// `token` would need `transferFrom` against the real buyer, but
+/// `createTradeFor` is called by Marketplace on the buyer's behalf, so
+/// `msg.sender` here is Marketplace, not the buyer — ETH just forwards through
+/// `payable`/`msg.value` regardless of which contract is in between. Fees
+/// accumulate in this contract's own balance rather than pushing to
+/// `feeRecipient` on every vault creation (a pull-based `withdrawFees`,
+/// deliberately, so a `feeRecipient` that can't receive ETH — reverts,
+/// out of gas, mid-upgrade multisig — can never brick vault creation for
+/// everyone else).
 contract EscrowFactory {
     uint256 public constant VOLUME_WINDOW = 30 days;
 
@@ -50,6 +65,12 @@ contract EscrowFactory {
     /// address.
     address public immutable defaultArbiter;
 
+    address public owner;
+    /// @notice Flat fee, in wei, required as `msg.value` on every
+    /// `createTrade`/`createTradeFor` call. Zero is valid (fees off).
+    uint256 public vaultCreationFee;
+    address public feeRecipient;
+
     address[] public allVaults;
     mapping(address => bool) public isVault;
     mapping(address => address[]) public vaultsByBuyer;
@@ -64,11 +85,23 @@ contract EscrowFactory {
         address token,
         uint256 bondAmount
     );
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+    event VaultCreationFeeUpdated(uint256 previousFee, uint256 newFee);
+    event FeeRecipientUpdated(address indexed previousRecipient, address indexed newRecipient);
+    event FeesWithdrawn(address indexed recipient, uint256 amount);
 
     error ZeroAddress();
     error NotAVault(address caller);
     error InvalidTierCaps(uint256 tier0CapUsd, uint256 tier1CapUsd);
     error NotAccreditedArbiter(address arbiter);
+    error NotOwner(address caller);
+    error IncorrectFeeAmount(uint256 sent, uint256 required);
+    error FeeTransferFailed();
+
+    modifier onlyOwner() {
+        if (msg.sender != owner) revert NotOwner(msg.sender);
+        _;
+    }
 
     constructor(
         EscrowConfirmationConsumer _confirmationConsumer,
@@ -76,11 +109,15 @@ contract EscrowFactory {
         uint256 _tier0CapUsd,
         uint256 _tier1CapUsd,
         ArbitratorRegistry _arbitratorRegistry,
-        address _defaultArbiter
+        address _defaultArbiter,
+        address _owner,
+        address _feeRecipient,
+        uint256 _vaultCreationFee
     ) {
         if (
             address(_confirmationConsumer) == address(0) || address(_complianceConsumer) == address(0)
-                || address(_arbitratorRegistry) == address(0) || _defaultArbiter == address(0)
+                || address(_arbitratorRegistry) == address(0) || _defaultArbiter == address(0) || _owner == address(0)
+                || _feeRecipient == address(0)
         ) {
             revert ZeroAddress();
         }
@@ -92,6 +129,9 @@ contract EscrowFactory {
         tier1CapUsd = _tier1CapUsd;
         arbitratorRegistry = _arbitratorRegistry;
         defaultArbiter = _defaultArbiter;
+        owner = _owner;
+        feeRecipient = _feeRecipient;
+        vaultCreationFee = _vaultCreationFee;
     }
 
     /// @notice Creates a trade with the caller as buyer. The caller must still
@@ -100,7 +140,8 @@ contract EscrowFactory {
     /// in seconds (0 = no deadline) — see EscrowVault for what each one gates.
     /// `arbiter` must be `address(0)` (resolves to `defaultArbiter`),
     /// `defaultArbiter` itself, or an address `arbitratorRegistry` has
-    /// accredited — see `_resolveArbiter`.
+    /// accredited — see `_resolveArbiter`. Requires exactly `vaultCreationFee`
+    /// wei as `msg.value`.
     function createTrade(
         address seller,
         address arbiter,
@@ -110,7 +151,8 @@ contract EscrowFactory {
         uint256 fundingWindow,
         uint256 milestoneConfirmWindow,
         uint256 deliveryWindow
-    ) external returns (address vault) {
+    ) external payable returns (address vault) {
+        _collectFee();
         return _createTrade(
             msg.sender, seller, arbiter, token, bondAmount, milestoneAmounts, fundingWindow, milestoneConfirmWindow, deliveryWindow
         );
@@ -122,7 +164,8 @@ contract EscrowFactory {
     /// permissionless: `fund()` on the resulting vault still requires `buyer`'s
     /// own token approval, so calling this cannot move anyone's funds without
     /// their consent — it only decides who the vault will later require to fund
-    /// and confirm it.
+    /// and confirm it. Requires exactly `vaultCreationFee` wei as `msg.value`
+    /// (an orchestrator like Marketplace must forward it from whoever's paying).
     function createTradeFor(
         address buyer,
         address seller,
@@ -133,10 +176,15 @@ contract EscrowFactory {
         uint256 fundingWindow,
         uint256 milestoneConfirmWindow,
         uint256 deliveryWindow
-    ) external returns (address vault) {
+    ) external payable returns (address vault) {
+        _collectFee();
         return _createTrade(
             buyer, seller, arbiter, token, bondAmount, milestoneAmounts, fundingWindow, milestoneConfirmWindow, deliveryWindow
         );
+    }
+
+    function _collectFee() private {
+        if (msg.value != vaultCreationFee) revert IncorrectFeeAmount(msg.value, vaultCreationFee);
     }
 
     /// @notice Adds `amount` to `buyer`'s volume for the current period.
@@ -208,5 +256,35 @@ contract EscrowFactory {
 
     function vaultCount() external view returns (uint256) {
         return allVaults.length;
+    }
+
+    // ─── Owner actions ─────────────────────────────────────
+
+    function transferOwnership(address newOwner) external onlyOwner {
+        if (newOwner == address(0)) revert ZeroAddress();
+        emit OwnershipTransferred(owner, newOwner);
+        owner = newOwner;
+    }
+
+    function setVaultCreationFee(uint256 newFee) external onlyOwner {
+        emit VaultCreationFeeUpdated(vaultCreationFee, newFee);
+        vaultCreationFee = newFee;
+    }
+
+    function setFeeRecipient(address newRecipient) external onlyOwner {
+        if (newRecipient == address(0)) revert ZeroAddress();
+        emit FeeRecipientUpdated(feeRecipient, newRecipient);
+        feeRecipient = newRecipient;
+    }
+
+    /// @notice Sends this contract's entire ETH balance (accumulated vault
+    /// creation fees) to `feeRecipient`. Pull-based and owner-triggered rather
+    /// than pushed on every `createTrade`/`createTradeFor` call — see the
+    /// contract-level doc comment for why.
+    function withdrawFees() external onlyOwner {
+        uint256 amount = address(this).balance;
+        (bool ok,) = feeRecipient.call{value: amount}("");
+        if (!ok) revert FeeTransferFailed();
+        emit FeesWithdrawn(feeRecipient, amount);
     }
 }

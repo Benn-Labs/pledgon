@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { decodeEventLog, isAddress, parseUnits, zeroAddress, type Address } from "viem";
-import { useAccount, useChainId, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
+import { decodeEventLog, formatEther, isAddress, parseUnits, zeroAddress, type Address } from "viem";
+import { useAccount, useChainId, useReadContract, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import { escrowFactoryAbi } from "@/generated/contracts";
 import { addresses } from "@/lib/addresses";
 import { useToken } from "@/hooks/useToken";
@@ -66,6 +66,13 @@ export default function CreateEscrowPage() {
     arbiterInput !== "" &&
     ((account && arbiterInput.toLowerCase() === account.toLowerCase()) ||
       (isAddress(counterpartyInput) && arbiterInput.toLowerCase() === counterpartyInput.toLowerCase()));
+
+  const { data: vaultCreationFee } = useReadContract({
+    address: addresses.escrowFactory,
+    abi: escrowFactoryAbi,
+    functionName: "vaultCreationFee",
+    query: { enabled: Boolean(addresses.escrowFactory) },
+  });
 
   const { writeContract, data: hash, isPending, error } = useWriteContract();
   const { data: receipt, isLoading: isConfirming } = useWaitForTransactionReceipt({ hash, query: { enabled: Boolean(hash) } });
@@ -175,6 +182,7 @@ export default function CreateEscrowPage() {
           milestoneConfirmWindow,
           deliveryWindow,
         ],
+        value: vaultCreationFee ?? 0n,
       });
     } else {
       // createTradeFor is permissionless: fund() still requires the buyer's
@@ -196,6 +204,7 @@ export default function CreateEscrowPage() {
           milestoneConfirmWindow,
           deliveryWindow,
         ],
+        value: vaultCreationFee ?? 0n,
       });
     }
   }
@@ -471,6 +480,12 @@ export default function CreateEscrowPage() {
             </span>
           </div>
         </div>
+
+        {vaultCreationFee !== undefined && vaultCreationFee > 0n && (
+          <p className="text-xs text-ink-500 text-center mb-2">
+            A vault-creation fee of {formatEther(vaultCreationFee)} ETH applies, on top of the {symbol ?? "token"} amounts above.
+          </p>
+        )}
 
         <button
           onClick={submit}

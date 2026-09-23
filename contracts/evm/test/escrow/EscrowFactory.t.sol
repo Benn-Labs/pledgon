@@ -23,6 +23,7 @@ contract EscrowFactoryTest is Test {
     /// tests specifically about accreditation use their own addresses.
     address arbiter = makeAddr("arbiter");
     address defaultArbiter = makeAddr("defaultArbiter");
+    address feeRecipient = makeAddr("feeRecipient");
 
     EscrowConfirmationConsumer confirmationConsumer;
     ComplianceConsumer complianceConsumer;
@@ -35,7 +36,9 @@ contract EscrowFactoryTest is Test {
         complianceConsumer = new ComplianceConsumer(forwarder, MAX_VALIDITY);
         registry = new ArbitratorRegistry(address(this));
         registry.accredit(arbiter);
-        factory = new EscrowFactory(confirmationConsumer, complianceConsumer, TIER0_CAP_USD, TIER1_CAP_USD, registry, defaultArbiter);
+        factory = new EscrowFactory(
+            confirmationConsumer, complianceConsumer, TIER0_CAP_USD, TIER1_CAP_USD, registry, defaultArbiter, address(this), feeRecipient, 0
+        );
         token = new MockERC20(6);
     }
 
@@ -63,32 +66,72 @@ contract EscrowFactoryTest is Test {
     function test_Constructor_RevertsOnZeroConfirmationConsumer() public {
         vm.expectRevert(EscrowFactory.ZeroAddress.selector);
         new EscrowFactory(
-            EscrowConfirmationConsumer(address(0)), complianceConsumer, TIER0_CAP_USD, TIER1_CAP_USD, registry, defaultArbiter
+            EscrowConfirmationConsumer(address(0)),
+            complianceConsumer,
+            TIER0_CAP_USD,
+            TIER1_CAP_USD,
+            registry,
+            defaultArbiter,
+            address(this),
+            feeRecipient,
+            0
         );
     }
 
     function test_Constructor_RevertsOnZeroComplianceConsumer() public {
         vm.expectRevert(EscrowFactory.ZeroAddress.selector);
         new EscrowFactory(
-            confirmationConsumer, ComplianceConsumer(address(0)), TIER0_CAP_USD, TIER1_CAP_USD, registry, defaultArbiter
+            confirmationConsumer,
+            ComplianceConsumer(address(0)),
+            TIER0_CAP_USD,
+            TIER1_CAP_USD,
+            registry,
+            defaultArbiter,
+            address(this),
+            feeRecipient,
+            0
         );
     }
 
     function test_Constructor_RevertsOnZeroArbitratorRegistry() public {
         vm.expectRevert(EscrowFactory.ZeroAddress.selector);
         new EscrowFactory(
-            confirmationConsumer, complianceConsumer, TIER0_CAP_USD, TIER1_CAP_USD, ArbitratorRegistry(address(0)), defaultArbiter
+            confirmationConsumer,
+            complianceConsumer,
+            TIER0_CAP_USD,
+            TIER1_CAP_USD,
+            ArbitratorRegistry(address(0)),
+            defaultArbiter,
+            address(this),
+            feeRecipient,
+            0
         );
     }
 
     function test_Constructor_RevertsOnZeroDefaultArbiter() public {
         vm.expectRevert(EscrowFactory.ZeroAddress.selector);
-        new EscrowFactory(confirmationConsumer, complianceConsumer, TIER0_CAP_USD, TIER1_CAP_USD, registry, address(0));
+        new EscrowFactory(
+            confirmationConsumer, complianceConsumer, TIER0_CAP_USD, TIER1_CAP_USD, registry, address(0), address(this), feeRecipient, 0
+        );
+    }
+
+    function test_Constructor_RevertsOnZeroOwner() public {
+        vm.expectRevert(EscrowFactory.ZeroAddress.selector);
+        new EscrowFactory(
+            confirmationConsumer, complianceConsumer, TIER0_CAP_USD, TIER1_CAP_USD, registry, defaultArbiter, address(0), feeRecipient, 0
+        );
+    }
+
+    function test_Constructor_RevertsOnZeroFeeRecipient() public {
+        vm.expectRevert(EscrowFactory.ZeroAddress.selector);
+        new EscrowFactory(
+            confirmationConsumer, complianceConsumer, TIER0_CAP_USD, TIER1_CAP_USD, registry, defaultArbiter, address(this), address(0), 0
+        );
     }
 
     function test_Constructor_RevertsIfTier1CapBelowTier0Cap() public {
         vm.expectRevert(abi.encodeWithSelector(EscrowFactory.InvalidTierCaps.selector, 1000, 999));
-        new EscrowFactory(confirmationConsumer, complianceConsumer, 1000, 999, registry, defaultArbiter);
+        new EscrowFactory(confirmationConsumer, complianceConsumer, 1000, 999, registry, defaultArbiter, address(this), feeRecipient, 0);
     }
 
     function test_Constructor_SetsSharedConsumers() public view {
@@ -96,6 +139,12 @@ contract EscrowFactoryTest is Test {
         assertEq(address(factory.complianceConsumer()), address(complianceConsumer));
         assertEq(address(factory.arbitratorRegistry()), address(registry));
         assertEq(factory.defaultArbiter(), defaultArbiter);
+    }
+
+    function test_Constructor_SetsFeeState() public view {
+        assertEq(factory.owner(), address(this));
+        assertEq(factory.feeRecipient(), feeRecipient);
+        assertEq(factory.vaultCreationFee(), 0);
     }
 
     // ─── createTrade ──────────────────────────────────────────
@@ -343,5 +392,109 @@ contract EscrowFactoryTest is Test {
 
         assertTrue(EscrowVault(vault2).funded());
         assertEq(factory.currentPeriodVolume(buyer), firstAmount + secondAmount);
+    }
+
+    // ─── Vault creation fee ─────────────────────────────────────
+
+    function test_CreateTrade_SucceedsWithZeroFeeAndZeroValue() public {
+        vm.prank(buyer);
+        address vault = factory.createTrade(seller, arbiter, IERC20(address(token)), 0, _amounts(100e6, 0), 0, 0, 0);
+        assertTrue(vault != address(0));
+    }
+
+    function test_CreateTrade_RevertsIfValueDoesNotMatchFee() public {
+        factory.setVaultCreationFee(0.01 ether);
+        vm.deal(buyer, 1 ether);
+
+        vm.prank(buyer);
+        vm.expectRevert(abi.encodeWithSelector(EscrowFactory.IncorrectFeeAmount.selector, 0, 0.01 ether));
+        factory.createTrade(seller, arbiter, IERC20(address(token)), 0, _amounts(100e6, 0), 0, 0, 0);
+
+        vm.prank(buyer);
+        vm.expectRevert(abi.encodeWithSelector(EscrowFactory.IncorrectFeeAmount.selector, 0.02 ether, 0.01 ether));
+        factory.createTrade{value: 0.02 ether}(seller, arbiter, IERC20(address(token)), 0, _amounts(100e6, 0), 0, 0, 0);
+    }
+
+    function test_CreateTrade_SucceedsWithExactFee() public {
+        factory.setVaultCreationFee(0.01 ether);
+        vm.deal(buyer, 1 ether);
+
+        vm.prank(buyer);
+        address vault = factory.createTrade{value: 0.01 ether}(seller, arbiter, IERC20(address(token)), 0, _amounts(100e6, 0), 0, 0, 0);
+
+        assertTrue(vault != address(0));
+        assertEq(address(factory).balance, 0.01 ether);
+    }
+
+    function test_CreateTradeFor_RequiresExactFeeToo() public {
+        factory.setVaultCreationFee(0.01 ether);
+        address orchestrator = makeAddr("orchestrator");
+        vm.deal(orchestrator, 1 ether);
+
+        vm.prank(orchestrator);
+        vm.expectRevert(abi.encodeWithSelector(EscrowFactory.IncorrectFeeAmount.selector, 0, 0.01 ether));
+        factory.createTradeFor(buyer, seller, arbiter, IERC20(address(token)), 0, _amounts(100e6, 0), 0, 0, 0);
+
+        vm.prank(orchestrator);
+        address vault =
+            factory.createTradeFor{value: 0.01 ether}(buyer, seller, arbiter, IERC20(address(token)), 0, _amounts(100e6, 0), 0, 0, 0);
+        assertTrue(vault != address(0));
+    }
+
+    function test_SetVaultCreationFee_RevertsForNonOwner() public {
+        vm.prank(buyer);
+        vm.expectRevert(abi.encodeWithSelector(EscrowFactory.NotOwner.selector, buyer));
+        factory.setVaultCreationFee(1 ether);
+    }
+
+    function test_SetFeeRecipient_RevertsForNonOwner() public {
+        vm.prank(buyer);
+        vm.expectRevert(abi.encodeWithSelector(EscrowFactory.NotOwner.selector, buyer));
+        factory.setFeeRecipient(buyer);
+    }
+
+    function test_SetFeeRecipient_RevertsOnZeroAddress() public {
+        vm.expectRevert(EscrowFactory.ZeroAddress.selector);
+        factory.setFeeRecipient(address(0));
+    }
+
+    function test_TransferOwnership_RevertsForNonOwner() public {
+        vm.prank(buyer);
+        vm.expectRevert(abi.encodeWithSelector(EscrowFactory.NotOwner.selector, buyer));
+        factory.transferOwnership(buyer);
+    }
+
+    function test_TransferOwnership_MovesAdminRightsToNewOwner() public {
+        address newOwner = makeAddr("newOwner");
+        factory.transferOwnership(newOwner);
+        assertEq(factory.owner(), newOwner);
+
+        vm.expectRevert(abi.encodeWithSelector(EscrowFactory.NotOwner.selector, address(this)));
+        factory.setVaultCreationFee(1 ether);
+
+        vm.prank(newOwner);
+        factory.setVaultCreationFee(1 ether);
+        assertEq(factory.vaultCreationFee(), 1 ether);
+    }
+
+    function test_WithdrawFees_SendsBalanceToFeeRecipient() public {
+        factory.setVaultCreationFee(0.01 ether);
+        vm.deal(buyer, 1 ether);
+        vm.prank(buyer);
+        factory.createTrade{value: 0.01 ether}(seller, arbiter, IERC20(address(token)), 0, _amounts(100e6, 0), 0, 0, 0);
+
+        assertEq(address(factory).balance, 0.01 ether);
+        assertEq(feeRecipient.balance, 0);
+
+        factory.withdrawFees();
+
+        assertEq(address(factory).balance, 0);
+        assertEq(feeRecipient.balance, 0.01 ether);
+    }
+
+    function test_WithdrawFees_RevertsForNonOwner() public {
+        vm.prank(buyer);
+        vm.expectRevert(abi.encodeWithSelector(EscrowFactory.NotOwner.selector, buyer));
+        factory.withdrawFees();
     }
 }
