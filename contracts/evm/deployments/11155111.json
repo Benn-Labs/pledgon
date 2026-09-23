@@ -2,10 +2,10 @@
   "arbitratorRegistry": "0xA2c80F3d116608f510Effa03AFc10C85d88731E1",
   "complianceConsumer": "0xB53debF35709B1C040bAbf0B41b3f5A92B908E0c",
   "escrowConfirmationConsumer": "0x075846414E0D911B3A1aF83AC85CF04bd09A953a",
-  "escrowFactory": "0x330B82f324A31505c2a0f02fCdc9D1a1b13Ec877",
+  "escrowFactory": "0xf40d6E264a8c5A7ff0435961627dEc6Cb1d017b3",
   "lendingOracleConsumer": "0xfC49691016E30F854F374935866d93cd5BDdCE16",
   "lendingPool": "0x167F8fA9F7dE0a491e93fa5ccf721A30bd0Cf253",
   "liquidationConsumer": "0x53F25a5Ce02e1Fc5e66B31D5221758E0BF9EbeEE",
-  "marketplace": "0x6036Daae6425001dF43293c184f451954BC76D8C",
+  "marketplace": "0x87dc330CC9CD6D9381065Db294e75E99E3528d50",
   "tradeExpiryKeeper": "0xdBAF591d3360D23eeec5cF4aF47197042C400C91"
 }

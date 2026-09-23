@@ -1,7 +1,7 @@
 {
   "schedule": "0 */5 * * * *",
   "chainSelectorName": "ethereum-testnet-sepolia",
-  "escrowFactoryAddress": "0x330B82f324A31505c2a0f02fCdc9D1a1b13Ec877",
+  "escrowFactoryAddress": "0xf40d6E264a8c5A7ff0435961627dEc6Cb1d017b3",
   "keeperAddress": "0xdBAF591d3360D23eeec5cF4aF47197042C400C91",
   "gasLimitWei": 500000
 }
