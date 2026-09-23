@@ -332,6 +332,7 @@ export default function DashboardPage() {
                       amount={lending.debtAmount}
                       decimals={lending.debtDecimals}
                       symbol={lending.debtSymbol}
+                      maxDecimals={2}
                       className="text-sm font-bold text-white"
                     />
                   ) : (

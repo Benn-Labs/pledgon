@@ -402,7 +402,7 @@ export default function LendingPage() {
             <div className="text-xs text-ink-400 mb-1">Total Supplied</div>
             <div className="font-mono text-lg text-ink-100">
               {debtDecimals !== undefined && poolTotalSupply !== undefined
-                ? formatToken(poolTotalSupply, debtDecimals, debtSymbol)
+                ? formatToken(poolTotalSupply, debtDecimals, debtSymbol, 2)
                 : "…"}
             </div>
           </div>
@@ -410,7 +410,7 @@ export default function LendingPage() {
             <div className="text-xs text-ink-400 mb-1">Total Borrowed</div>
             <div className="font-mono text-lg text-ink-100">
               {debtDecimals !== undefined && poolTotalBorrows !== undefined
-                ? formatToken(poolTotalBorrows, debtDecimals, debtSymbol)
+                ? formatToken(poolTotalBorrows, debtDecimals, debtSymbol, 2)
                 : "…"}
             </div>
           </div>
@@ -424,7 +424,7 @@ export default function LendingPage() {
             <div className="text-xs text-ink-400 mb-1">Your Supplied Balance</div>
             <div className="font-mono text-lg text-ink-100">
               {debtDecimals !== undefined && lenderBalance !== undefined
-                ? formatToken(lenderBalance, debtDecimals, debtSymbol)
+                ? formatToken(lenderBalance, debtDecimals, debtSymbol, 2)
                 : "…"}
             </div>
           </div>
@@ -489,7 +489,7 @@ export default function LendingPage() {
           <div className="p-4 rounded-lg bg-ink-800/50 border border-ink-700">
             <div className="text-xs text-ink-400 mb-1">Debt Owed</div>
             <div className="font-mono text-lg text-ink-100">
-              {debtDecimals !== undefined ? formatToken(debtAmount, debtDecimals, debtSymbol) : "…"}
+              {debtDecimals !== undefined ? formatToken(debtAmount, debtDecimals, debtSymbol, 2) : "…"}
             </div>
           </div>
           <div className="p-4 rounded-lg bg-ink-800/50 border border-ink-700 flex flex-col items-center justify-center">
@@ -634,7 +634,7 @@ export default function LendingPage() {
                   </span>
                   <span className="flex items-center gap-3 text-xs">
                     {debtDecimals !== undefined && (
-                      <span className="text-ink-400">{formatToken(b.debtAmount, debtDecimals, debtSymbol)} owed</span>
+                      <span className="text-ink-400">{formatToken(b.debtAmount, debtDecimals, debtSymbol, 2)} owed</span>
                     )}
                     <span className="font-mono text-ink-300">{b.rowLtvBps !== undefined ? `${Number(b.rowLtvBps) / 100}% LTV` : "—"}</span>
                     {b.eligible ? (
@@ -659,7 +659,7 @@ export default function LendingPage() {
         />
         {liquidateTargetAddress && debtDecimals !== undefined && (
           <p className="text-xs text-ink-500 mb-4">
-            Debt owed: {formatToken(targetDebtAmount, debtDecimals, debtSymbol)} ·{" "}
+            Debt owed: {formatToken(targetDebtAmount, debtDecimals, debtSymbol, 2)} ·{" "}
             {targetEligible ? "Eligible for liquidation" : "Not eligible"}
           </p>
         )}
