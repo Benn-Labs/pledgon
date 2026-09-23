@@ -1393,6 +1393,7 @@ export const lendingPoolAbi = [
         internalType: 'uint256',
         type: 'uint256',
       },
+      { name: '_borrowRateBps', internalType: 'uint256', type: 'uint256' },
     ],
     stateMutability: 'nonpayable',
   },
@@ -1405,10 +1406,31 @@ export const lendingPoolAbi = [
   },
   {
     type: 'function',
+    inputs: [],
+    name: 'SECONDS_PER_YEAR',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
     inputs: [{ name: 'amount', internalType: 'uint256', type: 'uint256' }],
     name: 'borrow',
     outputs: [],
     stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'borrowIndex',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'borrowRateBps',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
   },
   {
     type: 'function',
@@ -1449,9 +1471,37 @@ export const lendingPoolAbi = [
   },
   {
     type: 'function',
+    inputs: [{ name: 'amount', internalType: 'uint256', type: 'uint256' }],
+    name: 'depositLiquidity',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
     inputs: [{ name: 'borrower', internalType: 'address', type: 'address' }],
     name: 'isUndercollateralized',
     outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'lastAccrualTimestamp',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'lender', internalType: 'address', type: 'address' }],
+    name: 'lenderBalance',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: '', internalType: 'address', type: 'address' }],
+    name: 'lenderShares',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
     stateMutability: 'view',
   },
   {
@@ -1496,7 +1546,7 @@ export const lendingPoolAbi = [
   },
   {
     type: 'function',
-    inputs: [{ name: '', internalType: 'address', type: 'address' }],
+    inputs: [{ name: 'borrower', internalType: 'address', type: 'address' }],
     name: 'positions',
     outputs: [
       { name: 'collateralAmount', internalType: 'uint256', type: 'uint256' },
@@ -1513,8 +1563,36 @@ export const lendingPoolAbi = [
   },
   {
     type: 'function',
+    inputs: [],
+    name: 'totalBorrows',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'totalShares',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'totalSupply',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
     inputs: [{ name: 'amount', internalType: 'uint256', type: 'uint256' }],
     name: 'withdrawCollateral',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'shares', internalType: 'uint256', type: 'uint256' }],
+    name: 'withdrawLiquidity',
     outputs: [],
     stateMutability: 'nonpayable',
   },
@@ -1611,6 +1689,56 @@ export const lendingPoolAbi = [
     anonymous: false,
     inputs: [
       {
+        name: 'lender',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      {
+        name: 'amount',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: false,
+      },
+      {
+        name: 'shares',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: false,
+      },
+    ],
+    name: 'LiquidityDeposited',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'lender',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      {
+        name: 'shares',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: false,
+      },
+      {
+        name: 'amount',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: false,
+      },
+    ],
+    name: 'LiquidityWithdrawn',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
         name: 'borrower',
         internalType: 'address',
         type: 'address',
@@ -1633,6 +1761,23 @@ export const lendingPoolAbi = [
       { name: 'available', internalType: 'uint256', type: 'uint256' },
     ],
     name: 'InsufficientCollateral',
+  },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'requested', internalType: 'uint256', type: 'uint256' },
+      { name: 'available', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'InsufficientLiquidity',
+  },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'lender', internalType: 'address', type: 'address' },
+      { name: 'requested', internalType: 'uint256', type: 'uint256' },
+      { name: 'available', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'InsufficientShares',
   },
   {
     type: 'error',
@@ -1666,6 +1811,7 @@ export const lendingPoolAbi = [
   },
   { type: 'error', inputs: [], name: 'ZeroAddress' },
   { type: 'error', inputs: [], name: 'ZeroAmount' },
+  { type: 'error', inputs: [], name: 'ZeroShares' },
 ] as const
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

@@ -121,6 +121,7 @@ contract Deploy is Script {
 
         string memory feedLabel = vm.envOr("COLLATERAL_FEED_LABEL", string("RWA/USD"));
         uint256 thresholdBps = vm.envOr("LIQUIDATION_THRESHOLD_BPS", uint256(8000));
+        uint256 borrowRateBps = vm.envOr("BORROW_RATE_BPS", uint256(500));
 
         LendingOracleConsumer oracleConsumer = new LendingOracleConsumer(forwarder);
         LiquidationConsumer liqConsumer = new LiquidationConsumer(forwarder);
@@ -130,7 +131,8 @@ contract Deploy is Script {
             oracleConsumer,
             liqConsumer,
             oracleConsumer.feedIdFor(feedLabel),
-            thresholdBps
+            thresholdBps,
+            borrowRateBps
         );
 
         console.log("LendingOracleConsumer:     ", address(oracleConsumer));

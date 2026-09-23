@@ -62,8 +62,10 @@ public RPC (e.g. `ethereum-sepolia-rpc.publicnode.com`) with a larger
 Next.js + wagmi/viem + RainbowKit app under [`frontend/`](frontend), covering
 the buyer journey against Sepolia: browse listings, purchase (opens an escrow
 vault), the compliance gate on a purchase that exceeds the buyer's tier cap,
-fund, and escrow status (bond, milestone docs, confirm, dispute). Lending has
-no UI yet — separate scope.
+fund, and escrow status (bond, milestone docs, confirm, dispute). The
+`/lending` page covers the borrower side (deposit/withdraw collateral, borrow,
+repay, liquidate) and the lender side (supply/withdraw pool liquidity,
+interest-bearing).
 
 ```bash
 cd frontend

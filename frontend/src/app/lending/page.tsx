@@ -19,6 +19,7 @@ function ActionPanel({
   title,
   tokenSymbol,
   balance,
+  balanceLabel = "Wallet balance",
   decimals,
   amount,
   setAmount,
@@ -29,6 +30,7 @@ function ActionPanel({
   title: string;
   tokenSymbol?: string;
   balance?: bigint;
+  balanceLabel?: string;
   decimals?: number;
   amount: string;
   setAmount: (v: string) => void;
@@ -49,7 +51,9 @@ function ActionPanel({
         <span className="absolute right-4 top-1/2 -translate-y-1/2 text-ink-400 text-sm">{tokenSymbol ?? ""}</span>
       </div>
       {balance !== undefined && decimals !== undefined && (
-        <p className="text-xs text-ink-500 mb-4">Wallet balance: {formatToken(balance, decimals, tokenSymbol)}</p>
+        <p className="text-xs text-ink-500 mb-4">
+          {balanceLabel}: {formatToken(balance, decimals, tokenSymbol)}
+        </p>
       )}
       <button
         onClick={onSubmit}
@@ -111,6 +115,43 @@ export default function LendingPage() {
     query: { enabled: Boolean(addresses.debtToken && addresses.lendingPool && account) },
   });
 
+  const { data: lenderShares, refetch: refetchLenderShares } = useReadContract({
+    address: addresses.lendingPool,
+    abi: lendingPoolAbi,
+    functionName: "lenderShares",
+    args: account ? [account] : undefined,
+    query: { enabled: Boolean(addresses.lendingPool && account) },
+  });
+
+  const { data: lenderBalance, refetch: refetchLenderBalance } = useReadContract({
+    address: addresses.lendingPool,
+    abi: lendingPoolAbi,
+    functionName: "lenderBalance",
+    args: account ? [account] : undefined,
+    query: { enabled: Boolean(addresses.lendingPool && account) },
+  });
+
+  const { data: poolTotalSupply, refetch: refetchPoolTotalSupply } = useReadContract({
+    address: addresses.lendingPool,
+    abi: lendingPoolAbi,
+    functionName: "totalSupply",
+    query: { enabled: Boolean(addresses.lendingPool) },
+  });
+
+  const { data: poolTotalBorrows, refetch: refetchPoolTotalBorrows } = useReadContract({
+    address: addresses.lendingPool,
+    abi: lendingPoolAbi,
+    functionName: "totalBorrows",
+    query: { enabled: Boolean(addresses.lendingPool) },
+  });
+
+  const { data: borrowRateBps } = useReadContract({
+    address: addresses.lendingPool,
+    abi: lendingPoolAbi,
+    functionName: "borrowRateBps",
+    query: { enabled: Boolean(addresses.lendingPool) },
+  });
+
   const { writeContract, data: hash, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash, query: { enabled: Boolean(hash) } });
 
@@ -119,6 +160,8 @@ export default function LendingPage() {
   const [repayAmount, setRepayAmount] = useState("");
   const [borrowAmount, setBorrowAmount] = useState("");
   const [liquidateTarget, setLiquidateTarget] = useState("");
+  const [supplyAmount, setSupplyAmount] = useState("");
+  const [withdrawSupplyAmount, setWithdrawSupplyAmount] = useState("");
 
   const liquidateTargetAddress = isAddress(liquidateTarget) ? (liquidateTarget as Address) : undefined;
 
@@ -148,6 +191,10 @@ export default function LendingPage() {
       refetchDebtAllowance();
       refetchTargetPosition();
       refetchTargetEligible();
+      refetchLenderShares();
+      refetchLenderBalance();
+      refetchPoolTotalSupply();
+      refetchPoolTotalBorrows();
       // Best-effort, silent — write-lending-borrower verifies on-chain
       // whether this transaction actually emitted CollateralDeposited, so
       // passing every successful tx's hash (not just known deposits) is
@@ -165,6 +212,10 @@ export default function LendingPage() {
     refetchDebtAllowance,
     refetchTargetPosition,
     refetchTargetEligible,
+    refetchLenderShares,
+    refetchLenderBalance,
+    refetchPoolTotalSupply,
+    refetchPoolTotalBorrows,
   ]);
 
   useEffect(() => {
@@ -195,6 +246,8 @@ export default function LendingPage() {
   const needsDebtApproval =
     debtDecimals !== undefined && repayAmount ? (debtAllowance ?? 0n) < parseUnits(repayAmount, debtDecimals) : false;
   const needsLiquidateApproval = liquidateTargetAddress ? (debtAllowance ?? 0n) < targetDebtAmount : false;
+  const needsSupplyApproval =
+    debtDecimals !== undefined && supplyAmount ? (debtAllowance ?? 0n) < parseUnits(supplyAmount, debtDecimals) : false;
 
   function approveCollateral() {
     if (!addresses.lendingPool || !addresses.collateralToken || collDecimals === undefined) return;
@@ -276,6 +329,42 @@ export default function LendingPage() {
     });
   }
 
+  function approveDebtForSupply() {
+    if (!addresses.lendingPool || !addresses.debtToken || debtDecimals === undefined) return;
+    writeContract({
+      address: addresses.debtToken,
+      abi: erc20Abi,
+      functionName: "approve",
+      args: [addresses.lendingPool, parseUnits(supplyAmount || "0", debtDecimals)],
+    });
+  }
+
+  function supplyLiquidity() {
+    if (!addresses.lendingPool || debtDecimals === undefined) return;
+    writeContract({
+      address: addresses.lendingPool,
+      abi: lendingPoolAbi,
+      functionName: "depositLiquidity",
+      args: [parseUnits(supplyAmount || "0", debtDecimals)],
+    });
+  }
+
+  function withdrawSupply() {
+    if (!addresses.lendingPool || debtDecimals === undefined) return;
+    const userShares = lenderShares ?? 0n;
+    const userBalance = lenderBalance ?? 0n;
+    const requested = parseUnits(withdrawSupplyAmount || "0", debtDecimals);
+    // Redeeming the full displayed balance uses the exact held shares, so no
+    // dust share is left behind from rounding the proportional formula below.
+    const shares = userBalance > 0n && requested >= userBalance ? userShares : (requested * userShares) / (userBalance || 1n);
+    writeContract({
+      address: addresses.lendingPool,
+      abi: lendingPoolAbi,
+      functionName: "withdrawLiquidity",
+      args: [shares],
+    });
+  }
+
   return (
     <div className="fade-in max-w-4xl mx-auto">
       <div className="flex items-start justify-between gap-4 mb-6">
@@ -300,6 +389,92 @@ export default function LendingPage() {
           <code className="font-mono text-xs">LiquidationConsumer</code> has attested that specific borrower
           eligible — most positions won&apos;t be.
         </p>
+      </div>
+
+      <div className="bg-ink-900 border border-ink-800 rounded-xl p-6 mb-6">
+        <h2 className="font-semibold text-white mb-1">Lend &amp; Earn Interest</h2>
+        <p className="text-xs text-ink-500 mb-4">
+          Supplied {debtSymbol} earns a fixed rate, paid by borrowers as their debt accrues — your share of the pool
+          grows in place, nothing to claim separately.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6">
+          <div className="p-4 rounded-lg bg-ink-800/50 border border-ink-700">
+            <div className="text-xs text-ink-400 mb-1">Total Supplied</div>
+            <div className="font-mono text-lg text-ink-100">
+              {debtDecimals !== undefined && poolTotalSupply !== undefined
+                ? formatToken(poolTotalSupply, debtDecimals, debtSymbol)
+                : "…"}
+            </div>
+          </div>
+          <div className="p-4 rounded-lg bg-ink-800/50 border border-ink-700">
+            <div className="text-xs text-ink-400 mb-1">Total Borrowed</div>
+            <div className="font-mono text-lg text-ink-100">
+              {debtDecimals !== undefined && poolTotalBorrows !== undefined
+                ? formatToken(poolTotalBorrows, debtDecimals, debtSymbol)
+                : "…"}
+            </div>
+          </div>
+          <div className="p-4 rounded-lg bg-ink-800/50 border border-ink-700">
+            <div className="text-xs text-ink-400 mb-1">Fixed Rate (APR)</div>
+            <div className="font-mono text-lg text-ink-100">
+              {borrowRateBps !== undefined ? `${Number(borrowRateBps) / 100}%` : "…"}
+            </div>
+          </div>
+          <div className="p-4 rounded-lg bg-ink-800/50 border border-ink-700">
+            <div className="text-xs text-ink-400 mb-1">Your Supplied Balance</div>
+            <div className="font-mono text-lg text-ink-100">
+              {debtDecimals !== undefined && lenderBalance !== undefined
+                ? formatToken(lenderBalance, debtDecimals, debtSymbol)
+                : "…"}
+            </div>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {needsSupplyApproval ? (
+            <div className="bg-ink-800/50 border border-ink-700 rounded-xl p-6">
+              <h3 className="font-semibold text-white mb-3">Supply Liquidity</h3>
+              <p className="text-sm text-ink-400 mb-4">Approve {debtSymbol} before supplying.</p>
+              <button
+                onClick={approveDebtForSupply}
+                disabled={!supplyAmount || isPending || isConfirming}
+                className="btn-press w-full py-2.5 rounded-lg bg-warning-600 hover:bg-warning-500 disabled:bg-ink-700 disabled:cursor-not-allowed text-white font-semibold"
+              >
+                Approve {debtSymbol}
+              </button>
+              <input
+                className="w-full mt-3 bg-ink-800 border border-ink-700 rounded-lg px-4 py-3 text-ink-200 font-mono focus:outline-none focus:border-trust-500"
+                placeholder="Amount to approve/supply"
+                value={supplyAmount}
+                onChange={(e) => setSupplyAmount(e.target.value)}
+              />
+            </div>
+          ) : (
+            <ActionPanel
+              title="Supply Liquidity"
+              tokenSymbol={debtSymbol}
+              balance={debtBalance}
+              decimals={debtDecimals}
+              amount={supplyAmount}
+              setAmount={setSupplyAmount}
+              submitLabel="Supply"
+              isPending={isPending || isConfirming}
+              onSubmit={supplyLiquidity}
+            />
+          )}
+
+          <ActionPanel
+            title="Withdraw Liquidity"
+            tokenSymbol={debtSymbol}
+            balance={lenderBalance}
+            balanceLabel="Supplied balance"
+            decimals={debtDecimals}
+            amount={withdrawSupplyAmount}
+            setAmount={setWithdrawSupplyAmount}
+            submitLabel="Withdraw"
+            isPending={isPending || isConfirming}
+            onSubmit={withdrawSupply}
+          />
+        </div>
       </div>
 
       <div className="bg-ink-900 border border-ink-800 rounded-xl p-6 mb-6">

@@ -30,6 +30,7 @@ import {LendingPool} from "../src/lending/LendingPool.sol";
 /// Optional:
 ///   COLLATERAL_FEED_LABEL      default "RWA/USD"
 ///   LIQUIDATION_THRESHOLD_BPS  default 8000 (80% LTV)
+///   BORROW_RATE_BPS            default 500 (5%/year, fixed simple interest)
 ///
 /// Usage:
 ///   forge script script/DeployLending.s.sol --rpc-url <url> --account deployer --password <pw> --broadcast
@@ -40,6 +41,7 @@ contract DeployLending is Script {
         address debtToken = vm.envAddress("DEBT_TOKEN_ADDRESS");
         string memory feedLabel = vm.envOr("COLLATERAL_FEED_LABEL", string("RWA/USD"));
         uint256 thresholdBps = vm.envOr("LIQUIDATION_THRESHOLD_BPS", uint256(8000));
+        uint256 borrowRateBps = vm.envOr("BORROW_RATE_BPS", uint256(500));
 
         vm.startBroadcast();
         LendingOracleConsumer oracleConsumer = new LendingOracleConsumer(forwarder);
@@ -50,7 +52,8 @@ contract DeployLending is Script {
             oracleConsumer,
             liqConsumer,
             oracleConsumer.feedIdFor(feedLabel),
-            thresholdBps
+            thresholdBps,
+            borrowRateBps
         );
         vm.stopBroadcast();
 

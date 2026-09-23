@@ -275,10 +275,23 @@ pool's own view says "liquidatable," and confirms `liquidate()` still refuses
 without the DON's independent corroboration.
 
 **Minimal pool, not a money market.** `LendingPool` is one fixed
-collateral/debt token pair, no interest accrual, no lender shares or utilization
-curve, debt liquidity assumed pre-funded. It exists to make the liquidation
-mechanism real and testable, not to be a production lending product — building
-that is explicitly flagged in the mapping table above as its own large protocol.
+collateral/debt token pair. Lenders supply liquidity via `depositLiquidity`,
+minting shares at the pool's current exchange rate, and earn a fixed simple
+interest rate (`borrowRateBps`, set at deploy time) accrued into a global
+`borrowIndex` and realized lazily per-position on next touch — Compound V2's
+`borrowIndex` pattern, without a utilization curve: the rate borrowers pay
+doesn't move with how much of the pool is lent out. `totalSupply()` (idle cash
+plus outstanding interest-inclusive debt) divided by `totalShares` gives every
+lender's redeemable balance, so `withdrawLiquidity` burns shares for a
+proportionally larger payout as interest accrues — no separate claim step.
+`borrow()` now checks the pool's actual idle liquidity and reverts
+`InsufficientLiquidity` rather than assuming debt liquidity is pre-funded.
+`positions(address)` keeps its original external shape (collateral, debt)
+despite the internal storage restructuring, so on-chain consumers of that
+view (the CRE workflows, `discover-borrowers`, the frontend) needed no
+changes. Still not a production lending product — no variable-rate/utilization
+curve, no reserve factor, no multi-asset markets — building that is explicitly
+flagged in the mapping table above as its own large protocol.
 `collateralValueInDebtUnits` also assumes `collateralToken` and `debtToken` share
 the same `decimals()`; a market pairing tokens of different decimals needs that
 conversion added.
