@@ -1,13 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Address } from "viem";
-import { keccak256, toHex, zeroHash } from "viem";
-import { useAccount, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
+import { keccak256, zeroHash } from "viem";
+import { useAccount, useChainId, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import { escrowVaultAbi } from "@/generated/contracts";
 import { formatToken } from "@/lib/format";
 import { toast } from "@/lib/toast";
 import { useDisputeReason } from "@/hooks/useDisputeReason";
+import { useSignedMilestoneDocumentWrite, MAX_DOCUMENT_BYTES } from "@/hooks/useSignedMilestoneDocumentWrite";
+import { useMilestoneDocument } from "@/hooks/useMilestoneDocument";
 import { StatusBadge, MILESTONE_STATUS } from "@/components/ui/badges";
 import { formatTimeLeft, useNow } from "@/lib/countdown";
 
@@ -47,14 +49,18 @@ export function MilestoneRow({
   onSuccess: () => void;
 }) {
   const { address: account } = useAccount();
+  const chainId = useChainId();
   const now = useNow();
-  const [docText, setDocText] = useState("");
+  const [docFile, setDocFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [disputeReason, setDisputeReason] = useState("");
   const [showDispute, setShowDispute] = useState(false);
   const [showSettle, setShowSettle] = useState(false);
   const [settlePercent, setSettlePercent] = useState(50);
 
   const { data: dispute, isLoading: disputeLoading } = useDisputeReason(vault, index, status === 3);
+  const { upload: uploadDocument, isPending: isUploadingDocument } = useSignedMilestoneDocumentWrite();
+  const milestoneDocument = useMilestoneDocument(vault, index, docHash !== zeroHash);
 
   const { writeContract, data: hash, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({
@@ -70,12 +76,29 @@ export function MilestoneRow({
       onSuccess();
       setShowDispute(false);
       setShowSettle(false);
+      setDocFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   }, [isSuccess, onSuccess]);
 
   useEffect(() => {
     if (error) toast(error.message, "error");
   }, [error]);
+
+  async function submitDocument() {
+    if (!docFile) return;
+    if (docFile.size > MAX_DOCUMENT_BYTES) {
+      toast(`File too large — ${MAX_DOCUMENT_BYTES / (1024 * 1024)}MB max`, "error");
+      return;
+    }
+    const docHashToSubmit = keccak256(new Uint8Array(await docFile.arrayBuffer()));
+    const result = await uploadDocument({ chainId, vaultAddress: vault, milestoneIndex: index, docHash: docHashToSubmit, file: docFile });
+    if (!result.ok) {
+      toast(`Document upload failed: ${result.error}`, "error");
+      return;
+    }
+    writeContract({ address: vault, abi: escrowVaultAbi, functionName: "submitMilestoneDocs", args: [BigInt(index), docHashToSubmit] });
+  }
 
   const statusLabel = MILESTONE_STATUS[status];
   const isDisputed = status === 3;
@@ -112,9 +135,27 @@ export function MilestoneRow({
         {docHash !== zeroHash && (
           <div className="text-right">
             <div className="text-xs text-ink-500 mb-1">Documentation</div>
-            <div className="addr text-trust-400 font-mono text-xs">
+            <div className="addr text-success-400 font-mono text-xs">
               {docHash.slice(0, 10)}…{docHash.slice(-6)}
             </div>
+            {milestoneDocument && (
+              <a
+                href={milestoneDocument.url}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 text-trust-400 hover:text-trust-300 text-xs mt-0.5"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                  />
+                </svg>
+                View Document
+              </a>
+            )}
           </div>
         )}
       </div>
@@ -162,24 +203,17 @@ export function MilestoneRow({
       {funded && isSeller && status === 0 && (
         <div className="flex gap-2 items-center flex-wrap">
           <input
-            className="flex-1 min-w-[180px] bg-ink-800 border border-ink-700 rounded-lg px-3 py-2 text-sm text-ink-200 focus:outline-none focus:border-trust-500"
-            placeholder="Delivery doc description or hash"
-            value={docText}
-            onChange={(e) => setDocText(e.target.value)}
+            ref={fileInputRef}
+            type="file"
+            onChange={(e) => setDocFile(e.target.files?.[0] ?? null)}
+            className="flex-1 min-w-[180px] text-sm text-ink-400 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-ink-800 file:text-ink-200 file:text-sm hover:file:bg-ink-700"
           />
           <button
-            onClick={() =>
-              writeContract({
-                address: vault,
-                abi: escrowVaultAbi,
-                functionName: "submitMilestoneDocs",
-                args: [BigInt(index), keccak256(toHex(docText))],
-              })
-            }
-            disabled={!docText || isPending || isConfirming}
-            className="btn-press px-4 py-2 rounded-lg bg-trust-600 hover:bg-trust-500 disabled:bg-ink-700 disabled:cursor-not-allowed text-white text-sm font-semibold"
+            onClick={submitDocument}
+            disabled={!docFile || isUploadingDocument || isPending || isConfirming}
+            className="btn-press px-4 py-2 rounded-lg bg-trust-600 hover:bg-trust-500 disabled:bg-ink-700 disabled:cursor-not-allowed text-white text-sm font-semibold shrink-0"
           >
-            Submit Documentation
+            {isUploadingDocument ? "Uploading…" : isPending || isConfirming ? "Submitting…" : "Submit Documentation"}
           </button>
         </div>
       )}

@@ -10,7 +10,8 @@ lose thumbnails, descriptions, and labels.
 
 1. Create a free project at [supabase.com](https://supabase.com).
 2. Run `schema.sql` in the SQL Editor (Supabase dashboard → SQL Editor → paste
-   and run). This creates the two tables with RLS allowing public read only.
+   and run). This creates the tables (RLS allowing public read only) and the
+   public `milestone-documents` Storage bucket milestone documents upload into.
 3. Install the [Supabase CLI](https://supabase.com/docs/guides/cli) if you
    don't have it, then from this `supabase/` directory:
    ```bash
@@ -24,10 +25,11 @@ lose thumbnails, descriptions, and labels.
    ```
    `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are injected automatically
    by Supabase for every Edge Function — no need to set them yourself.
-5. Deploy both functions:
+5. Deploy the functions:
    ```bash
    supabase functions deploy write-listing-metadata
    supabase functions deploy write-escrow-metadata
+   supabase functions deploy write-milestone-document
    ```
 6. Give the frontend the project URL and **anon** key (Project Settings → API)
    — set in `frontend/.env.local`:

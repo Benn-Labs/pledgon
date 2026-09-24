@@ -67,9 +67,51 @@ create table if not exists lending_borrowers (
 create index if not exists idx_lending_borrowers_lookup
   on lending_borrowers (chain_id, lending_pool_address);
 
+-- Backs EscrowVault.submitMilestoneDocs()'s docHash: docHash itself is what's
+-- actually committed on-chain and is all confirmMilestone/expireMilestone
+-- ever check — this row (and the file in the "milestone-documents" Storage
+-- bucket its storage_path points to) only exists so a buyer deciding
+-- whether to confirm can actually open the document that hash commits to,
+-- instead of just seeing an opaque hex string. write-milestone-document
+-- verifies keccak256(file bytes) equals the caller-supplied doc_hash before
+-- ever writing this row, so a row here is always a real preimage of the
+-- hash it's filed under. If this row or its file disappeared, the on-chain
+-- milestone status would be completely unaffected — only the ability to
+-- view the document would be lost.
+create table if not exists escrow_milestone_documents (
+  id bigint generated always as identity primary key,
+  chain_id integer not null,
+  vault_address text not null,
+  milestone_index integer not null,
+  storage_path text not null,
+  original_filename text not null,
+  content_type text not null,
+  size_bytes bigint not null,
+  doc_hash text not null,
+  uploaded_at timestamptz not null default now(),
+  unique (chain_id, vault_address, milestone_index)
+);
+
+create index if not exists idx_escrow_milestone_documents_lookup
+  on escrow_milestone_documents (chain_id, vault_address, milestone_index);
+
+-- Public-read bucket for the files escrow_milestone_documents.storage_path
+-- points into — same "off-chain metadata is public/discoverable, not
+-- access-controlled" stance as every table above (the real trade terms and
+-- funds are always on-chain; a document here is only reachable by whoever
+-- already knows the vault address and milestone index). Writes only ever
+-- happen through write-milestone-document's service-role client, which
+-- bypasses RLS/bucket policy entirely, so no storage.objects policy is
+-- needed for either read (the bucket's own `public` flag handles that) or
+-- write.
+insert into storage.buckets (id, name, public)
+values ('milestone-documents', 'milestone-documents', true)
+on conflict (id) do nothing;
+
 alter table marketplace_listings enable row level security;
 alter table escrow_trade_metadata enable row level security;
 alter table lending_borrowers enable row level security;
+alter table escrow_milestone_documents enable row level security;
 
 drop policy if exists "public read marketplace_listings" on marketplace_listings;
 create policy "public read marketplace_listings" on marketplace_listings
@@ -81,6 +123,10 @@ create policy "public read escrow_trade_metadata" on escrow_trade_metadata
 
 drop policy if exists "public read lending_borrowers" on lending_borrowers;
 create policy "public read lending_borrowers" on lending_borrowers
+  for select using (true);
+
+drop policy if exists "public read escrow_milestone_documents" on escrow_milestone_documents;
+create policy "public read escrow_milestone_documents" on escrow_milestone_documents
   for select using (true);
 
 -- Deliberately no insert/update/delete policies for anon or authenticated —
