@@ -13,6 +13,7 @@ import { saveTradeDescription } from "@/lib/tradeDescriptions";
 import { useSignedEscrowMetadataWrite } from "@/hooks/useSignedMetadataWrite";
 import { useAccreditedArbitrators } from "@/hooks/useAccreditedArbitrators";
 import { DEADLINE_WINDOW_OPTIONS } from "@/lib/deadlineWindows";
+import { TransactionReviewModal } from "@/components/ui/TransactionReviewModal";
 
 /**
  * Purely a UX starting point for filling in milestone amounts — none of
@@ -151,7 +152,17 @@ export default function CreateEscrowPage() {
     setDescriptionInputs((prev) => prev.filter((_, i) => i !== index));
   }
 
-  function submit() {
+  type PendingTrade = {
+    arbiterAddress: Address;
+    bondAmount: bigint;
+    milestoneAmounts: bigint[];
+    fundingWindow: bigint;
+    milestoneConfirmWindow: bigint;
+    deliveryWindow: bigint;
+  };
+  const [pendingTrade, setPendingTrade] = useState<PendingTrade | null>(null);
+
+  function openReview() {
     if (!addresses.escrowFactory || !account || !token || decimals === undefined || !isAddress(counterpartyInput)) {
       return;
     }
@@ -163,9 +174,20 @@ export default function CreateEscrowPage() {
     const filledIndices = milestoneInputs.map((v, i) => i).filter((i) => milestoneInputs[i].trim() !== "");
     const milestoneAmounts = filledIndices.map((i) => parseUnits(milestoneInputs[i], decimals));
     pendingLabels.current = filledIndices.map((i, n) => descriptionInputs[i]?.trim() || `Milestone ${n + 1}`);
-    const fundingWindow = BigInt(fundingWindowInput);
-    const milestoneConfirmWindow = BigInt(milestoneWindowInput);
-    const deliveryWindow = BigInt(deliveryWindowInput);
+
+    setPendingTrade({
+      arbiterAddress,
+      bondAmount,
+      milestoneAmounts,
+      fundingWindow: BigInt(fundingWindowInput),
+      milestoneConfirmWindow: BigInt(milestoneWindowInput),
+      deliveryWindow: BigInt(deliveryWindowInput),
+    });
+  }
+
+  function confirmSubmit() {
+    if (!pendingTrade || !addresses.escrowFactory || !account || !token) return;
+    const { arbiterAddress, bondAmount, milestoneAmounts, fundingWindow, milestoneConfirmWindow, deliveryWindow } = pendingTrade;
 
     if (myRole === "buyer") {
       writeContract({
@@ -207,9 +229,59 @@ export default function CreateEscrowPage() {
         value: vaultCreationFee ?? 0n,
       });
     }
+    setPendingTrade(null);
   }
 
   const milestoneTotal = milestoneInputs.reduce((sum, m) => sum + (parseFloat(m) || 0), 0);
+
+  const reviewLineItems = pendingTrade
+    ? [
+        { label: "Your role", value: myRole === "buyer" ? "Buyer" : "Seller" },
+        { label: "Counterparty", value: `${counterpartyInput.slice(0, 6)}…${counterpartyInput.slice(-4)}` },
+        ...pendingTrade.milestoneAmounts.map((amount, i) => ({
+          label: descriptionInputs.filter((_, di) => milestoneInputs[di].trim() !== "")[i] || `Milestone ${i + 1}`,
+          value: `${milestoneInputs.filter((m) => m.trim() !== "")[i]} ${symbol ?? "token"}`,
+        })),
+        { label: "Total", value: `${milestoneTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })} ${symbol ?? "token"}` },
+        ...(pendingTrade.bondAmount > 0n ? [{ label: "Seller bond", value: `${bondInput} ${symbol ?? "token"}` }] : []),
+      ]
+    : [];
+
+  const reviewContract =
+    pendingTrade && addresses.escrowFactory && token && account && isAddress(counterpartyInput)
+      ? myRole === "buyer"
+        ? {
+            address: addresses.escrowFactory,
+            abi: escrowFactoryAbi,
+            functionName: "createTrade",
+            args: [
+              counterpartyInput as Address,
+              pendingTrade.arbiterAddress,
+              token,
+              pendingTrade.bondAmount,
+              pendingTrade.milestoneAmounts,
+              pendingTrade.fundingWindow,
+              pendingTrade.milestoneConfirmWindow,
+              pendingTrade.deliveryWindow,
+            ],
+          }
+        : {
+            address: addresses.escrowFactory,
+            abi: escrowFactoryAbi,
+            functionName: "createTradeFor",
+            args: [
+              counterpartyInput as Address,
+              account,
+              pendingTrade.arbiterAddress,
+              token,
+              pendingTrade.bondAmount,
+              pendingTrade.milestoneAmounts,
+              pendingTrade.fundingWindow,
+              pendingTrade.milestoneConfirmWindow,
+              pendingTrade.deliveryWindow,
+            ],
+          }
+      : undefined;
 
   const canSubmit =
     isConnected &&
@@ -488,13 +560,25 @@ export default function CreateEscrowPage() {
         )}
 
         <button
-          onClick={submit}
+          onClick={openReview}
           disabled={!canSubmit}
           className="btn-press w-full py-4 rounded-lg bg-trust-600 hover:bg-trust-500 disabled:bg-ink-700 disabled:cursor-not-allowed text-white font-semibold text-lg glow-trust disabled:shadow-none"
         >
-          {isPending || isConfirming ? "Creating…" : "Create Escrow"}
+          {isPending || isConfirming ? "Creating…" : "Review & Create Escrow"}
         </button>
       </div>
+
+      <TransactionReviewModal
+        open={pendingTrade !== null}
+        onCancel={() => setPendingTrade(null)}
+        onConfirm={confirmSubmit}
+        isSubmitting={isPending || isConfirming}
+        title="Review Escrow Creation"
+        lineItems={reviewLineItems}
+        ethValue={vaultCreationFee ?? 0n}
+        ethValueLabel="Vault-creation fee"
+        contract={reviewContract}
+      />
     </div>
   );
 }

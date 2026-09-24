@@ -7,6 +7,7 @@ import { decodeEventLog, formatEther, formatUnits, parseUnits, type Address } fr
 import { useAccount, useReadContract, useReadContracts, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import { marketplaceAbi, escrowFactoryAbi } from "@/generated/contracts";
 import { addresses } from "@/lib/addresses";
+import { TransactionReviewModal } from "@/components/ui/TransactionReviewModal";
 import { useToken } from "@/hooks/useToken";
 import { formatToken } from "@/lib/format";
 import { toast } from "@/lib/toast";
@@ -122,6 +123,8 @@ export default function ListingDetailPage() {
     functionName: "vaultCreationFee",
     query: { enabled: Boolean(addresses.escrowFactory) },
   });
+
+  const [showReview, setShowReview] = useState(false);
 
   const { writeContract, data: hash, isPending, error } = useWriteContract();
   const { data: receipt, isLoading: isConfirming } = useWaitForTransactionReceipt({ hash });
@@ -360,20 +363,11 @@ export default function ListingDetailPage() {
             ) : isActive ? (
               <>
                 <button
-                  onClick={() =>
-                    purchaseQuantity !== undefined &&
-                    writeContract({
-                      address: marketplace,
-                      abi: marketplaceAbi,
-                      functionName: "purchase",
-                      args: [listingId, purchaseQuantity],
-                      value: vaultCreationFee ?? 0n,
-                    })
-                  }
+                  onClick={() => purchaseQuantity !== undefined && setShowReview(true)}
                   disabled={!quantityValid || isPending || isConfirming}
                   className="btn-press w-full py-3 rounded-lg bg-trust-600 hover:bg-trust-500 disabled:bg-ink-700 disabled:cursor-not-allowed text-white font-semibold glow-trust disabled:shadow-none"
                 >
-                  {isPending || isConfirming ? "Purchasing…" : "Purchase & Open Escrow"}
+                  {isPending || isConfirming ? "Purchasing…" : "Review & Purchase"}
                 </button>
                 {vaultCreationFee !== undefined && vaultCreationFee > 0n && (
                   <p className="text-xs text-ink-500 text-center mt-2">
@@ -428,6 +422,40 @@ export default function ListingDetailPage() {
           </div>
         </div>
       </div>
+
+      <TransactionReviewModal
+        open={showReview}
+        onCancel={() => setShowReview(false)}
+        onConfirm={() => {
+          if (purchaseQuantity === undefined) return;
+          writeContract({
+            address: marketplace,
+            abi: marketplaceAbi,
+            functionName: "purchase",
+            args: [listingId, purchaseQuantity],
+            value: vaultCreationFee ?? 0n,
+          });
+          setShowReview(false);
+        }}
+        isSubmitting={isPending || isConfirming}
+        title="Review Purchase"
+        lineItems={
+          decimals !== undefined
+            ? [
+                { label: "Quantity", value: quantityInput },
+                { label: "Seller bond", value: previewBond !== undefined ? formatToken(previewBond, decimals, symbol) : "—" },
+                { label: "You pay", value: previewTotal !== undefined ? formatToken(previewTotal, decimals, symbol) : "—" },
+              ]
+            : []
+        }
+        ethValue={vaultCreationFee ?? 0n}
+        ethValueLabel="Vault-creation fee"
+        contract={
+          purchaseQuantity !== undefined && marketplace
+            ? { address: marketplace, abi: marketplaceAbi, functionName: "purchase", args: [listingId, purchaseQuantity] }
+            : undefined
+        }
+      />
     </div>
   );
 }
