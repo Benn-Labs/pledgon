@@ -3,8 +3,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { isLendingConfigured } from "@/lib/addresses";
-import { HomeIcon, MarketplaceIcon, EscrowIcon, LendingIcon, FaucetIcon, SwapIcon } from "@/components/ui/icons";
+import { useAccount, useReadContract } from "wagmi";
+import { addresses, isLendingConfigured } from "@/lib/addresses";
+import { escrowFactoryAbi } from "@/generated/contracts";
+import { HomeIcon, MarketplaceIcon, EscrowIcon, LendingIcon, FaucetIcon, SwapIcon, AdminIcon } from "@/components/ui/icons";
 import { HeaderComplianceStatus } from "@/components/HeaderComplianceStatus";
 
 const NAV = [
@@ -18,6 +20,17 @@ const NAV = [
 
 export function Header() {
   const pathname = usePathname();
+  const { address: account } = useAccount();
+
+  const { data: factoryOwner } = useReadContract({
+    address: addresses.escrowFactory,
+    abi: escrowFactoryAbi,
+    functionName: "owner",
+    query: { enabled: Boolean(addresses.escrowFactory && account) },
+  });
+  const isOwner = Boolean(account && factoryOwner && account.toLowerCase() === factoryOwner.toLowerCase());
+
+  const nav = isOwner ? [...NAV, { href: "/admin", label: "Admin", icon: AdminIcon }] : NAV;
 
   return (
     <header className="sticky top-0 z-50 border-b border-ink-800 bg-ink-950/80 backdrop-blur-xl">
@@ -38,7 +51,7 @@ export function Header() {
           </Link>
 
           <nav className="flex items-center gap-1 overflow-x-auto">
-            {NAV.map(({ href, label, icon: Icon }) => {
+            {nav.map(({ href, label, icon: Icon }) => {
               const active = href === "/" ? pathname === "/" : pathname?.startsWith(href);
               const disabled = href === "/lending" && !isLendingConfigured;
               return (
