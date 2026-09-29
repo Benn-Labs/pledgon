@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { erc20Abi, isAddress, parseUnits } from "viem";
+import { erc20Abi, isAddress } from "viem";
 import type { Address } from "viem";
 import { useAccount, useReadContract, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import { lendingPoolAbi, liquidationConsumerAbi } from "@/generated/contracts";
@@ -11,7 +11,8 @@ import { useToken } from "@/hooks/useToken";
 import { useLendingPosition } from "@/hooks/useLendingPosition";
 import { useLendingBorrowers, useRegisterBorrowerFromDeposit } from "@/hooks/useLendingBorrowers";
 import { formatToken } from "@/lib/format";
-import { toast } from "@/lib/toast";
+import { tryParseUnits } from "@/lib/units";
+import { toast, toastTxError } from "@/lib/toast";
 import { LendingIcon } from "@/components/ui/icons";
 import { HealthFactorGauge } from "@/components/ui/HealthFactorGauge";
 
@@ -219,7 +220,7 @@ export default function LendingPage() {
   ]);
 
   useEffect(() => {
-    if (error) toast(error.message, "error");
+    if (error) toastTxError(error);
   }, [error]);
 
   if (!isLendingConfigured) {
@@ -241,71 +242,99 @@ export default function LendingPage() {
 
   const [collateralAmount, debtAmount] = position ?? [0n, 0n];
   const [, targetDebtAmount] = targetPosition ?? [0n, 0n];
-  const needsCollApproval =
-    collDecimals !== undefined && depositAmount ? (collAllowance ?? 0n) < parseUnits(depositAmount, collDecimals) : false;
-  const needsDebtApproval =
-    debtDecimals !== undefined && repayAmount ? (debtAllowance ?? 0n) < parseUnits(repayAmount, debtDecimals) : false;
+  // Inputs are free text, so these parses must stay render-safe: tryParseUnits
+  // returns undefined for garbage like "abc"/"1e3" instead of throwing mid-render.
+  const depositParsed = collDecimals !== undefined ? tryParseUnits(depositAmount, collDecimals) : undefined;
+  const repayParsed = debtDecimals !== undefined ? tryParseUnits(repayAmount, debtDecimals) : undefined;
+  const supplyParsed = debtDecimals !== undefined ? tryParseUnits(supplyAmount, debtDecimals) : undefined;
+  const needsCollApproval = depositParsed !== undefined && (collAllowance ?? 0n) < depositParsed;
+  const needsDebtApproval = repayParsed !== undefined && (debtAllowance ?? 0n) < repayParsed;
   const needsLiquidateApproval = liquidateTargetAddress ? (debtAllowance ?? 0n) < targetDebtAmount : false;
-  const needsSupplyApproval =
-    debtDecimals !== undefined && supplyAmount ? (debtAllowance ?? 0n) < parseUnits(supplyAmount, debtDecimals) : false;
+  const needsSupplyApproval = supplyParsed !== undefined && (debtAllowance ?? 0n) < supplyParsed;
 
   function approveCollateral() {
     if (!addresses.lendingPool || !addresses.collateralToken || collDecimals === undefined) return;
+    if (depositParsed === undefined) {
+      toast("Enter a valid amount to approve", "warning");
+      return;
+    }
     writeContract({
       address: addresses.collateralToken,
       abi: erc20Abi,
       functionName: "approve",
-      args: [addresses.lendingPool, parseUnits(depositAmount || "0", collDecimals)],
+      args: [addresses.lendingPool, depositParsed],
     });
   }
 
   function depositCollateral() {
     if (!addresses.lendingPool || collDecimals === undefined) return;
+    if (depositParsed === undefined) {
+      toast("Enter a valid amount to deposit", "warning");
+      return;
+    }
     writeContract({
       address: addresses.lendingPool,
       abi: lendingPoolAbi,
       functionName: "depositCollateral",
-      args: [parseUnits(depositAmount || "0", collDecimals)],
+      args: [depositParsed],
     });
   }
 
   function withdrawCollateral() {
     if (!addresses.lendingPool || collDecimals === undefined) return;
+    const amount = tryParseUnits(withdrawAmount, collDecimals);
+    if (amount === undefined) {
+      toast("Enter a valid amount to withdraw", "warning");
+      return;
+    }
     writeContract({
       address: addresses.lendingPool,
       abi: lendingPoolAbi,
       functionName: "withdrawCollateral",
-      args: [parseUnits(withdrawAmount || "0", collDecimals)],
+      args: [amount],
     });
   }
 
   function approveDebtForRepay() {
     if (!addresses.lendingPool || !addresses.debtToken || debtDecimals === undefined) return;
+    if (repayParsed === undefined) {
+      toast("Enter a valid amount to approve", "warning");
+      return;
+    }
     writeContract({
       address: addresses.debtToken,
       abi: erc20Abi,
       functionName: "approve",
-      args: [addresses.lendingPool, parseUnits(repayAmount || "0", debtDecimals)],
+      args: [addresses.lendingPool, repayParsed],
     });
   }
 
   function repay() {
     if (!addresses.lendingPool || debtDecimals === undefined) return;
+    if (repayParsed === undefined) {
+      toast("Enter a valid amount to repay", "warning");
+      return;
+    }
     writeContract({
       address: addresses.lendingPool,
       abi: lendingPoolAbi,
       functionName: "repay",
-      args: [parseUnits(repayAmount || "0", debtDecimals)],
+      args: [repayParsed],
     });
   }
 
   function borrow() {
     if (!addresses.lendingPool || debtDecimals === undefined) return;
+    const amount = tryParseUnits(borrowAmount, debtDecimals);
+    if (amount === undefined) {
+      toast("Enter a valid amount to borrow", "warning");
+      return;
+    }
     writeContract({
       address: addresses.lendingPool,
       abi: lendingPoolAbi,
       functionName: "borrow",
-      args: [parseUnits(borrowAmount || "0", debtDecimals)],
+      args: [amount],
     });
   }
 
@@ -331,29 +360,41 @@ export default function LendingPage() {
 
   function approveDebtForSupply() {
     if (!addresses.lendingPool || !addresses.debtToken || debtDecimals === undefined) return;
+    if (supplyParsed === undefined) {
+      toast("Enter a valid amount to approve", "warning");
+      return;
+    }
     writeContract({
       address: addresses.debtToken,
       abi: erc20Abi,
       functionName: "approve",
-      args: [addresses.lendingPool, parseUnits(supplyAmount || "0", debtDecimals)],
+      args: [addresses.lendingPool, supplyParsed],
     });
   }
 
   function supplyLiquidity() {
     if (!addresses.lendingPool || debtDecimals === undefined) return;
+    if (supplyParsed === undefined) {
+      toast("Enter a valid amount to supply", "warning");
+      return;
+    }
     writeContract({
       address: addresses.lendingPool,
       abi: lendingPoolAbi,
       functionName: "depositLiquidity",
-      args: [parseUnits(supplyAmount || "0", debtDecimals)],
+      args: [supplyParsed],
     });
   }
 
   function withdrawSupply() {
     if (!addresses.lendingPool || debtDecimals === undefined) return;
+    const requested = tryParseUnits(withdrawSupplyAmount, debtDecimals);
+    if (requested === undefined) {
+      toast("Enter a valid amount to withdraw", "warning");
+      return;
+    }
     const userShares = lenderShares ?? 0n;
     const userBalance = lenderBalance ?? 0n;
-    const requested = parseUnits(withdrawSupplyAmount || "0", debtDecimals);
     // Redeeming the full displayed balance uses the exact held shares, so no
     // dust share is left behind from rounding the proportional formula below.
     const shares = userBalance > 0n && requested >= userBalance ? userShares : (requested * userShares) / (userBalance || 1n);
@@ -380,16 +421,28 @@ export default function LendingPage() {
         </Link>
       </div>
 
-      <div className="p-4 rounded-lg bg-trust-500/10 border border-trust-500/30 mb-6">
-        <p className="text-sm text-trust-400 font-medium mb-1">Live price feed active</p>
-        <p className="text-sm text-ink-300">
-          The <code className="font-mono text-xs">liquidation-protection</code> DON workflow is registered and
-          reporting to <code className="font-mono text-xs">LendingOracleConsumer</code> every 5 minutes, so Borrow
-          now works. Liquidate only succeeds once{" "}
-          <code className="font-mono text-xs">LiquidationConsumer</code> has attested that specific borrower
-          eligible — most positions won&apos;t be.
-        </p>
-      </div>
+      {hasPrice ? (
+        <div className="p-4 rounded-lg bg-trust-500/10 border border-trust-500/30 mb-6">
+          <p className="text-sm text-trust-400 font-medium mb-1">Live price feed active</p>
+          <p className="text-sm text-ink-300">
+            The <code className="font-mono text-xs">liquidation-protection</code> DON workflow is registered and
+            reporting to <code className="font-mono text-xs">LendingOracleConsumer</code> every 5 minutes, so Borrow
+            now works. Liquidate only succeeds once{" "}
+            <code className="font-mono text-xs">LiquidationConsumer</code> has attested that specific borrower
+            eligible — most positions won&apos;t be.
+          </p>
+        </div>
+      ) : (
+        <div className="p-4 rounded-lg bg-warning-500/10 border border-warning-500/30 mb-6">
+          <p className="text-sm text-warning-400 font-medium mb-1">No live price feed yet</p>
+          <p className="text-sm text-ink-300">
+            The <code className="font-mono text-xs">liquidation-protection</code> DON workflow hasn&apos;t reported a
+            price to <code className="font-mono text-xs">LendingOracleConsumer</code> yet, so Borrow and the Health
+            Factor below aren&apos;t live — the gauge shows a dash rather than a fabricated number until the first
+            report lands. Deposits, withdrawals, and supplying liquidity are unaffected.
+          </p>
+        </div>
+      )}
 
       <div className="bg-ink-900 border border-ink-800 rounded-xl p-6 mb-6">
         <h2 className="font-semibold text-white mb-1">Lend &amp; Earn Interest</h2>

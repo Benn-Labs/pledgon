@@ -7,7 +7,7 @@ import { useAccount, useReadContract, useWaitForTransactionReceipt, useWriteCont
 import { addresses, isLendingConfigured } from "@/lib/addresses";
 import { useToken } from "@/hooks/useToken";
 import { formatToken } from "@/lib/format";
-import { toast } from "@/lib/toast";
+import { toast, toastTxError } from "@/lib/toast";
 
 const MINT_ABI = [
   { type: "function", name: "mint", stateMutability: "nonpayable", inputs: [{ name: "to", type: "address" }, { name: "amount", type: "uint256" }], outputs: [] },
@@ -50,7 +50,7 @@ export default function FaucetPage() {
   }, [isSuccess, refetchBalance]);
 
   useEffect(() => {
-    if (error) toast(error.message, "error");
+    if (error) toastTxError(error);
   }, [error]);
 
   function mint() {

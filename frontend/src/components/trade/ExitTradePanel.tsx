@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import type { Address } from "viem";
 import { useAccount, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import { escrowVaultAbi } from "@/generated/contracts";
-import { toast } from "@/lib/toast";
+import { toast, toastTxError } from "@/lib/toast";
 
 /**
  * Pre-funding: either party can walk away unilaterally — nothing but the
@@ -46,13 +46,14 @@ export function ExitTradePanel({
 
   useEffect(() => {
     if (isSuccess) {
+      toast("Trade exited — funds returned", "success");
       onSuccess();
       setConfirming(false);
     }
   }, [isSuccess, onSuccess]);
 
   useEffect(() => {
-    if (error) toast(error.message, "error");
+    if (error) toastTxError(error);
   }, [error]);
 
   if (cancelled || (!isBuyer && !isSeller)) return null;

@@ -3,9 +3,10 @@
 import { useMemo } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { zeroAddress, type Address } from "viem";
-import { useAccount, useReadContracts } from "wagmi";
-import { escrowVaultAbi } from "@/generated/contracts";
+import { isAddress, zeroAddress, type Address } from "viem";
+import { useAccount, useReadContract, useReadContracts } from "wagmi";
+import { escrowFactoryAbi, escrowVaultAbi } from "@/generated/contracts";
+import { addresses } from "@/lib/addresses";
 import { useToken } from "@/hooks/useToken";
 import { formatToken } from "@/lib/format";
 import { BondPanel } from "@/components/trade/BondPanel";
@@ -20,15 +21,51 @@ import { deriveTradeStatus, deriveCurrentDeadline } from "@/lib/tradeStatus";
 import { useEscrowMetadata } from "@/hooks/useEscrowMetadata";
 import { EditTradeDescription } from "@/components/trade/EditTradeDescription";
 
+function TradeNotFound({ address }: { address?: string }) {
+  return (
+    <div className="fade-in max-w-5xl mx-auto">
+      <Link href="/escrow" className="flex items-center gap-2 text-ink-400 hover:text-white mb-6 w-fit">
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+        </svg>
+        Back to Escrow
+      </Link>
+      <div className="p-8 rounded-xl bg-ink-900 border border-ink-800 text-center">
+        <h1 className="text-xl font-display text-white mb-2">Trade not found</h1>
+        <p className="text-sm text-ink-400">
+          {address ? (
+            <>
+              No escrow vault at <span className="addr text-trust-400 font-mono">{address}</span> — double-check the address.
+            </>
+          ) : (
+            "That doesn't look like a vault address."
+          )}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export default function TradePage() {
   const { address } = useParams<{ address: string }>();
-  const vault = address as Address;
+  const vault = isAddress(address) ? (address as Address) : undefined;
   const { address: account } = useAccount();
 
-  const vaultContract = { address: vault, abi: escrowVaultAbi } as const;
-  const { description: tradeDescription, milestoneLabels, isLoading: metadataLoading } = useEscrowMetadata(vault);
+  // Same validity check as the VaultLookup on the escrow list page: only
+  // addresses EscrowFactory actually deployed render as trades, anything
+  // else gets an explicit not-found state instead of an eternal spinner.
+  const { data: isVault } = useReadContract({
+    address: addresses.escrowFactory,
+    abi: escrowFactoryAbi,
+    functionName: "isVault",
+    args: vault ? [vault] : undefined,
+    query: { enabled: Boolean(addresses.escrowFactory && vault) },
+  });
 
-  const { data, refetch } = useReadContracts({
+  const vaultContract = { address: vault ?? zeroAddress, abi: escrowVaultAbi } as const;
+  const { description: tradeDescription, milestoneLabels, isLoading: metadataLoading } = useEscrowMetadata(vault ?? zeroAddress);
+
+  const { data, refetch, isLoading: isReadingTrade } = useReadContracts({
     contracts: [
       { ...vaultContract, functionName: "buyer" },
       { ...vaultContract, functionName: "seller" },
@@ -46,6 +83,9 @@ export default function TradePage() {
       { ...vaultContract, functionName: "tradeExitProposal" },
       { ...vaultContract, functionName: "fundingDeadline" },
     ],
+    query: {
+      enabled: Boolean(vault) && (addresses.escrowFactory === undefined || isVault === true),
+    },
   });
 
   const [
@@ -133,7 +173,18 @@ export default function TradePage() {
     refetchDeliveryDeadlines();
   }
 
+  if (vault === undefined || isVault === false) {
+    return <TradeNotFound address={address} />;
+  }
+  if (addresses.escrowFactory && isVault !== true) {
+    return <p className="text-sm text-ink-400">Loading trade…</p>;
+  }
   if (!buyer || !seller || !arbiter || !token) {
+    // The reads are enabled by now, so a settled multicall that returned no
+    // parties means the address is a valid contract that isn't an escrow
+    // vault (or the RPC dropped the batch) — same not-found state instead
+    // of hanging on "Loading trade…" forever.
+    if (!isReadingTrade) return <TradeNotFound address={address} />;
     return <p className="text-sm text-ink-400">Loading trade…</p>;
   }
 

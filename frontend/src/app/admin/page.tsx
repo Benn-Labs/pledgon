@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { formatEther, parseEther, isAddress, type Address } from "viem";
+import { formatEther, isAddress, type Address } from "viem";
 import { useAccount, useBalance, useReadContract, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import { escrowFactoryAbi } from "@/generated/contracts";
 import { addresses } from "@/lib/addresses";
-import { toast } from "@/lib/toast";
+import { tryParseUnits } from "@/lib/units";
+import { toast, toastTxError } from "@/lib/toast";
 import { AdminIcon } from "@/components/ui/icons";
 
 function StatCard({ label, value }: { label: string; value: string }) {
@@ -64,7 +65,7 @@ export default function AdminPage() {
   }, [isSuccess, refetchOwner, refetchFeeRecipient, refetchFee, refetchBalance]);
 
   useEffect(() => {
-    if (error) toast(error.message, "error");
+    if (error) toastTxError(error);
   }, [error]);
 
   const isOwner = Boolean(account && owner && account.toLowerCase() === owner.toLowerCase());
@@ -72,11 +73,18 @@ export default function AdminPage() {
 
   function setFee() {
     if (!addresses.escrowFactory || !feeInput) return;
+    // The fee field is free text ("1e3" etc. passes no validation), so parse
+    // defensively and explain instead of letting parseEther throw.
+    const fee = tryParseUnits(feeInput, 18);
+    if (fee === undefined) {
+      toast("Enter a valid fee amount in ETH", "warning");
+      return;
+    }
     writeContract({
       address: addresses.escrowFactory,
       abi: escrowFactoryAbi,
       functionName: "setVaultCreationFee",
-      args: [parseEther(feeInput)],
+      args: [fee],
     });
   }
 

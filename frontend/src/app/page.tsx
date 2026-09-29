@@ -60,7 +60,7 @@ function QuickAccessTile({
 
 export default function DashboardPage() {
   const { address: account, isConnected } = useAccount();
-  const { activeCount, attentionCount } = useEscrowAttention();
+  const { activeCount, attentionCount, isLoading: attentionLoading } = useEscrowAttention();
   const { escrow: escrowTvl, lendingCollateral, lendingLiquidity, isLoading: tvlLoading } = useTotalValueLocked();
   const { trades: recentTrades, isLoading: recentLoading } = useRecentTrades(10);
   const lending = useLendingPosition();
@@ -151,8 +151,10 @@ export default function DashboardPage() {
             </div>
             <span className="text-xs font-bold text-ink-400 uppercase tracking-wider">Active Trades</span>
           </div>
-          <div className="text-5xl font-extrabold text-white">{activeCount}</div>
-          {activeCount === 0 && <div className="text-sm text-ink-300 mt-1">No trades in progress</div>}
+          <div className="text-5xl font-extrabold text-white">
+            {attentionLoading ? <span className="block h-10 w-14 rounded bg-ink-800 animate-pulse" /> : activeCount}
+          </div>
+          {!attentionLoading && activeCount === 0 && <div className="text-sm text-ink-300 mt-1">No trades in progress</div>}
         </Link>
         <Link
           href="/escrow"
@@ -181,9 +183,9 @@ export default function DashboardPage() {
             </span>
           </div>
           <div className={`text-5xl font-extrabold ${attentionCount > 0 ? "text-warning-400" : "text-white"}`}>
-            {attentionCount}
+            {attentionLoading ? <span className="block h-10 w-14 rounded bg-ink-800 animate-pulse" /> : attentionCount}
           </div>
-          {attentionCount === 0 && <div className="text-sm text-ink-300 mt-1">You&apos;re all caught up</div>}
+          {!attentionLoading && attentionCount === 0 && <div className="text-sm text-ink-300 mt-1">You&apos;re all caught up</div>}
         </Link>
         <Link href="/marketplace" className="deal-card block bg-ink-900 border border-ink-800 rounded-xl p-5">
           <div className="flex items-center justify-between mb-4">
@@ -200,7 +202,12 @@ export default function DashboardPage() {
       <div className="bg-ink-900 border border-ink-800 rounded-xl p-6 mb-6">
         <h2 className="font-semibold text-white mb-1">Recent Activity</h2>
         <p className="text-xs text-ink-500 mb-4">What changed since you were last here, in this browser — not a full on-chain history.</p>
-        {activity.length === 0 ? (
+        {recentLoading ? (
+          <div className="space-y-3">
+            <div className="h-4 rounded bg-ink-800 animate-pulse" />
+            <div className="h-4 w-2/3 rounded bg-ink-800 animate-pulse" />
+          </div>
+        ) : activity.length === 0 ? (
           <p className="text-sm text-ink-400">Nothing new since your last visit.</p>
         ) : (
           <div className="space-y-3">

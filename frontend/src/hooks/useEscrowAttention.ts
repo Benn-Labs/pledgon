@@ -42,7 +42,11 @@ export function useEscrowAttention() {
       { address: v.vault, abi: escrowVaultAbi, functionName: "cancelled" as const },
       { address: v.vault, abi: escrowVaultAbi, functionName: "fundingDeadline" as const },
     ]),
-    query: { enabled: allMine.length > 0 },
+    query: {
+      enabled: allMine.length > 0,
+      refetchInterval: 15_000,
+      staleTime: 5_000,
+    },
   });
 
   const perVaultScalars = allMine.map((v, i) => ({
@@ -67,7 +71,11 @@ export function useEscrowAttention() {
 
   const { data: milestoneResults, isLoading: milestonesLoading } = useReadContracts({
     contracts: milestoneQueries,
-    query: { enabled: milestoneQueries.length > 0 },
+    query: {
+      enabled: milestoneQueries.length > 0,
+      refetchInterval: 15_000,
+      staleTime: 5_000,
+    },
   });
 
   const deadlineQueries = perVaultScalars.flatMap(({ vault, milestoneCount }) =>
@@ -81,7 +89,11 @@ export function useEscrowAttention() {
 
   const { data: deadlineResults, isLoading: deadlinesLoading } = useReadContracts({
     contracts: deadlineQueries,
-    query: { enabled: deadlineQueries.length > 0 },
+    query: {
+      enabled: deadlineQueries.length > 0,
+      refetchInterval: 15_000,
+      staleTime: 5_000,
+    },
   });
 
   // Ticks slowly — this only drives an aggregate count, not a live countdown,

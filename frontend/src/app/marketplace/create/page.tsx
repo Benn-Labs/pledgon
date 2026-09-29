@@ -7,7 +7,7 @@ import { useAccount, useChainId, useWaitForTransactionReceipt, useWriteContract 
 import { marketplaceAbi } from "@/generated/contracts";
 import { addresses } from "@/lib/addresses";
 import { useToken } from "@/hooks/useToken";
-import { toast } from "@/lib/toast";
+import { toast, toastTxError } from "@/lib/toast";
 import { useSignedListingMetadataWrite } from "@/hooks/useSignedMetadataWrite";
 import { useAccreditedArbitrators } from "@/hooks/useAccreditedArbitrators";
 import { DEADLINE_WINDOW_OPTIONS } from "@/lib/deadlineWindows";
@@ -107,7 +107,7 @@ export default function CreateListingPage() {
   }, [receipt, router]);
 
   useEffect(() => {
-    if (error) toast(error.message, "error");
+    if (error) toastTxError(error);
   }, [error]);
 
   function selectCategory(id: string) {

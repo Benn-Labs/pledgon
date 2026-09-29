@@ -143,7 +143,7 @@ export function useRecentTrades(limit: number) {
       const milestoneDeadlines: (bigint | undefined)[] = [];
       const deliveryDeadlines: (bigint | undefined)[] = [];
       for (let i = 0; i < Number(milestoneCount ?? 0n); i++) {
-        const m = milestoneResults?.[flatIndex]?.result as readonly [bigint, number, `0x${string}`] | undefined;
+        const m = milestoneResults?.[flatIndex]?.result as readonly [bigint, number, `0x${string}`, bigint] | undefined;
         if (m) statuses.push(m[1]);
         milestoneDeadlines.push(deadlineResults?.[deadlineFlatIndex]?.result as bigint | undefined);
         deliveryDeadlines.push(deadlineResults?.[deadlineFlatIndex + 1]?.result as bigint | undefined);

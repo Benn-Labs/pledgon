@@ -25,7 +25,11 @@ export function useLendingPosition() {
     abi: lendingPoolAbi,
     functionName: "positions",
     args: account ? [account] : undefined,
-    query: { enabled: Boolean(isLendingConfigured && addresses.lendingPool && account) },
+    query: {
+      enabled: Boolean(isLendingConfigured && addresses.lendingPool && account),
+      refetchInterval: 15_000,
+      staleTime: 5_000,
+    },
   });
 
   const { data: staticData, isLoading: staticLoading } = useReadContracts({
@@ -33,7 +37,11 @@ export function useLendingPosition() {
       { address: addresses.lendingPool, abi: lendingPoolAbi, functionName: "liquidationThresholdBps" },
       { address: addresses.lendingPool, abi: lendingPoolAbi, functionName: "collateralFeedId" },
     ],
-    query: { enabled: Boolean(isLendingConfigured && addresses.lendingPool) },
+    query: {
+      enabled: Boolean(isLendingConfigured && addresses.lendingPool),
+      refetchInterval: 15_000,
+      staleTime: 5_000,
+    },
   });
 
   const liquidationThresholdBps = staticData?.[0]?.result as bigint | undefined;
@@ -44,7 +52,11 @@ export function useLendingPosition() {
     abi: lendingOracleConsumerAbi,
     functionName: "latestRound",
     args: collateralFeedId ? [collateralFeedId] : undefined,
-    query: { enabled: Boolean(isLendingConfigured && addresses.lendingOracleConsumer && collateralFeedId) },
+    query: {
+      enabled: Boolean(isLendingConfigured && addresses.lendingOracleConsumer && collateralFeedId),
+      refetchInterval: 15_000,
+      staleTime: 5_000,
+    },
   });
 
   const [collateralAmount, debtAmount] = position ?? [0n, 0n];
@@ -86,6 +98,8 @@ export function useLendingPosition() {
     hasPrice,
     price,
     priceDecimals,
+    /** Unix seconds the oracle last reported a price — 0n until the first report lands. */
+    priceUpdatedAt: updatedAt,
     healthFactor,
     ltvBps,
     liquidationPrice,

@@ -5,7 +5,7 @@ import type { Address } from "viem";
 import { useChainId } from "wagmi";
 import { useSignedEscrowMetadataWrite } from "@/hooks/useSignedMetadataWrite";
 import { saveTradeDescription } from "@/lib/tradeDescriptions";
-import { toast } from "@/lib/toast";
+import { toast, toastTxError } from "@/lib/toast";
 
 /**
  * Lets the buyer or seller set or update the trade's shared description.
@@ -26,7 +26,7 @@ export function EditTradeDescription({ vault, description }: { vault: Address; d
       toast("Description saved", "success");
       setEditing(false);
     } else {
-      toast(error ?? "Couldn't save", "error");
+      toastTxError(error, "Couldn't save");
     }
   }
 

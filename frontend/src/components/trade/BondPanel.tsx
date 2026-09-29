@@ -6,7 +6,7 @@ import { erc20Abi } from "viem";
 import { useAccount, useReadContract, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import { escrowVaultAbi } from "@/generated/contracts";
 import { formatToken } from "@/lib/format";
-import { toast } from "@/lib/toast";
+import { toast, toastTxError } from "@/lib/toast";
 
 export function BondPanel({
   vault,
@@ -38,7 +38,12 @@ export function BondPanel({
     query: { enabled: Boolean(account) },
   });
 
-  const { writeContract: approve, data: approveHash, isPending: approvePending } = useWriteContract();
+  const {
+    writeContract: approve,
+    data: approveHash,
+    isPending: approvePending,
+    error: approveError,
+  } = useWriteContract();
   const { isLoading: approveConfirming, isSuccess: approveSuccess } = useWaitForTransactionReceipt({
     hash: approveHash,
     query: { enabled: Boolean(approveHash) },
@@ -65,7 +70,11 @@ export function BondPanel({
   }, [depositSuccess, onSuccess]);
 
   useEffect(() => {
-    if (error) toast(error.message, "error");
+    if (approveError) toastTxError(approveError);
+  }, [approveError]);
+
+  useEffect(() => {
+    if (error) toastTxError(error);
   }, [error]);
 
   if (!isSeller) return null;

@@ -2,12 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { decodeEventLog, formatEther, isAddress, parseUnits, zeroAddress, type Address } from "viem";
+import { decodeEventLog, formatEther, isAddress, zeroAddress, type Address } from "viem";
 import { useAccount, useChainId, useReadContract, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import { escrowFactoryAbi } from "@/generated/contracts";
 import { addresses } from "@/lib/addresses";
 import { useToken } from "@/hooks/useToken";
-import { toast } from "@/lib/toast";
+import { toast, toastTxError } from "@/lib/toast";
+import { tryParseUnits } from "@/lib/units";
 import { saveMilestoneLabels } from "@/lib/milestoneLabels";
 import { saveTradeDescription } from "@/lib/tradeDescriptions";
 import { useSignedEscrowMetadataWrite } from "@/hooks/useSignedMetadataWrite";
@@ -124,7 +125,7 @@ export default function CreateEscrowPage() {
   }, [receipt, router, tradeDescription, chainId, writeEscrowMetadata]);
 
   useEffect(() => {
-    if (error) toast(error.message, "error");
+    if (error) toastTxError(error);
   }, [error]);
 
   function selectCategory(id: (typeof CATEGORIES)[number]["id"]) {
@@ -170,9 +171,24 @@ export default function CreateEscrowPage() {
     // Empty selection means "use EscrowFactory's default arbiter" — zeroAddress
     // resolves to it on-chain, same as leaving the field untouched.
     const arbiterAddress = (arbiterInput || zeroAddress) as Address;
-    const bondAmount = parseUnits(bondInput || "0", decimals);
+    // type="number" inputs still admit "1e3"-style values that viem rejects, so
+    // parse defensively and toast instead of throwing out of the click handler.
+    // Empty bond means "no bond" — keep that distinct from unparseable input.
+    const bondAmount = bondInput.trim() === "" ? 0n : tryParseUnits(bondInput, decimals);
+    if (bondAmount === undefined) {
+      toast("Seller bond must be a valid amount", "warning");
+      return;
+    }
     const filledIndices = milestoneInputs.map((v, i) => i).filter((i) => milestoneInputs[i].trim() !== "");
-    const milestoneAmounts = filledIndices.map((i) => parseUnits(milestoneInputs[i], decimals));
+    const milestoneAmounts: bigint[] = [];
+    for (const i of filledIndices) {
+      const amount = tryParseUnits(milestoneInputs[i], decimals);
+      if (amount === undefined) {
+        toast(`Milestone ${i + 1} amount must be a valid number`, "warning");
+        return;
+      }
+      milestoneAmounts.push(amount);
+    }
     pendingLabels.current = filledIndices.map((i, n) => descriptionInputs[i]?.trim() || `Milestone ${n + 1}`);
 
     setPendingTrade({

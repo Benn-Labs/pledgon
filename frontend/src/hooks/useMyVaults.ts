@@ -24,15 +24,24 @@ export type VaultCreatedEvent = {
  * event), but that broke on real RPC providers: Alchemy's free tier caps
  * eth_getLogs to a 10-block range, and this factory has spanned thousands
  * of blocks since deployment. Contract reads have no such range limit.
+ *
+ * Everything is gated on a connected wallet: a logged-out visitor has no
+ * trades to show, and without the gate the enumeration multicalls would fire
+ * on every page view regardless.
  */
 export function useMyVaults() {
   const { address: account } = useAccount();
+  const connected = Boolean(account);
 
   const { data: vaultCount, isLoading: countLoading } = useReadContract({
     address: addresses.escrowFactory,
     abi: escrowFactoryAbi,
     functionName: "vaultCount",
-    query: { enabled: Boolean(addresses.escrowFactory) },
+    query: {
+      enabled: Boolean(addresses.escrowFactory && account),
+      refetchInterval: 15_000,
+      staleTime: 5_000,
+    },
   });
 
   const vaultIndices = useMemo(
@@ -47,7 +56,11 @@ export function useMyVaults() {
       functionName: "allVaults" as const,
       args: [BigInt(i)],
     })),
-    query: { enabled: vaultIndices.length > 0 },
+    query: {
+      enabled: connected && vaultIndices.length > 0,
+      refetchInterval: 15_000,
+      staleTime: 5_000,
+    },
   });
 
   const vaultAddresses = useMemo(
@@ -64,7 +77,11 @@ export function useMyVaults() {
       { address: v, abi: escrowVaultAbi, functionName: "bondAmount" as const },
       { address: v, abi: escrowVaultAbi, functionName: "totalAmount" as const },
     ]),
-    query: { enabled: vaultAddresses.length > 0 },
+    query: {
+      enabled: connected && vaultAddresses.length > 0,
+      refetchInterval: 15_000,
+      staleTime: 5_000,
+    },
   });
 
   const all = useMemo(() => {

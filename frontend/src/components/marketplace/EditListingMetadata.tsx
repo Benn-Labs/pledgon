@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Address } from "viem";
 import { useChainId } from "wagmi";
 import { useSignedListingMetadataWrite } from "@/hooks/useSignedMetadataWrite";
-import type { ListingMetadata } from "@/hooks/useListingMetadata";
-import { toast } from "@/lib/toast";
+import { useListingMetadata, type ListingMetadata } from "@/hooks/useListingMetadata";
+import { toast, toastTxError } from "@/lib/toast";
 
 /**
  * Lets the seller set or update a listing's title/thumbnail/description/
@@ -17,6 +17,11 @@ import { toast } from "@/lib/toast";
  * the on-chain fallback. Saving signs a message the write-listing-metadata
  * Edge Function checks against the listing's actual on-chain seller before
  * it takes effect.
+ *
+ * The `metadata` prop resolves asynchronously (Supabase) and arrives as
+ * blanks first, so the field state below can't just be seeded once at
+ * mount: a useEffect refills every field the user hasn't touched yet
+ * whenever the prop lands, and Save stays disabled until it has.
  */
 export function EditListingMetadata({
   marketplaceAddress,
@@ -31,12 +36,37 @@ export function EditListingMetadata({
 }) {
   const chainId = useChainId();
   const { write, isPending } = useSignedListingMetadataWrite();
+  const { isLoading: metadataLoading } = useListingMetadata(marketplaceAddress, listingId);
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(metadata.title);
   const [thumbnailUrl, setThumbnailUrl] = useState(metadata.thumbnailUrl);
   const [description, setDescription] = useState(metadata.description);
   const [location, setLocation] = useState(metadata.terms.location ?? "");
   const [conditionNotes, setConditionNotes] = useState(metadata.terms.conditionNotes ?? "");
+
+  // Fields the user has edited are theirs — a later prop update (the
+  // Supabase row landing, or onSaved feeding back through the parent) must
+  // not clobber them; everything untouched follows the prop.
+  const dirtyFields = useRef<Set<string>>(new Set());
+  const lastListingId = useRef(listingId);
+
+  useEffect(() => {
+    if (lastListingId.current !== listingId) {
+      lastListingId.current = listingId;
+      dirtyFields.current.clear();
+      setTitle(metadata.title);
+      setThumbnailUrl(metadata.thumbnailUrl);
+      setDescription(metadata.description);
+      setLocation(metadata.terms.location ?? "");
+      setConditionNotes(metadata.terms.conditionNotes ?? "");
+      return;
+    }
+    if (!dirtyFields.current.has("title")) setTitle(metadata.title);
+    if (!dirtyFields.current.has("thumbnailUrl")) setThumbnailUrl(metadata.thumbnailUrl);
+    if (!dirtyFields.current.has("description")) setDescription(metadata.description);
+    if (!dirtyFields.current.has("location")) setLocation(metadata.terms.location ?? "");
+    if (!dirtyFields.current.has("conditionNotes")) setConditionNotes(metadata.terms.conditionNotes ?? "");
+  }, [metadata, listingId]);
 
   async function save() {
     const terms = { ...metadata.terms, location, conditionNotes };
@@ -46,7 +76,7 @@ export function EditListingMetadata({
       onSaved({ ...metadata, title, thumbnailUrl, description, terms });
       setEditing(false);
     } else {
-      toast(error ?? "Couldn't save", "error");
+      toastTxError(error, "Couldn't save");
     }
   }
 
@@ -68,7 +98,10 @@ export function EditListingMetadata({
         <input
           className="w-full bg-ink-800 border border-ink-700 rounded-lg px-3 py-2 text-sm text-ink-200 focus:outline-none focus:border-trust-500"
           value={title}
-          onChange={(e) => setTitle(e.target.value)}
+          onChange={(e) => {
+            dirtyFields.current.add("title");
+            setTitle(e.target.value);
+          }}
         />
       </div>
       <div>
@@ -76,7 +109,10 @@ export function EditListingMetadata({
         <input
           className="w-full bg-ink-800 border border-ink-700 rounded-lg px-3 py-2 text-sm text-ink-200 font-mono focus:outline-none focus:border-trust-500"
           value={thumbnailUrl}
-          onChange={(e) => setThumbnailUrl(e.target.value)}
+          onChange={(e) => {
+            dirtyFields.current.add("thumbnailUrl");
+            setThumbnailUrl(e.target.value);
+          }}
         />
       </div>
       <div className="grid grid-cols-2 gap-3">
@@ -85,7 +121,10 @@ export function EditListingMetadata({
           <input
             className="w-full bg-ink-800 border border-ink-700 rounded-lg px-3 py-2 text-sm text-ink-200 focus:outline-none focus:border-trust-500"
             value={location}
-            onChange={(e) => setLocation(e.target.value)}
+            onChange={(e) => {
+              dirtyFields.current.add("location");
+              setLocation(e.target.value);
+            }}
           />
         </div>
         <div>
@@ -93,7 +132,10 @@ export function EditListingMetadata({
           <input
             className="w-full bg-ink-800 border border-ink-700 rounded-lg px-3 py-2 text-sm text-ink-200 focus:outline-none focus:border-trust-500"
             value={conditionNotes}
-            onChange={(e) => setConditionNotes(e.target.value)}
+            onChange={(e) => {
+              dirtyFields.current.add("conditionNotes");
+              setConditionNotes(e.target.value);
+            }}
           />
         </div>
       </div>
@@ -103,16 +145,19 @@ export function EditListingMetadata({
           rows={3}
           className="w-full bg-ink-800 border border-ink-700 rounded-lg px-3 py-2 text-sm text-ink-200 focus:outline-none focus:border-trust-500 resize-none"
           value={description}
-          onChange={(e) => setDescription(e.target.value)}
+          onChange={(e) => {
+            dirtyFields.current.add("description");
+            setDescription(e.target.value);
+          }}
         />
       </div>
       <div className="flex gap-2">
         <button
           onClick={save}
-          disabled={isPending}
+          disabled={isPending || metadataLoading}
           className="btn-press px-4 py-2 rounded-lg bg-trust-600 hover:bg-trust-500 disabled:opacity-40 text-white text-sm font-semibold"
         >
-          {isPending ? "Saving…" : "Save"}
+          {metadataLoading ? "Loading…" : isPending ? "Saving…" : "Save"}
         </button>
         <button onClick={() => setEditing(false)} className="text-xs text-ink-500 hover:text-ink-300">
           Cancel

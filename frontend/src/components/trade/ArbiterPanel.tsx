@@ -5,7 +5,7 @@ import { isAddress, type Address } from "viem";
 import { useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import { escrowVaultAbi } from "@/generated/contracts";
 import { formatToken } from "@/lib/format";
-import { toast } from "@/lib/toast";
+import { toast, toastTxError } from "@/lib/toast";
 import { useDisputeReason } from "@/hooks/useDisputeReason";
 
 type MilestoneInfo = { index: number; amount: bigint; status: number };
@@ -32,11 +32,14 @@ function DisputeResolutionCard({
   });
 
   useEffect(() => {
-    if (isSuccess) onSuccess();
+    if (isSuccess) {
+      toast("Dispute resolved", "success");
+      onSuccess();
+    }
   }, [isSuccess, onSuccess]);
 
   useEffect(() => {
-    if (error) toast(error.message, "error");
+    if (error) toastTxError(error);
   }, [error]);
 
   return (
@@ -152,7 +155,7 @@ export function ArbiterPanel({
   }, [isSuccess, onSuccess]);
 
   useEffect(() => {
-    if (error) toast(error.message, "error");
+    if (error) toastTxError(error);
   }, [error]);
 
   return (

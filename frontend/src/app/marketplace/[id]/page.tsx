@@ -10,7 +10,7 @@ import { addresses } from "@/lib/addresses";
 import { TransactionReviewModal } from "@/components/ui/TransactionReviewModal";
 import { useToken } from "@/hooks/useToken";
 import { formatToken } from "@/lib/format";
-import { toast } from "@/lib/toast";
+import { toast, toastTxError } from "@/lib/toast";
 import { StatusBadge, LISTING_STATUS } from "@/components/ui/badges";
 import { useListingMetadata } from "@/hooks/useListingMetadata";
 import { EditListingMetadata } from "@/components/marketplace/EditListingMetadata";
@@ -20,7 +20,9 @@ const QUANTITY_DECIMALS = 18; // matches Marketplace.QUANTITY_SCALE
 
 export default function ListingDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const listingId = BigInt(id);
+  // Route params are raw user input — BigInt("abc") throws during render and
+  // takes down the whole page, so only plain digits count as a listing ID.
+  const listingId = /^\d+$/.test(id) ? BigInt(id) : undefined;
   const router = useRouter();
   const { address: account, isConnected } = useAccount();
   const marketplace = addresses.marketplace;
@@ -29,32 +31,32 @@ export default function ListingDetailPage() {
     address: marketplace,
     abi: marketplaceAbi,
     functionName: "listings",
-    args: [listingId],
-    query: { enabled: Boolean(marketplace) },
+    args: listingId !== undefined ? [listingId] : undefined,
+    query: { enabled: Boolean(marketplace) && listingId !== undefined },
   });
 
   const { data: pricing, refetch: refetchPricing } = useReadContract({
     address: marketplace,
     abi: marketplaceAbi,
     functionName: "listingPricing",
-    args: [listingId],
-    query: { enabled: Boolean(marketplace) },
+    args: listingId !== undefined ? [listingId] : undefined,
+    query: { enabled: Boolean(marketplace) && listingId !== undefined },
   });
 
   const { data: milestoneBps } = useReadContract({
     address: marketplace,
     abi: marketplaceAbi,
     functionName: "listingMilestoneBps",
-    args: [listingId],
-    query: { enabled: Boolean(marketplace) },
+    args: listingId !== undefined ? [listingId] : undefined,
+    query: { enabled: Boolean(marketplace) && listingId !== undefined },
   });
 
   const { data: vaultCount, refetch: refetchVaultCount } = useReadContract({
     address: marketplace,
     abi: marketplaceAbi,
     functionName: "listingVaultCount",
-    args: [listingId],
-    query: { enabled: Boolean(marketplace) },
+    args: listingId !== undefined ? [listingId] : undefined,
+    query: { enabled: Boolean(marketplace) && listingId !== undefined },
   });
 
   const vaultIndices = useMemo(
@@ -80,7 +82,7 @@ export default function ListingDetailPage() {
   const [totalQuantity, remainingQuantity, unitPrice, bondRatePerUnit] = pricing ?? [];
   const { decimals, symbol, isReady: tokenReady } = useToken(token);
 
-  const { metadata: fetchedMetadata } = useListingMetadata(marketplace, Number(id));
+  const { metadata: fetchedMetadata } = useListingMetadata(marketplace, listingId !== undefined ? Number(id) : undefined);
   const [metadata, setMetadata] = useState(fetchedMetadata);
   useEffect(() => {
     setMetadata(fetchedMetadata);
@@ -112,8 +114,8 @@ export default function ListingDetailPage() {
     address: marketplace,
     abi: marketplaceAbi,
     functionName: "previewPurchase",
-    args: purchaseQuantity !== undefined ? [listingId, purchaseQuantity] : undefined,
-    query: { enabled: Boolean(marketplace) && quantityValid && status === 0 },
+    args: listingId !== undefined && purchaseQuantity !== undefined ? [listingId, purchaseQuantity] : undefined,
+    query: { enabled: Boolean(marketplace) && listingId !== undefined && quantityValid && status === 0 },
   });
   const [previewAmounts, previewBond, previewTotal] = preview ?? [];
 
@@ -149,10 +151,27 @@ export default function ListingDetailPage() {
   }, [receipt, router, refetchPricing, refetchVaultCount, refetchVaults]);
 
   useEffect(() => {
-    if (error) toast(error.message, "error");
+    if (error) toastTxError(error);
   }, [error]);
 
   if (!marketplace) return <p className="text-sm text-ink-400">Marketplace address not configured.</p>;
+  if (listingId === undefined) {
+    return (
+      <div className="fade-in max-w-lg mx-auto text-center py-16">
+        <h1 className="text-xl font-display text-white mb-2">Listing not found</h1>
+        <p className="text-sm text-ink-400 mb-6">
+          <code className="font-mono text-xs">{id}</code> isn&apos;t a valid listing ID — listings are numbered, so the
+          URL should look like <code className="font-mono text-xs">/marketplace/1</code>.
+        </p>
+        <Link
+          href="/marketplace"
+          className="btn-press inline-block px-4 py-2.5 rounded-lg bg-ink-800 hover:bg-ink-700 border border-ink-700 text-white text-sm font-semibold"
+        >
+          Back to Marketplace
+        </Link>
+      </div>
+    );
+  }
   if (!listing || !pricing) return <p className="text-sm text-ink-400">Loading…</p>;
 
   const isSeller = account && seller && account.toLowerCase() === seller.toLowerCase();
@@ -378,6 +397,10 @@ export default function ListingDetailPage() {
                   This will open an escrow vault with milestone-based release
                 </p>
               </>
+            ) : status === 1 ? (
+              <div className="p-4 rounded-lg bg-ink-800 text-center">
+                <p className="text-sm text-ink-400">This listing was cancelled by the seller</p>
+              </div>
             ) : (
               <div className="p-4 rounded-lg bg-ink-800 text-center">
                 <p className="text-sm text-ink-400">This listing is sold out — see trades above</p>

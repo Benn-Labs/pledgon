@@ -1,3 +1,22 @@
+import { parseUnits } from "viem";
+
+/**
+ * Render-safe wrapper around viem's parseUnits. Plain <input> values can be
+ * anything ("abc", "1e3", …) and parseUnits throws on those — fine inside a
+ * click handler, fatal when the parse runs during render. Returns undefined
+ * for empty or unparsable input so callers can treat it as "no valid amount":
+ * skip a render-time computation, or toast and bail out of a submit handler.
+ */
+export function tryParseUnits(value: string, decimals: number): bigint | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  try {
+    return parseUnits(trimmed, decimals);
+  } catch {
+    return undefined;
+  }
+}
+
 // Real-world units a listing's unit price can be denominated in — commodity
 // weight/volume/area units alongside the simple "per item" default, since a
 // marketplace listing might be pricing anything from a single service to a

@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import type { Address } from "viem";
 import { useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import { escrowVaultAbi } from "@/generated/contracts";
-import { toast } from "@/lib/toast";
+import { toast, toastTxError } from "@/lib/toast";
 import { formatTimeLeft, useNow } from "@/lib/countdown";
 
 /**
@@ -39,7 +39,7 @@ export function FundingDeadlinePanel({
   }, [isSuccess, onSuccess]);
 
   useEffect(() => {
-    if (error) toast(error.message, "error");
+    if (error) toastTxError(error);
   }, [error]);
 
   if (cancelled || funded) return null;

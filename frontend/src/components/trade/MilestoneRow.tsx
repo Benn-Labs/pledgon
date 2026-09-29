@@ -6,7 +6,8 @@ import { keccak256, zeroHash } from "viem";
 import { useAccount, useChainId, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import { escrowVaultAbi } from "@/generated/contracts";
 import { formatToken } from "@/lib/format";
-import { toast } from "@/lib/toast";
+import { toast, toastTxError } from "@/lib/toast";
+import { supabase, isSupabaseConfigured } from "@/lib/supabaseClient";
 import { useDisputeReason } from "@/hooks/useDisputeReason";
 import { useSignedMilestoneDocumentWrite, MAX_DOCUMENT_BYTES } from "@/hooks/useSignedMilestoneDocumentWrite";
 import { useMilestoneDocument } from "@/hooks/useMilestoneDocument";
@@ -63,10 +64,17 @@ export function MilestoneRow({
   const milestoneDocument = useMilestoneDocument(vault, index, docHash !== zeroHash);
 
   const { writeContract, data: hash, isPending, error } = useWriteContract();
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({
+  const { isLoading: isConfirming, isSuccess, isError: isReceiptError } = useWaitForTransactionReceipt({
     hash,
     query: { enabled: Boolean(hash) },
   });
+
+  // Set once a document has been uploaded to Supabase but its
+  // submitMilestoneDocs tx hasn't landed on-chain yet — if that tx is
+  // rejected or reverts, the uploaded row + storage object are orphaned
+  // (the doc link only renders when the on-chain docHash is nonzero, so
+  // nothing would ever point at them again) and get rolled back.
+  const uploadedDocToRollBack = useRef<`0x${string}` | null>(null);
 
   const isBuyer = account?.toLowerCase() === buyer.toLowerCase();
   const isSeller = account?.toLowerCase() === seller.toLowerCase();
@@ -82,7 +90,7 @@ export function MilestoneRow({
   }, [isSuccess, onSuccess]);
 
   useEffect(() => {
-    if (error) toast(error.message, "error");
+    if (error) toastTxError(error);
   }, [error]);
 
   async function submitDocument() {

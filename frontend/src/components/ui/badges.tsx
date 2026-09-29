@@ -22,7 +22,9 @@ export const MILESTONE_STATUS: Status[] = ["Pending", "DocsSubmitted", "Released
 export const LISTING_STATUS: Status[] = ["Active", "Cancelled", "Sold"];
 
 export function StatusBadge({ status, size = "md" }: { status: Status; size?: "sm" | "md" }) {
-  const config = STATUS_CONFIG[status];
+  // Defensive fallback: an out-of-range status (e.g. a future enum value)
+  // must not crash render.
+  const config = STATUS_CONFIG[status] ?? { classes: "bg-ink-700 text-ink-300 border-ink-600", dot: "bg-ink-400", label: status };
   const sizeClasses = size === "sm" ? "px-2 py-0.5 text-xs" : "px-3 py-1 text-sm";
   return (
     <span className={`inline-flex items-center gap-1.5 rounded-full border font-medium ${config.classes} ${sizeClasses}`}>
@@ -82,7 +84,7 @@ const TRADE_STATUS_CONFIG: Record<TradeLifecycleStatus, { classes: string; dot: 
 };
 
 export function TradeStatusBadge({ status, size = "md" }: { status: TradeLifecycleStatus; size?: "sm" | "md" }) {
-  const config = TRADE_STATUS_CONFIG[status];
+  const config = TRADE_STATUS_CONFIG[status] ?? { classes: "bg-ink-700 text-ink-300 border-ink-600", dot: "bg-ink-400" };
   const sizeClasses = size === "sm" ? "px-2 py-0.5 text-xs" : "px-3 py-1 text-sm";
   return (
     <span className={`inline-flex items-center gap-1.5 rounded-full border font-medium ${config.classes} ${sizeClasses}`}>
