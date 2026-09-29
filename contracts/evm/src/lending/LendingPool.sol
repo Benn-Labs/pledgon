@@ -69,6 +69,14 @@ contract LendingPool {
     bytes32 public immutable collateralFeedId;
     uint256 public immutable liquidationThresholdBps; // e.g. 8000 = 80% LTV
     uint256 public immutable borrowRateBps; // fixed simple APR charged on all debt, e.g. 500 = 5%/year
+    /// @notice Maximum age of the on-chain oracle price before reads fail
+    /// closed: borrow(), withdrawCollateral() and liquidate() revert
+    /// StalePrice rather than act on a frozen feed (e.g. the oracle workflow
+    /// halted). Should be comfortably larger than the producing workflow's
+    /// cron interval. 0 disables the freshness check (relies on
+    /// `updatedAt != 0` only), matching this contract's other 0-means-off
+    /// parameters.
+    uint256 public immutable maxPriceAge;
 
     mapping(address => Position) private _positions;
     mapping(address => uint256) public lenderShares;
@@ -105,7 +113,8 @@ contract LendingPool {
         LiquidationConsumer _liquidationConsumer,
         bytes32 _collateralFeedId,
         uint256 _liquidationThresholdBps,
-        uint256 _borrowRateBps
+        uint256 _borrowRateBps,
+        uint256 _maxPriceAge
     ) {
         if (
             address(_collateralToken) == address(0) || address(_debtToken) == address(0)
@@ -119,6 +128,7 @@ contract LendingPool {
         collateralFeedId = _collateralFeedId;
         liquidationThresholdBps = _liquidationThresholdBps;
         borrowRateBps = _borrowRateBps;
+        maxPriceAge = _maxPriceAge;
         lastAccrualTimestamp = block.timestamp;
     }
 
@@ -173,10 +183,12 @@ contract LendingPool {
     }
 
     /// @notice Permissionless: anyone may liquidate once the DON has attested
-    /// eligibility. Safe because the real check is `liquidationConsumer
-    /// .isEligible`, not the caller's identity — this pool's own
-    /// `isUndercollateralized` view is deliberately not sufficient on its own to
-    /// liquidate (see that function's notes).
+    /// eligibility. Safe because the real checks are `liquidationConsumer
+    /// .isEligible` (a fresh, independently-corroborated verdict — see that
+    /// contract's maxVerdictAge) plus an on-chain re-check that the position
+    /// is still undercollateralized at execution time, not the caller's
+    /// identity. Either check alone is deliberately not sufficient
+    /// (see isUndercollateralized's notes).
     ///
     /// Full liquidation only: the liquidator repays the entire current debt
     /// (principal plus whatever interest has accrued) and receives the entire
@@ -189,6 +201,14 @@ contract LendingPool {
         uint256 currentDebt = _realizeDebt(position);
         if (currentDebt == 0) revert NoDebt(borrower);
         if (!liquidationConsumer.isEligible(borrower)) revert PositionNotLiquidatable(borrower);
+        // Belt-and-suspenders alongside the DON verdict: the verdict is only
+        // actionable within LiquidationConsumer.maxVerdictAge of checkedAt,
+        // but prices can move inside even that window. Re-verify the position
+        // is actually undercollateralized at execution time — collateral that
+        // was topped up after the verdict was written must not be seizable.
+        if (!_isUndercollateralizedAmounts(position.collateralAmount, currentDebt)) {
+            revert PositionNotLiquidatable(borrower);
+        }
 
         uint256 collateralAmount = position.collateralAmount;
         position.principalDebt = 0;
@@ -276,14 +296,14 @@ contract LendingPool {
     }
 
     /// @notice Value of `collateralAmount` in debtToken units, using the last
-    /// price LendingOracleConsumer received. Reverts if no price has ever been
-    /// reported — deliberately fails closed rather than pricing collateral at
-    /// zero. Does not itself check staleness beyond "has ever reported"; callers
-    /// needing a max-age guarantee must check `oracleConsumer.latestRound`'s
-    /// `updatedAt` themselves.
+    /// price LendingOracleConsumer received. Fails closed rather than pricing
+    /// collateral on nothing: reverts StalePrice if no price has ever been
+    /// reported, and again once the last report is older than `maxPriceAge`
+    /// (0 disables the age check — "has ever reported" only).
     function collateralValueInDebtUnits(uint256 collateralAmount) public view returns (uint256) {
         (uint256 price, uint8 priceDecimals, uint256 updatedAt) = oracleConsumer.latestRound(collateralFeedId);
         if (updatedAt == 0) revert StalePrice(collateralFeedId);
+        if (maxPriceAge != 0 && block.timestamp - updatedAt > maxPriceAge) revert StalePrice(collateralFeedId);
         return (collateralAmount * price) / (10 ** priceDecimals);
     }
 

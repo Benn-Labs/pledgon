@@ -3,6 +3,7 @@ pragma solidity 0.8.24;
 
 import {Test} from "forge-std/Test.sol";
 import {ComplianceConsumer} from "../../src/compliance/ComplianceConsumer.sol";
+import {WorkflowBoundReceiver} from "../../src/keystone/WorkflowBoundReceiver.sol";
 
 contract ComplianceConsumerTest is Test {
     uint256 constant MAX_VALIDITY = 180 days;
@@ -12,7 +13,9 @@ contract ComplianceConsumerTest is Test {
     ComplianceConsumer consumer;
 
     function setUp() public {
-        consumer = new ComplianceConsumer(forwarder, MAX_VALIDITY);
+        // bytes32(0) = unbound: accepts any workflow's metadata, which is what
+        // the existing tests exercise via _report's empty metadata.
+        consumer = new ComplianceConsumer(forwarder, MAX_VALIDITY, bytes32(0));
         // A realistic base timestamp, so the small literal verifiedAt values
         // several tests use below (1000, 999, 12345, ...) are naturally in the
         // past rather than tripping the FutureVerifiedAt guard against
@@ -28,14 +31,16 @@ contract ComplianceConsumerTest is Test {
     // ─── Constructor ──────────────────────────────────────────
 
     function test_Constructor_RevertsOnZeroForwarder() public {
-        vm.expectRevert(ComplianceConsumer.ZeroAddress.selector);
-        new ComplianceConsumer(address(0), MAX_VALIDITY);
+        // ZeroAddress/UnauthorizedForwarder live on WorkflowBoundReceiver, the
+        // inherited base — reference them there.
+        vm.expectRevert(WorkflowBoundReceiver.ZeroAddress.selector);
+        new ComplianceConsumer(address(0), MAX_VALIDITY, bytes32(0));
     }
 
     // ─── onReport ─────────────────────────────────────────────
 
     function test_OnReport_RevertsIfNotForwarder() public {
-        vm.expectRevert(abi.encodeWithSelector(ComplianceConsumer.UnauthorizedForwarder.selector, address(this)));
+        vm.expectRevert(abi.encodeWithSelector(WorkflowBoundReceiver.UnauthorizedForwarder.selector, address(this)));
         consumer.onReport("", abi.encode(subject, uint8(1), block.timestamp));
     }
 
@@ -138,5 +143,63 @@ contract ComplianceConsumerTest is Test {
         // same way the contract does, so this asserts against the real values
         // rather than hardcoding a selector that could drift silently.
         assertTrue(consumer.supportsInterface(0x01ffc9a7)); // ERC165 itself: supportsInterface(bytes4)
+    }
+
+    // ─── workflow binding (WorkflowBoundReceiver) ──────────────
+
+    /// @dev Metadata layout per the KeystoneForwarder docs: the production
+    /// forwarder delivers 64 bytes — abi.encodePacked(bytes32 workflowId,
+    /// bytes10 workflowName, address workflowOwner) followed by 2 reportId
+    /// bytes. The 62-byte packed form decodes the same identity.
+    function _metadataFor(bytes32 workflowId, bool productionForm) internal pure returns (bytes memory) {
+        bytes memory m = abi.encodePacked(workflowId, bytes10(0), address(0));
+        return productionForm ? bytes.concat(m, hex"0000") : m;
+    }
+
+    function test_BoundConsumer_AcceptsReportsFromBoundWorkflow() public {
+        bytes32 wfId = keccak256("compliance-check-workflow");
+        ComplianceConsumer bound = new ComplianceConsumer(forwarder, MAX_VALIDITY, wfId);
+        assertEq(bound.expectedWorkflowId(), wfId);
+
+        vm.prank(forwarder);
+        bound.onReport(_metadataFor(wfId, false), abi.encode(subject, uint8(2), block.timestamp));
+        assertEq(bound.tierOf(subject), 2);
+    }
+
+    function test_BoundConsumer_AcceptsProduction64ByteMetadata() public {
+        bytes32 wfId = keccak256("compliance-check-workflow");
+        ComplianceConsumer bound = new ComplianceConsumer(forwarder, MAX_VALIDITY, wfId);
+
+        vm.prank(forwarder);
+        bound.onReport(_metadataFor(wfId, true), abi.encode(subject, uint8(1), block.timestamp));
+        assertEq(bound.tierOf(subject), 1);
+    }
+
+    function test_BoundConsumer_RevertsOnWrongWorkflowId() public {
+        bytes32 wfId = keccak256("compliance-check-workflow");
+        ComplianceConsumer bound = new ComplianceConsumer(forwarder, MAX_VALIDITY, wfId);
+
+        bytes32 other = keccak256("some-other-workflow");
+        vm.prank(forwarder);
+        vm.expectRevert(
+            abi.encodeWithSelector(WorkflowBoundReceiver.UnexpectedWorkflowId.selector, other, wfId)
+        );
+        bound.onReport(_metadataFor(other, false), abi.encode(subject, uint8(1), block.timestamp));
+    }
+
+    function test_BoundConsumer_RevertsOnMissingMetadata() public {
+        bytes32 wfId = keccak256("compliance-check-workflow");
+        ComplianceConsumer bound = new ComplianceConsumer(forwarder, MAX_VALIDITY, wfId);
+
+        // The MockKeystoneForwarder used by `cre workflow simulate` supplies no
+        // metadata at all — a bound consumer must fail closed, not silently
+        // accept. This is why simulation consumers stay unbound.
+        vm.prank(forwarder);
+        vm.expectRevert(abi.encodeWithSelector(WorkflowBoundReceiver.InvalidMetadataLength.selector, 0));
+        bound.onReport("", abi.encode(subject, uint8(1), block.timestamp));
+
+        vm.prank(forwarder);
+        vm.expectRevert(abi.encodeWithSelector(WorkflowBoundReceiver.InvalidMetadataLength.selector, 32));
+        bound.onReport(new bytes(32), abi.encode(subject, uint8(1), block.timestamp));
     }
 }

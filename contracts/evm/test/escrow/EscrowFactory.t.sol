@@ -32,8 +32,8 @@ contract EscrowFactoryTest is Test {
     MockERC20 token;
 
     function setUp() public {
-        confirmationConsumer = new EscrowConfirmationConsumer(forwarder);
-        complianceConsumer = new ComplianceConsumer(forwarder, MAX_VALIDITY);
+        confirmationConsumer = new EscrowConfirmationConsumer(forwarder, bytes32(0));
+        complianceConsumer = new ComplianceConsumer(forwarder, MAX_VALIDITY, bytes32(0));
         registry = new ArbitratorRegistry(address(this));
         registry.accredit(arbiter);
         factory = new EscrowFactory(

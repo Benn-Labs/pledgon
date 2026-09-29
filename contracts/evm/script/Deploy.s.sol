@@ -97,11 +97,20 @@ contract Deploy is Script {
         uint256 tier1CapUsd = vm.envOr("TIER1_CAP_USD", uint256(10_000));
         address feeRecipient = vm.envOr("FEE_RECIPIENT_ADDRESS", owner);
         uint256 vaultCreationFee = vm.envOr("VAULT_CREATION_FEE_WEI", uint256(0));
+        // Per-consumer workflow bindings (WorkflowBoundReceiver). Bytes32 0 =
+        // unbound = accepts any DON-signed workflow — fine for `cre workflow
+        // simulate` (MockForwarder carries no metadata), never for production.
+        // Bind by passing each workflow's ID once it's known (redeploy the
+        // consumer and update the workflow config's receiver if it changed).
+        bytes32 escrowConfirmationWorkflowId = vm.envOr("ESCROW_CONFIRMATION_WORKFLOW_ID", bytes32(0));
+        bytes32 complianceWorkflowId = vm.envOr("COMPLIANCE_WORKFLOW_ID", bytes32(0));
+        bytes32 tradeExpiryWorkflowId = vm.envOr("TRADE_EXPIRY_WORKFLOW_ID", bytes32(0));
 
         vm.startBroadcast();
 
-        EscrowConfirmationConsumer confirmationConsumer = new EscrowConfirmationConsumer(forwarder);
-        ComplianceConsumer complianceConsumer = new ComplianceConsumer(forwarder, maxValidity);
+        EscrowConfirmationConsumer confirmationConsumer =
+            new EscrowConfirmationConsumer(forwarder, escrowConfirmationWorkflowId);
+        ComplianceConsumer complianceConsumer = new ComplianceConsumer(forwarder, maxValidity, complianceWorkflowId);
         // Transfer ownership afterwards (ArbitratorRegistry.transferOwnership)
         // if accreditation decisions should live with a different key.
         ArbitratorRegistry arbitratorRegistry = new ArbitratorRegistry(owner);
@@ -120,7 +129,15 @@ contract Deploy is Script {
             vaultCreationFee
         );
         Marketplace marketplace = new Marketplace(factory);
-        TradeExpiryKeeper tradeExpiryKeeper = new TradeExpiryKeeper(forwarder);
+        TradeExpiryKeeper tradeExpiryKeeper = new TradeExpiryKeeper(forwarder, tradeExpiryWorkflowId);
+
+        if (
+            escrowConfirmationWorkflowId == bytes32(0) || complianceWorkflowId == bytes32(0)
+                || tradeExpiryWorkflowId == bytes32(0)
+        ) {
+            console.log("WARNING: one or more consumers deployed UNBOUND (workflow id 0)");
+            console.log("         onReport accepts any DON-signed workflow - bind before production");
+        }
 
         console.log("EscrowConfirmationConsumer:", address(confirmationConsumer));
         console.log("ComplianceConsumer:        ", address(complianceConsumer));
@@ -161,9 +178,19 @@ contract Deploy is Script {
         string memory feedLabel = vm.envOr("COLLATERAL_FEED_LABEL", string("RWA/USD"));
         uint256 thresholdBps = vm.envOr("LIQUIDATION_THRESHOLD_BPS", uint256(8000));
         uint256 borrowRateBps = vm.envOr("BORROW_RATE_BPS", uint256(500));
+        // Freshness/expiry bounds for the lending pipeline — see the
+        // consumers' and pool's natspec for what 0 vs non-zero means.
+        uint256 maxPriceAge = vm.envOr("MAX_PRICE_AGE", uint256(15 minutes));
+        uint256 maxVerdictAge = vm.envOr("MAX_VERDICT_AGE", uint256(15 minutes));
+        uint256 maxDeviationBps = vm.envOr("MAX_PRICE_DEVIATION_BPS", uint256(5000));
+        // Workflow bindings — bytes32 0 = unbound (simulation only); see the
+        // identical comment on the escrow-side consumers in run().
+        bytes32 lendingOracleWorkflowId = vm.envOr("LENDING_ORACLE_WORKFLOW_ID", bytes32(0));
+        bytes32 liquidationWorkflowId = vm.envOr("LIQUIDATION_WORKFLOW_ID", bytes32(0));
 
-        LendingOracleConsumer oracleConsumer = new LendingOracleConsumer(forwarder);
-        LiquidationConsumer liqConsumer = new LiquidationConsumer(forwarder);
+        LendingOracleConsumer oracleConsumer =
+            new LendingOracleConsumer(forwarder, maxDeviationBps, maxPriceAge, lendingOracleWorkflowId);
+        LiquidationConsumer liqConsumer = new LiquidationConsumer(forwarder, maxVerdictAge, liquidationWorkflowId);
         LendingPool pool = new LendingPool(
             IERC20(collateralToken),
             IERC20(debtToken),
@@ -171,7 +198,8 @@ contract Deploy is Script {
             liqConsumer,
             oracleConsumer.feedIdFor(feedLabel),
             thresholdBps,
-            borrowRateBps
+            borrowRateBps,
+            maxPriceAge
         );
 
         console.log("LendingOracleConsumer:     ", address(oracleConsumer));

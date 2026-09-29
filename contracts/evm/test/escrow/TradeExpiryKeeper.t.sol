@@ -3,6 +3,7 @@ pragma solidity 0.8.24;
 
 import {Test} from "forge-std/Test.sol";
 import {TradeExpiryKeeper} from "../../src/escrow/TradeExpiryKeeper.sol";
+import {WorkflowBoundReceiver} from "../../src/keystone/WorkflowBoundReceiver.sol";
 import {EscrowVault} from "../../src/escrow/EscrowVault.sol";
 import {IEscrowFactory} from "../../src/escrow/IEscrowFactory.sol";
 import {EscrowConfirmationConsumer} from "../../src/escrow/EscrowConfirmationConsumer.sol";
@@ -31,9 +32,9 @@ contract TradeExpiryKeeperTest is Test, IEscrowFactory {
 
     function setUp() public {
         token = new MockERC20(6);
-        confirmationConsumer = new EscrowConfirmationConsumer(forwarder);
-        complianceConsumer = new ComplianceConsumer(forwarder, 180 days);
-        keeper = new TradeExpiryKeeper(forwarder);
+        confirmationConsumer = new EscrowConfirmationConsumer(forwarder, bytes32(0));
+        complianceConsumer = new ComplianceConsumer(forwarder, 180 days, bytes32(0));
+        keeper = new TradeExpiryKeeper(forwarder, bytes32(0));
     }
 
     function _newVault(uint256 fundingWindow, uint256 milestoneConfirmWindow) internal returns (EscrowVault vault) {
@@ -59,15 +60,15 @@ contract TradeExpiryKeeperTest is Test, IEscrowFactory {
     // ─── Constructor ──────────────────────────────────────────
 
     function test_Constructor_RevertsOnZeroForwarder() public {
-        vm.expectRevert(TradeExpiryKeeper.ZeroAddress.selector);
-        new TradeExpiryKeeper(address(0));
+        vm.expectRevert(WorkflowBoundReceiver.ZeroAddress.selector);
+        new TradeExpiryKeeper(address(0), bytes32(0));
     }
 
     // ─── onReport ─────────────────────────────────────────────
 
     function test_OnReport_RevertsIfNotForwarder() public {
         EscrowVault vault = _newVault(1 days, 0);
-        vm.expectRevert(abi.encodeWithSelector(TradeExpiryKeeper.UnauthorizedForwarder.selector, address(this)));
+        vm.expectRevert(abi.encodeWithSelector(WorkflowBoundReceiver.UnauthorizedForwarder.selector, address(this)));
         keeper.onReport("", abi.encode(address(vault), false, uint256(0)));
     }
 

@@ -28,8 +28,11 @@ contract LendingPoolTest is Test {
     function setUp() public {
         collateralToken = new MockERC20(18);
         debtToken = new MockERC20(18);
-        oracleConsumer = new LendingOracleConsumer(forwarder);
-        liquidationConsumer = new LiquidationConsumer(forwarder);
+        // Deviation cap / verdict age disabled (0) on the shared consumers so
+        // pre-existing tests exercise the uncapped behavior; the caps get
+        // their own dedicated tests with freshly constructed consumers below.
+        oracleConsumer = new LendingOracleConsumer(forwarder, 0, 0, bytes32(0));
+        liquidationConsumer = new LiquidationConsumer(forwarder, 0, bytes32(0));
         feedId = oracleConsumer.feedIdFor("RWA/USD");
 
         // 0% borrow rate here so every pre-existing test's exact-equality
@@ -43,6 +46,10 @@ contract LendingPoolTest is Test {
     }
 
     function _newPool(uint256 borrowRateBps) internal returns (LendingPool) {
+        return _newPoolWithAge(borrowRateBps, 0);
+    }
+
+    function _newPoolWithAge(uint256 borrowRateBps, uint256 maxPriceAge) internal returns (LendingPool) {
         return new LendingPool(
             IERC20(address(collateralToken)),
             IERC20(address(debtToken)),
@@ -50,7 +57,8 @@ contract LendingPoolTest is Test {
             liquidationConsumer,
             feedId,
             LIQUIDATION_THRESHOLD_BPS,
-            borrowRateBps
+            borrowRateBps,
+            maxPriceAge
         );
     }
 
@@ -86,6 +94,7 @@ contract LendingPoolTest is Test {
             liquidationConsumer,
             feedId,
             LIQUIDATION_THRESHOLD_BPS,
+            0,
             0
         );
     }
@@ -99,6 +108,7 @@ contract LendingPoolTest is Test {
             liquidationConsumer,
             feedId,
             LIQUIDATION_THRESHOLD_BPS,
+            0,
             0
         );
     }
@@ -264,7 +274,8 @@ contract LendingPoolTest is Test {
         // Crash the on-chain price so the pool's own view thinks it's
         // undercollateralized — liquidate() must still refuse without the DON's
         // attestation. This is the property the whole design depends on.
-        _setPrice(1, block.timestamp + 1);
+        skip(1); // monotonic updatedAt must increase; reports can't be future-dated
+        _setPrice(1, block.timestamp);
         assertTrue(pool.isUndercollateralized(borrower));
 
         vm.expectRevert(abi.encodeWithSelector(LendingPool.PositionNotLiquidatable.selector, borrower));
@@ -276,6 +287,12 @@ contract LendingPoolTest is Test {
         _depositCollateral(borrower, 10e18);
         vm.prank(borrower);
         pool.borrow(7_000e18);
+
+        // Crash the price so the position is undercollateralized in the
+        // pool's own view too: liquidate() requires BOTH the fresh DON
+        // verdict and an on-chain re-check at execution time.
+        skip(1);
+        _setPrice(700_000_000_00, block.timestamp); // $700: $7,000e18 value vs 7,000e18 debt
 
         vm.prank(forwarder);
         liquidationConsumer.onReport("", abi.encode(borrower, true, block.timestamp));
@@ -298,6 +315,10 @@ contract LendingPoolTest is Test {
         _depositCollateral(borrower, 10e18);
         vm.prank(borrower);
         pool.borrow(7_000e18);
+
+        skip(1);
+        _setPrice(700_000_000_00, block.timestamp); // undercollateralized in the pool's own view
+
         vm.prank(forwarder);
         liquidationConsumer.onReport("", abi.encode(borrower, true, block.timestamp));
 
@@ -433,7 +454,13 @@ contract LendingPoolTest is Test {
 
         vm.prank(borrower);
         ratedPool.borrow(7_000e18);
-        skip(365 days); // debt is now 7_350e18 — also pushes LTV from 70% to over 80%
+        skip(365 days); // debt is now 7_350e18
+
+        // Crash the price so the pool's own view shows the position
+        // undercollateralized (7_350e18 debt needs > $9,187.5e18 collateral
+        // value at 80% LTV; $900/token gives $9,000e18). The 365-day skip
+        // already makes block.timestamp a fresh, monotonic updatedAt.
+        _setPrice(900_000_000_00, block.timestamp); // $900
 
         vm.prank(forwarder);
         liquidationConsumer.onReport("", abi.encode(borrower, true, block.timestamp));
@@ -446,6 +473,187 @@ contract LendingPoolTest is Test {
         emit LendingPool.Liquidated(borrower, liquidator, 10e18, 7_350e18);
         ratedPool.liquidate(borrower);
         vm.stopPrank();
+    }
+
+    // ─── freshness / recency guards (audit HIGH-1, HIGH-2) ─────
+
+    function test_Liquidate_RevertsWhenHealthyDespiteFreshVerdict() public {
+        // HIGH-1 regression: a fresh eligible=true verdict must NOT liquidate a
+        // position that is healthy in the pool's own on-chain view — the
+        // borrower may have topped up after the verdict was written.
+        _setPrice(PRICE, block.timestamp);
+        _depositCollateral(borrower, 10e18);
+        vm.prank(borrower);
+        pool.borrow(7_000e18); // 70% LTV — healthy
+
+        vm.prank(forwarder);
+        liquidationConsumer.onReport("", abi.encode(borrower, true, block.timestamp));
+
+        vm.expectRevert(abi.encodeWithSelector(LendingPool.PositionNotLiquidatable.selector, borrower));
+        pool.liquidate(borrower);
+    }
+
+    function test_Liquidate_RevertsWhenVerdictExpired() public {
+        LiquidationConsumer agedConsumer = new LiquidationConsumer(forwarder, 1 hours, bytes32(0));
+        LendingPool agedPool = _newPoolAgainst(agedConsumer);
+        _depositLiquidityTo(agedPool, lender, 1_000_000e18);
+
+        _setPrice(PRICE, block.timestamp);
+        _depositCollateralTo(agedPool, borrower, 10e18);
+        vm.prank(borrower);
+        agedPool.borrow(7_000e18);
+
+        skip(1);
+        _setPrice(700_000_000_00, block.timestamp); // undercollateralized on-chain
+
+        vm.prank(forwarder);
+        agedConsumer.onReport("", abi.encode(borrower, true, block.timestamp));
+
+        skip(1 hours + 1); // verdict now older than maxVerdictAge
+
+        vm.expectRevert(abi.encodeWithSelector(LendingPool.PositionNotLiquidatable.selector, borrower));
+        agedPool.liquidate(borrower);
+    }
+
+    function test_Liquidate_SucceedsWithVerdictInsideMaxAge() public {
+        LiquidationConsumer agedConsumer = new LiquidationConsumer(forwarder, 1 hours, bytes32(0));
+        LendingPool agedPool = _newPoolAgainst(agedConsumer);
+        _depositLiquidityTo(agedPool, lender, 1_000_000e18);
+
+        _setPrice(PRICE, block.timestamp);
+        _depositCollateralTo(agedPool, borrower, 10e18);
+        vm.prank(borrower);
+        agedPool.borrow(7_000e18);
+
+        skip(1);
+        _setPrice(700_000_000_00, block.timestamp); // undercollateralized on-chain
+
+        vm.prank(forwarder);
+        agedConsumer.onReport("", abi.encode(borrower, true, block.timestamp));
+
+        skip(30 minutes); // within maxVerdictAge
+
+        debtToken.mint(liquidator, 7_000e18);
+        vm.startPrank(liquidator);
+        debtToken.approve(address(agedPool), 7_000e18);
+        agedPool.liquidate(borrower);
+        vm.stopPrank();
+
+        (uint256 collateralAmount, uint256 debtAmount) = agedPool.positions(borrower);
+        assertEq(collateralAmount, 0);
+        assertEq(debtAmount, 0);
+    }
+
+    function test_OracleConsumer_RevertsOnFutureUpdatedAt() public {
+        vm.prank(forwarder);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                LendingOracleConsumer.FutureUpdatedAt.selector, feedId, block.timestamp + 1, block.timestamp
+            )
+        );
+        oracleConsumer.onReport("", abi.encode(feedId, PRICE, PRICE_DECIMALS, block.timestamp + 1));
+    }
+
+    function test_LiquidationConsumer_RevertsOnFutureCheckedAt() public {
+        vm.prank(forwarder);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                LiquidationConsumer.FutureCheckedAt.selector, borrower, block.timestamp + 1, block.timestamp
+            )
+        );
+        liquidationConsumer.onReport("", abi.encode(borrower, true, block.timestamp + 1));
+    }
+
+    function test_OracleConsumer_RejectsMoveExceedingDeviationCap() public {
+        LendingOracleConsumer capped = new LendingOracleConsumer(forwarder, 1000, 15 minutes, bytes32(0)); // 10%
+
+        vm.startPrank(forwarder);
+        capped.onReport("", abi.encode(feedId, 1000e8, PRICE_DECIMALS, block.timestamp));
+
+        // +20% in one tick — over the 10% cap, stored value kept.
+        skip(1); // monotonic updatedAt must advance; reports can't be future-dated
+        vm.expectRevert(
+            abi.encodeWithSelector(LendingOracleConsumer.DeviationExceeded.selector, feedId, 1200e8, 1000e8, 1000)
+        );
+        capped.onReport("", abi.encode(feedId, 1200e8, PRICE_DECIMALS, block.timestamp));
+
+        // Downward moves are bounded too: -20% also rejected.
+        skip(1);
+        vm.expectRevert(
+            abi.encodeWithSelector(LendingOracleConsumer.DeviationExceeded.selector, feedId, 800e8, 1000e8, 1000)
+        );
+        capped.onReport("", abi.encode(feedId, 800e8, PRICE_DECIMALS, block.timestamp));
+
+        // Exactly -10% (delta * 10_000 == stored * cap) is accepted: the check
+        // is strict-greater, so the boundary itself is not a violation.
+        skip(1);
+        capped.onReport("", abi.encode(feedId, 900e8, PRICE_DECIMALS, block.timestamp));
+        (uint256 value,, uint256 updatedAt) = capped.latestRound(feedId);
+        assertEq(value, 900e8);
+        assertEq(updatedAt, block.timestamp);
+
+        // And a later over-cap move is measured against the NEW stored value.
+        skip(1);
+        vm.expectRevert(
+            abi.encodeWithSelector(LendingOracleConsumer.DeviationExceeded.selector, feedId, 1000e8, 900e8, 1000)
+        );
+        capped.onReport("", abi.encode(feedId, 1000e8, PRICE_DECIMALS, block.timestamp));
+        vm.stopPrank();
+    }
+
+    function test_OracleConsumer_DeviationCapSkippedOnceBaselineStale() public {
+        LendingOracleConsumer capped = new LendingOracleConsumer(forwarder, 1000, 15 minutes, bytes32(0)); // 10%
+
+        vm.startPrank(forwarder);
+        capped.onReport("", abi.encode(feedId, 1000e8, PRICE_DECIMALS, block.timestamp));
+
+        // Baseline still fresh: a -60% move is rejected.
+        skip(15 minutes); // exactly at the window — not yet stale
+        vm.expectRevert(
+            abi.encodeWithSelector(LendingOracleConsumer.DeviationExceeded.selector, feedId, 400e8, 1000e8, 1000)
+        );
+        capped.onReport("", abi.encode(feedId, 400e8, PRICE_DECIMALS, block.timestamp));
+
+        // Baseline now older than deviationResetAge: the same move re-seeds
+        // the feed instead of leaving it frozen forever.
+        skip(1);
+        capped.onReport("", abi.encode(feedId, 400e8, PRICE_DECIMALS, block.timestamp));
+        (uint256 value,, uint256 updatedAt) = capped.latestRound(feedId);
+        assertEq(value, 400e8);
+        assertEq(updatedAt, block.timestamp);
+
+        // The cap is live again relative to the new baseline.
+        skip(1);
+        vm.expectRevert(
+            abi.encodeWithSelector(LendingOracleConsumer.DeviationExceeded.selector, feedId, 1000e8, 400e8, 1000)
+        );
+        capped.onReport("", abi.encode(feedId, 1000e8, PRICE_DECIMALS, block.timestamp));
+        vm.stopPrank();
+    }
+
+    function test_Pool_RevertsOnStalePrice() public {
+        LendingPool agedPool = _newPoolWithAge(0, 15 minutes);
+
+        _setPrice(PRICE, block.timestamp);
+        assertEq(agedPool.collateralValueInDebtUnits(10e18), 10_000e18);
+
+        skip(16 minutes); // last report now older than maxPriceAge
+
+        vm.expectRevert(abi.encodeWithSelector(LendingPool.StalePrice.selector, feedId));
+        agedPool.collateralValueInDebtUnits(10e18);
+    }
+
+    function _newPoolAgainst(LiquidationConsumer consumer) internal returns (LendingPool) {
+        return new LendingPool(
+            IERC20(address(collateralToken)),
+            IERC20(address(debtToken)),
+            oracleConsumer,
+            consumer,
+            feedId,
+            LIQUIDATION_THRESHOLD_BPS,
+            0,
+            0
+        );
     }
 
     // ─── helpers for tests against a pool other than the default `pool` ──

@@ -35,8 +35,8 @@ contract EscrowVaultTest is Test, IEscrowFactory {
 
     function setUp() public {
         token = new MockERC20(DECIMALS);
-        confirmationConsumer = new EscrowConfirmationConsumer(forwarder);
-        complianceConsumer = new ComplianceConsumer(forwarder, MAX_VALIDITY);
+        confirmationConsumer = new EscrowConfirmationConsumer(forwarder, bytes32(0));
+        complianceConsumer = new ComplianceConsumer(forwarder, MAX_VALIDITY, bytes32(0));
     }
 
     // ─── IEscrowFactory (this contract stands in for the factory) ──

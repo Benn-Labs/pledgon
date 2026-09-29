@@ -263,16 +263,38 @@ contract acts on the verdict.
 protocols compute liquidation eligibility entirely on-chain from their own oracle,
 no off-chain attestation involved. `LendingPool.isUndercollateralized()` does
 exactly that here too, and it's real, callable, on-chain. But `liquidate()`
-deliberately does *not* trust that view alone — it additionally requires
-`LiquidationConsumer.isEligible()`, a verdict the workflow only attests after
-fetching an **independent** price from a separate (paid/authenticated) source
-inside the enclave and finding *that* the position is underwater too. This is
-the actual value the confidential workflow adds: protection against a single
-manipulated or stale primary oracle triggering a wrongful liquidation — a real,
-well-known DeFi attack class. `test_Liquidate_RevertsIfNotAttestedEligible` in
-`LendingPool.t.sol` pins down exactly this: it crashes the on-chain price so the
-pool's own view says "liquidatable," and confirms `liquidate()` still refuses
-without the DON's independent corroboration.
+requires *both*: `LiquidationConsumer.isEligible()`, a verdict the workflow only
+attests after fetching an **independent** price from a separate
+(paid/authenticated) source inside the enclave and finding *that* the position
+is underwater too, **and** an on-chain re-check that the position is still
+undercollateralized at execution time (so collateral topped up after the verdict
+was written can't be seized). The verdict side is also time-boxed:
+`LiquidationConsumer.maxVerdictAge` (0 = off) makes an eligible verdict read back
+ineligible once it's older than that, since a verdict is a point-in-time
+attestation, not a standing permission. Together these close the two stale-
+attestation windows a single-sided design leaves open. This is the actual value
+the confidential workflow adds: protection against a single manipulated or stale
+primary oracle triggering a wrongful liquidation — a real, well-known DeFi
+attack class. `test_Liquidate_RevertsIfNotAttestedEligible` in
+`LendingPool.t.sol` pins down the first direction: it crashes the on-chain price
+so the pool's own view says "liquidatable," and confirms `liquidate()` still
+refuses without the DON's independent corroboration.
+`test_Liquidate_RevertsWhenHealthyDespiteFreshVerdict` pins the second: a fresh
+eligible verdict cannot liquidate a position the pool's own view considers
+healthy.
+
+**The price path fails closed on staleness and garbage.** `LendingPool`
+enforces `maxPriceAge` (0 = off) at its single valuation read site —
+`borrow()`, `withdrawCollateral()`, and `liquidate()` all revert `StalePrice`
+rather than act on a feed frozen by a halted oracle workflow.
+`LendingOracleConsumer` rejects future-dated reports (mirroring
+`ComplianceConsumer`'s `FutureVerifiedAt` guard — without it one buggy report
+bricks the feed channel until real time catches up) and single-tick moves
+beyond `maxDeviationBps` (0 = off), a sanity bound against a glitching API or
+buggy workflow reporting 0 or 10x the real price. The deviation cap is
+deliberately *not* a crash circuit-breaker — a hard cap would keep rejecting
+updates through a sustained real-world crash and freeze the feed at the
+pre-crash price; `maxPriceAge` handles freshness instead.
 
 **Minimal pool, not a money market.** `LendingPool` is one fixed
 collateral/debt token pair. Lenders supply liquidity via `depositLiquidity`,

@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.24;
 
-import {IReceiver} from "../keystone/IReceiver.sol";
-import {IERC165} from "../keystone/IERC165.sol";
+import {WorkflowBoundReceiver} from "../keystone/WorkflowBoundReceiver.sol";
 
 /// @title LiquidationConsumer
 /// @notice Receives DON-signed liquidation-eligibility verdicts from the
@@ -18,53 +17,64 @@ import {IERC165} from "../keystone/IERC165.sol";
 /// be accepted, and the current stored value (true or false) is what counts.
 ///
 /// Report layout: abi.encode(address borrower, bool eligible, uint256 checkedAt)
-contract LiquidationConsumer is IReceiver {
+contract LiquidationConsumer is WorkflowBoundReceiver {
     struct Verdict {
         bool eligible;
         uint256 checkedAt;
     }
 
-    address public immutable forwarder;
+    /// @notice How long an eligibility verdict stays actionable, in seconds.
+    /// A `true` verdict older than this reads back ineligible — a verdict is a
+    /// point-in-time attestation, and acting on it indefinitely (e.g. after
+    /// the borrower has since topped up collateral) would let a liquidator
+    /// seize a currently-healthy position. 0 disables the expiry.
+    uint256 public immutable maxVerdictAge;
 
     mapping(address => Verdict) private _verdicts;
 
     event VerdictUpdated(address indexed borrower, bool eligible, uint256 checkedAt);
 
-    error UnauthorizedForwarder(address caller);
     error StaleReport(address borrower, uint256 incomingCheckedAt, uint256 storedCheckedAt);
-    error ZeroAddress();
+    error FutureCheckedAt(address borrower, uint256 checkedAt, uint256 blockTimestamp);
 
-    constructor(address _forwarder) {
-        if (_forwarder == address(0)) revert ZeroAddress();
-        forwarder = _forwarder;
+    constructor(address _forwarder, uint256 _maxVerdictAge, bytes32 _expectedWorkflowId)
+        WorkflowBoundReceiver(_forwarder, _expectedWorkflowId)
+    {
+        maxVerdictAge = _maxVerdictAge;
     }
 
-    modifier onlyForwarder() {
-        if (msg.sender != forwarder) revert UnauthorizedForwarder(msg.sender);
-        _;
-    }
+    function onReport(bytes calldata metadata, bytes calldata report) external onlyForwarder {
+        _checkWorkflow(metadata);
+        (address borrower, bool eligible, uint256 checkedAt_) = abi.decode(report, (address, bool, uint256));
 
-    function onReport(bytes calldata, bytes calldata report) external onlyForwarder {
-        (address borrower, bool eligible, uint256 checkedAt) = abi.decode(report, (address, bool, uint256));
-
-        Verdict storage current = _verdicts[borrower];
-        if (checkedAt <= current.checkedAt) {
-            revert StaleReport(borrower, checkedAt, current.checkedAt);
+        // Mirror ComplianceConsumer's FutureVerifiedAt guard: a future
+        // checkedAt would pin this borrower at the incoming verdict (e.g.
+        // eligible=true) while every corrective report reverts StaleReport
+        // until real time catches up.
+        if (checkedAt_ > block.timestamp) {
+            revert FutureCheckedAt(borrower, checkedAt_, block.timestamp);
         }
 
-        _verdicts[borrower] = Verdict({eligible: eligible, checkedAt: checkedAt});
-        emit VerdictUpdated(borrower, eligible, checkedAt);
+        Verdict storage current = _verdicts[borrower];
+        if (checkedAt_ <= current.checkedAt) {
+            revert StaleReport(borrower, checkedAt_, current.checkedAt);
+        }
+
+        _verdicts[borrower] = Verdict({eligible: eligible, checkedAt: checkedAt_});
+        emit VerdictUpdated(borrower, eligible, checkedAt_);
     }
 
+    /// @notice Whether the DON has attested this borrower liquidatable AND
+    /// that attestation is still within `maxVerdictAge` of `checkedAt`. A
+    /// stale or never-written verdict reads back false — fail closed.
     function isEligible(address borrower) external view returns (bool) {
-        return _verdicts[borrower].eligible;
+        Verdict memory v = _verdicts[borrower];
+        if (!v.eligible) return false;
+        if (maxVerdictAge == 0) return true;
+        return block.timestamp - v.checkedAt <= maxVerdictAge;
     }
 
     function checkedAt(address borrower) external view returns (uint256) {
         return _verdicts[borrower].checkedAt;
-    }
-
-    function supportsInterface(bytes4 interfaceId) external pure returns (bool) {
-        return interfaceId == type(IReceiver).interfaceId || interfaceId == type(IERC165).interfaceId;
     }
 }

@@ -31,6 +31,10 @@ import {LendingPool} from "../src/lending/LendingPool.sol";
 ///   COLLATERAL_FEED_LABEL      default "RWA/USD"
 ///   LIQUIDATION_THRESHOLD_BPS  default 8000 (80% LTV)
 ///   BORROW_RATE_BPS            default 500 (5%/year, fixed simple interest)
+///   MAX_PRICE_AGE              default 900 (15 min; 0 disables staleness reverts)
+///   MAX_VERDICT_AGE            default 900 (15 min; 0 disables verdict expiry)
+///   MAX_PRICE_DEVIATION_BPS    default 5000 (50% single-tick sanity bound; 0 disables;
+///                              skipped once the stored price is older than MAX_PRICE_AGE)
 ///
 /// Usage:
 ///   forge script script/DeployLending.s.sol --rpc-url <url> --account deployer --password <pw> --broadcast
@@ -42,10 +46,24 @@ contract DeployLending is Script {
         string memory feedLabel = vm.envOr("COLLATERAL_FEED_LABEL", string("RWA/USD"));
         uint256 thresholdBps = vm.envOr("LIQUIDATION_THRESHOLD_BPS", uint256(8000));
         uint256 borrowRateBps = vm.envOr("BORROW_RATE_BPS", uint256(500));
+        uint256 maxPriceAge = vm.envOr("MAX_PRICE_AGE", uint256(15 minutes));
+        uint256 maxVerdictAge = vm.envOr("MAX_VERDICT_AGE", uint256(15 minutes));
+        uint256 maxDeviationBps = vm.envOr("MAX_PRICE_DEVIATION_BPS", uint256(5000));
+        // Workflow bindings (WorkflowBoundReceiver) — bytes32 0 = unbound
+        // (simulation only; see Deploy.s.sol's comment). Set once the
+        // workflows are deployed and their IDs known.
+        bytes32 lendingOracleWorkflowId = vm.envOr("LENDING_ORACLE_WORKFLOW_ID", bytes32(0));
+        bytes32 liquidationWorkflowId = vm.envOr("LIQUIDATION_WORKFLOW_ID", bytes32(0));
 
         vm.startBroadcast();
-        LendingOracleConsumer oracleConsumer = new LendingOracleConsumer(forwarder);
-        LiquidationConsumer liqConsumer = new LiquidationConsumer(forwarder);
+        LendingOracleConsumer oracleConsumer =
+            new LendingOracleConsumer(forwarder, maxDeviationBps, maxPriceAge, lendingOracleWorkflowId);
+        LiquidationConsumer liqConsumer = new LiquidationConsumer(forwarder, maxVerdictAge, liquidationWorkflowId);
+
+        if (lendingOracleWorkflowId == bytes32(0) || liquidationWorkflowId == bytes32(0)) {
+            console.log("WARNING: one or more lending consumers deployed UNBOUND (workflow id 0)");
+            console.log("         onReport accepts any DON-signed workflow - bind before production");
+        }
         LendingPool pool = new LendingPool(
             IERC20(collateralToken),
             IERC20(debtToken),
@@ -53,7 +71,8 @@ contract DeployLending is Script {
             liqConsumer,
             oracleConsumer.feedIdFor(feedLabel),
             thresholdBps,
-            borrowRateBps
+            borrowRateBps,
+            maxPriceAge
         );
         vm.stopBroadcast();
 

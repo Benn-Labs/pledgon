@@ -28,8 +28,8 @@ contract MarketplaceTest is Test {
     MockERC20 token;
 
     function setUp() public {
-        EscrowConfirmationConsumer confirmationConsumer = new EscrowConfirmationConsumer(forwarder);
-        ComplianceConsumer complianceConsumer = new ComplianceConsumer(forwarder, 180 days);
+        EscrowConfirmationConsumer confirmationConsumer = new EscrowConfirmationConsumer(forwarder, bytes32(0));
+        ComplianceConsumer complianceConsumer = new ComplianceConsumer(forwarder, 180 days, bytes32(0));
         registry = new ArbitratorRegistry(address(this));
         registry.accredit(arbiter);
         factory = new EscrowFactory(

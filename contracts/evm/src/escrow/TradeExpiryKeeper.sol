@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.24;
 
-import {IReceiver} from "../keystone/IReceiver.sol";
-import {IERC165} from "../keystone/IERC165.sol";
+import {WorkflowBoundReceiver} from "../keystone/WorkflowBoundReceiver.sol";
 import {IExpirable} from "./IExpirable.sol";
 
 /// @title TradeExpiryKeeper
@@ -21,26 +20,16 @@ import {IExpirable} from "./IExpirable.sol";
 ///
 /// Report layout (must match encodeExpiryReport in workflows/trade-expiry):
 ///   abi.encode(address vault, bool isMilestone, uint256 milestoneIndex)
-contract TradeExpiryKeeper is IReceiver {
-    address public immutable forwarder;
-
+contract TradeExpiryKeeper is WorkflowBoundReceiver {
     event FundingExpiryRelayed(address indexed vault);
     event MilestoneExpiryRelayed(address indexed vault, uint256 indexed milestoneIndex);
 
-    error UnauthorizedForwarder(address caller);
-    error ZeroAddress();
+    constructor(address _forwarder, bytes32 _expectedWorkflowId)
+        WorkflowBoundReceiver(_forwarder, _expectedWorkflowId)
+    {}
 
-    constructor(address _forwarder) {
-        if (_forwarder == address(0)) revert ZeroAddress();
-        forwarder = _forwarder;
-    }
-
-    modifier onlyForwarder() {
-        if (msg.sender != forwarder) revert UnauthorizedForwarder(msg.sender);
-        _;
-    }
-
-    function onReport(bytes calldata, bytes calldata report) external onlyForwarder {
+    function onReport(bytes calldata metadata, bytes calldata report) external onlyForwarder {
+        _checkWorkflow(metadata);
         (address vault, bool isMilestone, uint256 milestoneIndex) = abi.decode(report, (address, bool, uint256));
 
         if (isMilestone) {
@@ -50,9 +39,5 @@ contract TradeExpiryKeeper is IReceiver {
             IExpirable(vault).expireFunding();
             emit FundingExpiryRelayed(vault);
         }
-    }
-
-    function supportsInterface(bytes4 interfaceId) external pure returns (bool) {
-        return interfaceId == type(IReceiver).interfaceId || interfaceId == type(IERC165).interfaceId;
     }
 }
