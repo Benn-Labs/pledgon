@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { erc20Abi, isAddress } from "viem";
+import { erc20Abi, formatUnits, isAddress } from "viem";
 import type { Address } from "viem";
 import { useAccount, useReadContract, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import { lendingPoolAbi, liquidationConsumerAbi } from "@/generated/contracts";
@@ -27,6 +27,10 @@ function ActionPanel({
   onSubmit,
   submitLabel,
   isPending,
+  activeHere,
+  limit,
+  limitMessage = "Exceeds wallet balance",
+  onMax,
 }: {
   title: string;
   tokenSymbol?: string;
@@ -37,8 +41,17 @@ function ActionPanel({
   setAmount: (v: string) => void;
   onSubmit: () => void;
   submitLabel: string;
+  /** Any transaction in flight: disables every action (one wallet prompt at a time). */
   isPending: boolean;
+  /** This panel's own transaction is the one in flight: only then show "Submitting…". */
+  activeHere?: boolean;
+  /** Largest amount that can go through; typing more disables submit and shows `limitMessage`. */
+  limit?: bigint;
+  limitMessage?: string;
+  onMax?: () => void;
 }) {
+  const parsed = decimals !== undefined ? tryParseUnits(amount, decimals) : undefined;
+  const overLimit = limit !== undefined && parsed !== undefined && parsed > limit;
   return (
     <div className="bg-ink-900 border border-ink-800 rounded-xl p-6">
       <h3 className="font-semibold text-white mb-3">{title}</h3>
@@ -49,19 +62,27 @@ function ActionPanel({
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
         />
-        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-ink-400 text-sm">{tokenSymbol ?? ""}</span>
+        <span className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2 text-ink-400 text-sm">
+          {onMax && (
+            <button type="button" onClick={onMax} className="rounded px-1.5 py-0.5 text-xs font-semibold text-trust-400 hover:bg-ink-700">
+              Max
+            </button>
+          )}
+          {tokenSymbol ?? ""}
+        </span>
       </div>
       {balance !== undefined && decimals !== undefined && (
-        <p className="text-xs text-ink-500 mb-4">
+        <p className="text-xs text-ink-500 mb-2">
           {balanceLabel}: {formatToken(balance, decimals, tokenSymbol)}
         </p>
       )}
+      {overLimit && <p className="text-xs text-danger-400 mb-2">{limitMessage}</p>}
       <button
         onClick={onSubmit}
-        disabled={!amount || isPending}
-        className="btn-press w-full py-2.5 rounded-lg bg-trust-600 hover:bg-trust-500 disabled:bg-ink-700 disabled:cursor-not-allowed text-white font-semibold"
+        disabled={!amount || isPending || overLimit}
+        className="btn-press mt-2 w-full py-2.5 rounded-lg bg-trust-600 hover:bg-trust-500 disabled:bg-ink-700 disabled:cursor-not-allowed text-white font-semibold"
       >
-        {isPending ? "Submitting…" : submitLabel}
+        {activeHere ? "Submitting…" : submitLabel}
       </button>
     </div>
   );
@@ -155,6 +176,15 @@ export default function LendingPage() {
 
   const { writeContract, data: hash, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash, query: { enabled: Boolean(hash) } });
+  const busy = isPending || isConfirming;
+  // Which action owns the in-flight transaction, so only its button reads
+  // "Submitting…"; the rest are just disabled, not mislabelled.
+  const [activeAction, setActiveAction] = useState<string | null>(null);
+  const activeHere = (action: string) => busy && activeAction === action;
+  const send = (action: string, params: Parameters<typeof writeContract>[0]) => {
+    setActiveAction(action);
+    writeContract(params);
+  };
 
   const [depositAmount, setDepositAmount] = useState("");
   const [withdrawAmount, setWithdrawAmount] = useState("");
@@ -252,13 +282,31 @@ export default function LendingPage() {
   const needsLiquidateApproval = liquidateTargetAddress ? (debtAllowance ?? 0n) < targetDebtAmount : false;
   const needsSupplyApproval = supplyParsed !== undefined && (debtAllowance ?? 0n) < supplyParsed;
 
+  // Amounts above what the wallet holds revert on-chain (transferFrom), so block
+  // them up front instead of letting the wallet warn "likely to fail".
+  const overBalance = (value: string, decimals: number | undefined, balance: bigint | undefined) => {
+    const parsed = decimals !== undefined ? tryParseUnits(value, decimals) : undefined;
+    return parsed !== undefined && balance !== undefined && parsed > balance;
+  };
+  // Repay pulls min(amount, currentDebt), so the wallet only has to cover the
+  // debt. The cap therefore only applies when the wallet holds less than that.
+  const repayLimit = debtBalance !== undefined && debtAmount > debtBalance ? debtBalance : undefined;
+  // Debt grows every second, so "Max" asks for slightly more than the displayed
+  // debt (0.1% buffer); the pool clamps the pull to the exact debt at execution.
+  function repayMax() {
+    if (debtDecimals === undefined || debtAmount === 0n) return;
+    const buffered = debtAmount + debtAmount / 1000n + 1n;
+    const capped = debtBalance !== undefined && buffered > debtBalance ? debtBalance : buffered;
+    setRepayAmount(formatUnits(capped, debtDecimals));
+  }
+
   function approveCollateral() {
     if (!addresses.lendingPool || !addresses.collateralToken || collDecimals === undefined) return;
     if (depositParsed === undefined) {
       toast("Enter a valid amount to approve", "warning");
       return;
     }
-    writeContract({
+    send("approveColl", {
       address: addresses.collateralToken,
       abi: erc20Abi,
       functionName: "approve",
@@ -272,7 +320,7 @@ export default function LendingPage() {
       toast("Enter a valid amount to deposit", "warning");
       return;
     }
-    writeContract({
+    send("deposit", {
       address: addresses.lendingPool,
       abi: lendingPoolAbi,
       functionName: "depositCollateral",
@@ -287,7 +335,7 @@ export default function LendingPage() {
       toast("Enter a valid amount to withdraw", "warning");
       return;
     }
-    writeContract({
+    send("withdraw", {
       address: addresses.lendingPool,
       abi: lendingPoolAbi,
       functionName: "withdrawCollateral",
@@ -301,7 +349,7 @@ export default function LendingPage() {
       toast("Enter a valid amount to approve", "warning");
       return;
     }
-    writeContract({
+    send("approveRepay", {
       address: addresses.debtToken,
       abi: erc20Abi,
       functionName: "approve",
@@ -315,7 +363,7 @@ export default function LendingPage() {
       toast("Enter a valid amount to repay", "warning");
       return;
     }
-    writeContract({
+    send("repay", {
       address: addresses.lendingPool,
       abi: lendingPoolAbi,
       functionName: "repay",
@@ -330,7 +378,7 @@ export default function LendingPage() {
       toast("Enter a valid amount to borrow", "warning");
       return;
     }
-    writeContract({
+    send("borrow", {
       address: addresses.lendingPool,
       abi: lendingPoolAbi,
       functionName: "borrow",
@@ -340,7 +388,7 @@ export default function LendingPage() {
 
   function approveDebtForLiquidate() {
     if (!addresses.lendingPool || !addresses.debtToken) return;
-    writeContract({
+    send("approveLiq", {
       address: addresses.debtToken,
       abi: erc20Abi,
       functionName: "approve",
@@ -350,7 +398,7 @@ export default function LendingPage() {
 
   function liquidate() {
     if (!addresses.lendingPool || !liquidateTargetAddress) return;
-    writeContract({
+    send("liquidate", {
       address: addresses.lendingPool,
       abi: lendingPoolAbi,
       functionName: "liquidate",
@@ -364,7 +412,7 @@ export default function LendingPage() {
       toast("Enter a valid amount to approve", "warning");
       return;
     }
-    writeContract({
+    send("approveSupply", {
       address: addresses.debtToken,
       abi: erc20Abi,
       functionName: "approve",
@@ -378,7 +426,7 @@ export default function LendingPage() {
       toast("Enter a valid amount to supply", "warning");
       return;
     }
-    writeContract({
+    send("supply", {
       address: addresses.lendingPool,
       abi: lendingPoolAbi,
       functionName: "depositLiquidity",
@@ -398,7 +446,7 @@ export default function LendingPage() {
     // Redeeming the full displayed balance uses the exact held shares, so no
     // dust share is left behind from rounding the proportional formula below.
     const shares = userBalance > 0n && requested >= userBalance ? userShares : (requested * userShares) / (userBalance || 1n);
-    writeContract({
+    send("withdrawSupply", {
       address: addresses.lendingPool,
       abi: lendingPoolAbi,
       functionName: "withdrawLiquidity",
@@ -489,10 +537,10 @@ export default function LendingPage() {
               <p className="text-sm text-ink-400 mb-4">Approve {debtSymbol} before supplying.</p>
               <button
                 onClick={approveDebtForSupply}
-                disabled={!supplyAmount || isPending || isConfirming}
+                disabled={!supplyAmount || busy || overBalance(supplyAmount, debtDecimals, debtBalance)}
                 className="btn-press w-full py-2.5 rounded-lg bg-warning-600 hover:bg-warning-500 disabled:bg-ink-700 disabled:cursor-not-allowed text-white font-semibold"
               >
-                Approve {debtSymbol}
+                {activeHere("approveSupply") ? "Submitting…" : `Approve ${debtSymbol}`}
               </button>
               <input
                 className="w-full mt-3 bg-ink-800 border border-ink-700 rounded-lg px-4 py-3 text-ink-200 font-mono focus:outline-none focus:border-trust-500"
@@ -510,7 +558,9 @@ export default function LendingPage() {
               amount={supplyAmount}
               setAmount={setSupplyAmount}
               submitLabel="Supply"
-              isPending={isPending || isConfirming}
+              isPending={busy}
+              activeHere={activeHere("supply")}
+              limit={debtBalance}
               onSubmit={supplyLiquidity}
             />
           )}
@@ -524,7 +574,10 @@ export default function LendingPage() {
             amount={withdrawSupplyAmount}
             setAmount={setWithdrawSupplyAmount}
             submitLabel="Withdraw"
-            isPending={isPending || isConfirming}
+            isPending={busy}
+            activeHere={activeHere("withdrawSupply")}
+            limit={lenderBalance}
+            limitMessage="Exceeds your supplied balance"
             onSubmit={withdrawSupply}
           />
         </div>
@@ -571,10 +624,10 @@ export default function LendingPage() {
             <p className="text-sm text-ink-400 mb-4">Approve {collSymbol} before depositing.</p>
             <button
               onClick={approveCollateral}
-              disabled={!depositAmount || isPending || isConfirming}
+              disabled={!depositAmount || busy || overBalance(depositAmount, collDecimals, collBalance)}
               className="btn-press w-full py-2.5 rounded-lg bg-warning-600 hover:bg-warning-500 disabled:bg-ink-700 disabled:cursor-not-allowed text-white font-semibold"
             >
-              Approve {collSymbol}
+              {activeHere("approveColl") ? "Submitting…" : `Approve ${collSymbol}`}
             </button>
             <input
               className="w-full mt-3 bg-ink-800 border border-ink-700 rounded-lg px-4 py-3 text-ink-200 font-mono focus:outline-none focus:border-trust-500"
@@ -592,7 +645,9 @@ export default function LendingPage() {
             amount={depositAmount}
             setAmount={setDepositAmount}
             submitLabel="Deposit"
-            isPending={isPending || isConfirming}
+            isPending={busy}
+            activeHere={activeHere("deposit")}
+            limit={collBalance}
             onSubmit={depositCollateral}
           />
         )}
@@ -603,7 +658,10 @@ export default function LendingPage() {
           amount={withdrawAmount}
           setAmount={setWithdrawAmount}
           submitLabel="Withdraw"
-          isPending={isPending || isConfirming}
+          isPending={busy}
+          activeHere={activeHere("withdraw")}
+          limit={collateralAmount}
+          limitMessage="Exceeds your deposited collateral"
           onSubmit={withdrawCollateral}
         />
 
@@ -613,10 +671,10 @@ export default function LendingPage() {
             <p className="text-sm text-ink-400 mb-4">Approve {debtSymbol} before repaying.</p>
             <button
               onClick={approveDebtForRepay}
-              disabled={!repayAmount || isPending || isConfirming}
+              disabled={!repayAmount || busy || overBalance(repayAmount, debtDecimals, repayLimit)}
               className="btn-press w-full py-2.5 rounded-lg bg-warning-600 hover:bg-warning-500 disabled:bg-ink-700 disabled:cursor-not-allowed text-white font-semibold"
             >
-              Approve {debtSymbol}
+              {activeHere("approveRepay") ? "Submitting…" : `Approve ${debtSymbol}`}
             </button>
             <input
               className="w-full mt-3 bg-ink-800 border border-ink-700 rounded-lg px-4 py-3 text-ink-200 font-mono focus:outline-none focus:border-trust-500"
@@ -634,7 +692,10 @@ export default function LendingPage() {
             amount={repayAmount}
             setAmount={setRepayAmount}
             submitLabel="Repay"
-            isPending={isPending || isConfirming}
+            isPending={busy}
+            activeHere={activeHere("repay")}
+            limit={repayLimit}
+            onMax={repayMax}
             onSubmit={repay}
           />
         )}
@@ -647,7 +708,8 @@ export default function LendingPage() {
           amount={borrowAmount}
           setAmount={setBorrowAmount}
           submitLabel="Borrow"
-          isPending={isPending || isConfirming}
+          isPending={busy}
+          activeHere={activeHere("borrow")}
           onSubmit={borrow}
         />
       </div>
@@ -719,18 +781,18 @@ export default function LendingPage() {
         {needsLiquidateApproval ? (
           <button
             onClick={approveDebtForLiquidate}
-            disabled={!liquidateTargetAddress || isPending || isConfirming}
+            disabled={!liquidateTargetAddress || busy}
             className="btn-press w-full py-2.5 rounded-lg bg-warning-600 hover:bg-warning-500 disabled:bg-ink-700 disabled:cursor-not-allowed text-white font-semibold"
           >
-            Approve {debtSymbol}
+            {activeHere("approveLiq") ? "Submitting…" : `Approve ${debtSymbol}`}
           </button>
         ) : (
           <button
             onClick={liquidate}
-            disabled={!liquidateTargetAddress || !targetEligible || isPending || isConfirming}
+            disabled={!liquidateTargetAddress || !targetEligible || busy}
             className="btn-press w-full py-2.5 rounded-lg bg-trust-600 hover:bg-trust-500 disabled:bg-ink-700 disabled:cursor-not-allowed text-white font-semibold"
           >
-            {isPending || isConfirming ? "Submitting…" : "Liquidate"}
+            {activeHere("liquidate") ? "Submitting…" : "Liquidate"}
           </button>
         )}
       </div>

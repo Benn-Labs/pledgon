@@ -215,15 +215,48 @@ contract LendingPoolTest is Test {
         assertEq(debtAmount, 3_000e18);
     }
 
-    function test_Repay_RevertsIfExceedsDebt() public {
+    function test_Repay_ClampsToCurrentDebtAndPullsOnlyThat() public {
+        LendingPool ratedPool = _newPool(500); // 5% APR
+        _depositLiquidityTo(ratedPool, lender, 1_000_000e18);
         _setPrice(PRICE, block.timestamp);
-        _depositCollateral(borrower, 10e18);
-        vm.prank(borrower);
-        pool.borrow(1_000e18);
+        _depositCollateralTo(ratedPool, borrower, 10e18);
 
-        vm.expectRevert(abi.encodeWithSelector(LendingPool.RepayExceedsDebt.selector, borrower, 2_000e18, 1_000e18));
         vm.prank(borrower);
-        pool.repay(2_000e18);
+        ratedPool.borrow(1_000e18);
+        skip(30 days);
+        _setPrice(PRICE, block.timestamp); // keep the feed fresh so collateral can be withdrawn below
+
+        (, uint256 debtBefore) = ratedPool.positions(borrower);
+        assertGt(debtBefore, 1_000e18, "interest accrued");
+
+        debtToken.mint(borrower, 100e18); // cover the interest owed on top of the borrowed 1,000
+        uint256 walletBefore = debtToken.balanceOf(borrower);
+
+        vm.startPrank(borrower);
+        debtToken.approve(address(ratedPool), type(uint256).max);
+        ratedPool.repay(type(uint256).max); // "repay everything"
+        vm.stopPrank();
+
+        (, uint256 debtAfter) = ratedPool.positions(borrower);
+        assertEq(debtAfter, 0, "fully repaid, no dust");
+        // Each tx block advances the clock by nothing here, so the pull equals the debt read just before.
+        assertEq(walletBefore - debtToken.balanceOf(borrower), debtBefore, "pulled exactly the debt");
+        // totalBorrows compounds on its own rounding, so a few wei of dust can
+        // remain versus the position's index-derived debt; it must stay negligible.
+        assertLt(ratedPool.totalBorrows(), 1e6, "totalBorrows dust");
+
+        // With no debt left the whole collateral can leave.
+        vm.prank(borrower);
+        ratedPool.withdrawCollateral(10e18);
+        (uint256 collateralAfter,) = ratedPool.positions(borrower);
+        assertEq(collateralAfter, 0);
+    }
+
+    function test_Repay_RevertsWhenNoDebt() public {
+        _depositCollateral(borrower, 10e18);
+        vm.expectRevert(abi.encodeWithSelector(LendingPool.NoDebt.selector, borrower));
+        vm.prank(borrower);
+        pool.repay(1e18);
     }
 
     // ─── withdrawCollateral ───────────────────────────────────

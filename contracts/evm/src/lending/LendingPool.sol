@@ -96,7 +96,6 @@ contract LendingPool {
     error ZeroAddress();
     error ZeroAmount();
     error InsufficientCollateral(address borrower, uint256 requested, uint256 available);
-    error RepayExceedsDebt(address borrower, uint256 requested, uint256 owed);
     error PositionNotLiquidatable(address borrower);
     error WouldBeUndercollateralized(address borrower);
     error NoDebt(address borrower);
@@ -156,12 +155,20 @@ contract LendingPool {
         emit Borrowed(msg.sender, amount);
     }
 
+    /// @notice Repays up to `amount` of the caller's debt. An `amount` above
+    /// the current debt is clamped to it and only the actual debt is pulled
+    /// (so `type(uint256).max` means "repay everything"). Debt accrues every
+    /// second, so a caller can never type the exact payoff figure; reverting
+    /// on overpayment would make a full repayment, and therefore a full
+    /// collateral withdrawal, impossible without leaving dust debt behind.
+    /// The allowance and wallet balance only need to cover the clamped amount.
     function repay(uint256 amount) external {
         if (amount == 0) revert ZeroAmount();
         _accrue();
         Position storage position = _positions[msg.sender];
         uint256 currentDebt = _realizeDebt(position);
-        if (amount > currentDebt) revert RepayExceedsDebt(msg.sender, amount, currentDebt);
+        if (currentDebt == 0) revert NoDebt(msg.sender);
+        if (amount > currentDebt) amount = currentDebt;
         position.principalDebt = currentDebt - amount;
         totalBorrows -= amount;
         _safeTransferFrom(debtToken, msg.sender, address(this), amount);
