@@ -107,3 +107,42 @@ body {
   background: var(--color-ink-950);
   color: var(--color-ink-100);
 }
+
+/* Marketplace category picker tiles. */
+.category-tile {
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.category-tile:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 32px -12px rgba(0, 0, 0, 0.6);
+}
+.category-tile:active {
+  transform: translateY(-1px) scale(0.98);
+}
+.category-tile-art {
+  transition: transform 0.4s ease;
+}
+.category-tile:hover .category-tile-art {
+  transform: scale(1.08);
+}
+.category-tile-active {
+  box-shadow: 0 0 24px -6px rgba(91, 138, 240, 0.55);
+  animation: tile-pop 0.3s ease-out;
+}
+@keyframes tile-pop {
+  0% { transform: scale(0.96); }
+  60% { transform: scale(1.03); }
+  100% { transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .category-tile,
+  .category-tile-art,
+  .category-tile-active {
+    transition: none;
+    animation: none;
+  }
+  .category-tile:hover,
+  .category-tile:hover .category-tile-art {
+    transform: none;
+  }
+}

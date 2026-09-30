@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Manrope, Fraunces, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/Providers";
-import { Header } from "@/components/Header";
+import { AppShell } from "@/components/AppShell";
 import { ConfigWarning } from "@/components/ConfigWarning";
 import { Toaster } from "@/components/Toaster";
 
@@ -34,15 +34,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="min-h-full flex flex-col bg-ink-950 text-ink-100">
         <Providers>
           <ConfigWarning />
-          <Header />
-          <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">{children}</main>
-          <footer className="border-t border-ink-800 mt-auto">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 text-sm text-ink-500 flex items-center gap-2">
-              <span>PLEDGON Protocol</span>
-              <span className="text-ink-700">·</span>
-              <span className="font-mono text-xs">Sepolia testnet</span>
-            </div>
-          </footer>
+          <AppShell>{children}</AppShell>
           <Toaster />
         </Providers>
       </body>

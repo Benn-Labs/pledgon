@@ -11,6 +11,12 @@ export interface MarketplaceCategory {
   label: string;
   defaultUnit: UnitValue;
   /**
+   * Optional tile artwork for the marketplace category picker — a path under
+   * /public (e.g. "/categories/freelance.webp"). Unset until the images are
+   * generated; the tile falls back to a tinted gradient plus the category icon.
+   */
+  thumbnail?: string;
+  /**
    * The milestone breakdown this category prefills on selection — both the
    * labels and percentage split (the actual amount only exists once a buyer
    * picks a purchase quantity, computed on-chain). Empty for Custom: sellers

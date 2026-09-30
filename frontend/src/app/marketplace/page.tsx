@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { erc20Abi, formatUnits, type Address } from "viem";
 import { useReadContract, useReadContracts } from "wagmi";
 import { marketplaceAbi } from "@/generated/contracts";
@@ -10,6 +10,9 @@ import { formatToken } from "@/lib/format";
 import { StatusBadge, LISTING_STATUS } from "@/components/ui/badges";
 import { useListingMetadataMap } from "@/hooks/useListingMetadataMap";
 import { unitLabel } from "@/lib/units";
+import { MARKETPLACE_CATEGORIES } from "@/lib/marketplaceCategories";
+import { CategoryTiles, ALL_CATEGORIES } from "@/components/marketplace/CategoryTiles";
+import { StatCard } from "@/components/marketplace/StatCard";
 
 type ListingTuple = readonly [Address, Address, Address, string, number];
 type PricingTuple = readonly [bigint, bigint, bigint, bigint]; // totalQuantity, remainingQuantity, unitPrice, bondRatePerUnit
@@ -75,6 +78,40 @@ export default function BrowsePage() {
     query: { enabled: tokens.length > 0 && tokens.every(Boolean) },
   });
 
+  const [categoryFilter, setCategoryFilter] = useState<string>(ALL_CATEGORIES);
+
+  // Listings whose metadata category maps to a known tile (matched by label,
+  // which is what the create page stores in terms.category).
+  const categoryIdOf = (id: bigint): string | undefined =>
+    MARKETPLACE_CATEGORIES.find((c) => c.label === listingMetadata.get(Number(id))?.terms.category)?.id;
+
+  const stats = useMemo(() => {
+    let active = 0;
+    const sellers = new Set<string>();
+    const categoryCounts: Record<string, number> = {};
+    // Open inventory value per payment token (quantity is 18-dec scaled).
+    const value = new Map<string, { amount: bigint; decimals: number; symbol?: string }>();
+    ids.forEach((id, i) => {
+      const listing = listingResults?.[i]?.result as ListingTuple | undefined;
+      if (!listing) return;
+      const [seller, , , , status] = listing;
+      const catId = MARKETPLACE_CATEGORIES.find((c) => c.label === listingMetadata.get(Number(id))?.terms.category)?.id;
+      if (catId) categoryCounts[catId] = (categoryCounts[catId] ?? 0) + 1;
+      if (LISTING_STATUS[status] !== "Active") return;
+      active += 1;
+      sellers.add(seller.toLowerCase());
+      const pricing = pricingResults?.[i]?.result as PricingTuple | undefined;
+      const decimals = tokenResults?.[i * 2]?.result as number | undefined;
+      const symbol = tokenResults?.[i * 2 + 1]?.result as string | undefined;
+      if (!pricing || decimals === undefined) return;
+      const key = listing[2];
+      const prev = value.get(key) ?? { amount: 0n, decimals, symbol };
+      prev.amount += (pricing[1] * pricing[2]) / 10n ** BigInt(QUANTITY_DECIMALS);
+      value.set(key, prev);
+    });
+    return { active, sellers: sellers.size, categoryCounts, value: [...value.values()] };
+  }, [ids, listingResults, pricingResults, tokenResults, listingMetadata]);
+
   if (!marketplace) {
     return <p className="text-sm text-ink-400">Marketplace address not configured.</p>;
   }
@@ -97,13 +134,35 @@ export default function BrowsePage() {
         </Link>
       </div>
 
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <StatCard label="Total listings" value={ids.length} loading={isLoading} />
+        <StatCard label="Active listings" value={stats.active} hint={`${ids.length - stats.active} closed`} loading={isLoading} />
+        <StatCard label="Sellers" value={stats.sellers} loading={isLoading} />
+        <StatCard
+          label="Open inventory"
+          value={
+            stats.value.length === 0
+              ? "—"
+              : formatToken(stats.value[0].amount, stats.value[0].decimals, stats.value[0].symbol, 2)
+          }
+          hint={stats.value.length > 1 ? `+ ${stats.value.length - 1} more token${stats.value.length > 2 ? "s" : ""}` : "Remaining qty × unit price"}
+          loading={isLoading}
+        />
+      </div>
+
+      <CategoryTiles selected={categoryFilter} onSelect={setCategoryFilter} counts={stats.categoryCounts} total={ids.length} />
+
       {isLoading && <p className="text-sm text-ink-400">Loading…</p>}
       {ids.length === 0 && !isLoading && <p className="text-sm text-ink-400">No listings yet.</p>}
+      {ids.length > 0 && categoryFilter !== ALL_CATEGORIES && !ids.some((id) => categoryIdOf(id) === categoryFilter) && (
+        <p className="text-sm text-ink-400">No listings in this category yet.</p>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {ids.map((id, i) => {
           const result = listingResults?.[i]?.result as ListingTuple | undefined;
           if (!result) return null;
+          if (categoryFilter !== ALL_CATEGORIES && categoryIdOf(id) !== categoryFilter) return null;
           const [seller, , , metadataURI, status] = result;
           const pricing = pricingResults?.[i]?.result as PricingTuple | undefined;
           const [totalQuantity, remainingQuantity, unitPrice, bondRatePerUnit] = pricing ?? [undefined, undefined, undefined, undefined];
