@@ -120,6 +120,7 @@ export const complianceConsumerAbi = [
     inputs: [
       { name: '_forwarder', internalType: 'address', type: 'address' },
       { name: '_maxValidity', internalType: 'uint256', type: 'uint256' },
+      { name: '_expectedWorkflowId', internalType: 'bytes32', type: 'bytes32' },
     ],
     stateMutability: 'nonpayable',
   },
@@ -128,6 +129,13 @@ export const complianceConsumerAbi = [
     inputs: [],
     name: 'MAX_TIER',
     outputs: [{ name: '', internalType: 'uint8', type: 'uint8' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'expectedWorkflowId',
+    outputs: [{ name: '', internalType: 'bytes32', type: 'bytes32' }],
     stateMutability: 'view',
   },
   {
@@ -147,7 +155,7 @@ export const complianceConsumerAbi = [
   {
     type: 'function',
     inputs: [
-      { name: '', internalType: 'bytes', type: 'bytes' },
+      { name: 'metadata', internalType: 'bytes', type: 'bytes' },
       { name: 'report', internalType: 'bytes', type: 'bytes' },
     ],
     name: 'onReport',
@@ -196,6 +204,19 @@ export const complianceConsumerAbi = [
     name: 'ComplianceUpdated',
   },
   {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'workflowId',
+        internalType: 'bytes32',
+        type: 'bytes32',
+        indexed: true,
+      },
+    ],
+    name: 'WorkflowBound',
+  },
+  {
     type: 'error',
     inputs: [
       { name: 'subject', internalType: 'address', type: 'address' },
@@ -203,6 +224,11 @@ export const complianceConsumerAbi = [
       { name: 'blockTimestamp', internalType: 'uint256', type: 'uint256' },
     ],
     name: 'FutureVerifiedAt',
+  },
+  {
+    type: 'error',
+    inputs: [{ name: 'length', internalType: 'uint256', type: 'uint256' }],
+    name: 'InvalidMetadataLength',
   },
   {
     type: 'error',
@@ -222,6 +248,14 @@ export const complianceConsumerAbi = [
     type: 'error',
     inputs: [{ name: 'caller', internalType: 'address', type: 'address' }],
     name: 'UnauthorizedForwarder',
+  },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'received', internalType: 'bytes32', type: 'bytes32' },
+      { name: 'expected', internalType: 'bytes32', type: 'bytes32' },
+    ],
+    name: 'UnexpectedWorkflowId',
   },
   { type: 'error', inputs: [], name: 'ZeroAddress' },
 ] as const
@@ -1414,8 +1448,27 @@ export const escrowVaultAbi = [
 export const lendingOracleConsumerAbi = [
   {
     type: 'constructor',
-    inputs: [{ name: '_forwarder', internalType: 'address', type: 'address' }],
+    inputs: [
+      { name: '_forwarder', internalType: 'address', type: 'address' },
+      { name: '_maxDeviationBps', internalType: 'uint256', type: 'uint256' },
+      { name: '_deviationResetAge', internalType: 'uint256', type: 'uint256' },
+      { name: '_expectedWorkflowId', internalType: 'bytes32', type: 'bytes32' },
+    ],
     stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'deviationResetAge',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'expectedWorkflowId',
+    outputs: [{ name: '', internalType: 'bytes32', type: 'bytes32' }],
+    stateMutability: 'view',
   },
   {
     type: 'function',
@@ -1444,8 +1497,15 @@ export const lendingOracleConsumerAbi = [
   },
   {
     type: 'function',
+    inputs: [],
+    name: 'maxDeviationBps',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
     inputs: [
-      { name: '', internalType: 'bytes', type: 'bytes' },
+      { name: 'metadata', internalType: 'bytes', type: 'bytes' },
       { name: 'report', internalType: 'bytes', type: 'bytes' },
     ],
     name: 'onReport',
@@ -1491,6 +1551,43 @@ export const lendingOracleConsumerAbi = [
     name: 'PriceUpdated',
   },
   {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'workflowId',
+        internalType: 'bytes32',
+        type: 'bytes32',
+        indexed: true,
+      },
+    ],
+    name: 'WorkflowBound',
+  },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'feedId', internalType: 'bytes32', type: 'bytes32' },
+      { name: 'value', internalType: 'uint256', type: 'uint256' },
+      { name: 'storedValue', internalType: 'uint256', type: 'uint256' },
+      { name: 'maxDeviationBps', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'DeviationExceeded',
+  },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'feedId', internalType: 'bytes32', type: 'bytes32' },
+      { name: 'updatedAt', internalType: 'uint256', type: 'uint256' },
+      { name: 'blockTimestamp', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'FutureUpdatedAt',
+  },
+  {
+    type: 'error',
+    inputs: [{ name: 'length', internalType: 'uint256', type: 'uint256' }],
+    name: 'InvalidMetadataLength',
+  },
+  {
     type: 'error',
     inputs: [
       { name: 'feedId', internalType: 'bytes32', type: 'bytes32' },
@@ -1503,6 +1600,14 @@ export const lendingOracleConsumerAbi = [
     type: 'error',
     inputs: [{ name: 'caller', internalType: 'address', type: 'address' }],
     name: 'UnauthorizedForwarder',
+  },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'received', internalType: 'bytes32', type: 'bytes32' },
+      { name: 'expected', internalType: 'bytes32', type: 'bytes32' },
+    ],
+    name: 'UnexpectedWorkflowId',
   },
   { type: 'error', inputs: [], name: 'ZeroAddress' },
 ] as const
@@ -1538,6 +1643,7 @@ export const lendingPoolAbi = [
         type: 'uint256',
       },
       { name: '_borrowRateBps', internalType: 'uint256', type: 'uint256' },
+      { name: '_maxPriceAge', internalType: 'uint256', type: 'uint256' },
     ],
     stateMutability: 'nonpayable',
   },
@@ -1672,6 +1778,13 @@ export const lendingPoolAbi = [
     type: 'function',
     inputs: [],
     name: 'liquidationThresholdBps',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'maxPriceAge',
     outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
     stateMutability: 'view',
   },
@@ -1935,15 +2048,6 @@ export const lendingPoolAbi = [
   },
   {
     type: 'error',
-    inputs: [
-      { name: 'borrower', internalType: 'address', type: 'address' },
-      { name: 'requested', internalType: 'uint256', type: 'uint256' },
-      { name: 'owed', internalType: 'uint256', type: 'uint256' },
-    ],
-    name: 'RepayExceedsDebt',
-  },
-  {
-    type: 'error',
     inputs: [{ name: 'feedId', internalType: 'bytes32', type: 'bytes32' }],
     name: 'StalePrice',
   },
@@ -1965,7 +2069,11 @@ export const lendingPoolAbi = [
 export const liquidationConsumerAbi = [
   {
     type: 'constructor',
-    inputs: [{ name: '_forwarder', internalType: 'address', type: 'address' }],
+    inputs: [
+      { name: '_forwarder', internalType: 'address', type: 'address' },
+      { name: '_maxVerdictAge', internalType: 'uint256', type: 'uint256' },
+      { name: '_expectedWorkflowId', internalType: 'bytes32', type: 'bytes32' },
+    ],
     stateMutability: 'nonpayable',
   },
   {
@@ -1973,6 +2081,13 @@ export const liquidationConsumerAbi = [
     inputs: [{ name: 'borrower', internalType: 'address', type: 'address' }],
     name: 'checkedAt',
     outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'expectedWorkflowId',
+    outputs: [{ name: '', internalType: 'bytes32', type: 'bytes32' }],
     stateMutability: 'view',
   },
   {
@@ -1991,8 +2106,15 @@ export const liquidationConsumerAbi = [
   },
   {
     type: 'function',
+    inputs: [],
+    name: 'maxVerdictAge',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
     inputs: [
-      { name: '', internalType: 'bytes', type: 'bytes' },
+      { name: 'metadata', internalType: 'bytes', type: 'bytes' },
       { name: 'report', internalType: 'bytes', type: 'bytes' },
     ],
     name: 'onReport',
@@ -2027,6 +2149,33 @@ export const liquidationConsumerAbi = [
     name: 'VerdictUpdated',
   },
   {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'workflowId',
+        internalType: 'bytes32',
+        type: 'bytes32',
+        indexed: true,
+      },
+    ],
+    name: 'WorkflowBound',
+  },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'borrower', internalType: 'address', type: 'address' },
+      { name: 'checkedAt', internalType: 'uint256', type: 'uint256' },
+      { name: 'blockTimestamp', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'FutureCheckedAt',
+  },
+  {
+    type: 'error',
+    inputs: [{ name: 'length', internalType: 'uint256', type: 'uint256' }],
+    name: 'InvalidMetadataLength',
+  },
+  {
     type: 'error',
     inputs: [
       { name: 'borrower', internalType: 'address', type: 'address' },
@@ -2039,6 +2188,14 @@ export const liquidationConsumerAbi = [
     type: 'error',
     inputs: [{ name: 'caller', internalType: 'address', type: 'address' }],
     name: 'UnauthorizedForwarder',
+  },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'received', internalType: 'bytes32', type: 'bytes32' },
+      { name: 'expected', internalType: 'bytes32', type: 'bytes32' },
+    ],
+    name: 'UnexpectedWorkflowId',
   },
   { type: 'error', inputs: [], name: 'ZeroAddress' },
 ] as const
