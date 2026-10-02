@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {LendingPool} from "../../src/lending/LendingPool.sol";
 import {LendingOracleConsumer} from "../../src/lending/LendingOracleConsumer.sol";
 import {LiquidationConsumer} from "../../src/lending/LiquidationConsumer.sol";
+import {WorkflowBoundReceiver} from "../../src/keystone/WorkflowBoundReceiver.sol";
 import {IERC20} from "../../src/interfaces/IERC20.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 
@@ -32,7 +33,7 @@ contract LendingPoolTest is Test {
         // pre-existing tests exercise the uncapped behavior; the caps get
         // their own dedicated tests with freshly constructed consumers below.
         oracleConsumer = new LendingOracleConsumer(forwarder, 0, 0, bytes32(0));
-        liquidationConsumer = new LiquidationConsumer(forwarder, 0, bytes32(0));
+        liquidationConsumer = new LiquidationConsumer(forwarder, 0, bytes32(0), new bytes32[](0));
         feedId = oracleConsumer.feedIdFor("RWA/USD");
 
         // 0% borrow rate here so every pre-existing test's exact-equality
@@ -527,7 +528,7 @@ contract LendingPoolTest is Test {
     }
 
     function test_Liquidate_RevertsWhenVerdictExpired() public {
-        LiquidationConsumer agedConsumer = new LiquidationConsumer(forwarder, 1 hours, bytes32(0));
+        LiquidationConsumer agedConsumer = new LiquidationConsumer(forwarder, 1 hours, bytes32(0), new bytes32[](0));
         LendingPool agedPool = _newPoolAgainst(agedConsumer);
         _depositLiquidityTo(agedPool, lender, 1_000_000e18);
 
@@ -549,7 +550,7 @@ contract LendingPoolTest is Test {
     }
 
     function test_Liquidate_SucceedsWithVerdictInsideMaxAge() public {
-        LiquidationConsumer agedConsumer = new LiquidationConsumer(forwarder, 1 hours, bytes32(0));
+        LiquidationConsumer agedConsumer = new LiquidationConsumer(forwarder, 1 hours, bytes32(0), new bytes32[](0));
         LendingPool agedPool = _newPoolAgainst(agedConsumer);
         _depositLiquidityTo(agedPool, lender, 1_000_000e18);
 
@@ -662,6 +663,41 @@ contract LendingPoolTest is Test {
         );
         capped.onReport("", abi.encode(feedId, 1000e8, PRICE_DECIMALS, block.timestamp));
         vm.stopPrank();
+    }
+
+    function test_LiquidationConsumer_AcceptsAnyBoundWorkflowButNoOther() public {
+        bytes32 closeWatch = keccak256("close-watch");
+        bytes32 safeTier = keccak256("safe-tier");
+        bytes32[] memory extra = new bytes32[](1);
+        extra[0] = safeTier;
+        LiquidationConsumer bound = new LiquidationConsumer(forwarder, 0, closeWatch, extra);
+
+        vm.startPrank(forwarder);
+        // Metadata layout: workflowId (32) + workflowName (10) + workflowOwner (20).
+        bytes memory report = abi.encode(borrower, true, block.timestamp);
+        bound.onReport(abi.encodePacked(closeWatch, bytes10(0), address(0)), report);
+        assertTrue(bound.isEligible(borrower));
+
+        skip(1);
+        bound.onReport(abi.encodePacked(safeTier, bytes10(0), address(0)), abi.encode(borrower, false, block.timestamp));
+        assertFalse(bound.isEligible(borrower));
+
+        skip(1);
+        bytes32 stranger = keccak256("someone-else");
+        vm.expectRevert(abi.encodeWithSelector(WorkflowBoundReceiver.UnexpectedWorkflowId.selector, stranger, closeWatch));
+        bound.onReport(abi.encodePacked(stranger, bytes10(0), address(0)), abi.encode(borrower, true, block.timestamp));
+        vm.stopPrank();
+    }
+
+    function test_LiquidationConsumer_RejectsAdditionalIdsWhenUnbound() public {
+        bytes32[] memory extra = new bytes32[](1);
+        extra[0] = keccak256("safe-tier");
+        vm.expectRevert(WorkflowBoundReceiver.AdditionalWorkflowWhileUnbound.selector);
+        new LiquidationConsumer(forwarder, 0, bytes32(0), extra);
+
+        bytes32[] memory zero = new bytes32[](1);
+        vm.expectRevert(WorkflowBoundReceiver.ZeroWorkflowId.selector);
+        new LiquidationConsumer(forwarder, 0, keccak256("close-watch"), zero);
     }
 
     function test_Pool_RevertsOnStalePrice() public {

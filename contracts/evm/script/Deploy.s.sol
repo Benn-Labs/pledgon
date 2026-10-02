@@ -187,10 +187,14 @@ contract Deploy is Script {
         // identical comment on the escrow-side consumers in run().
         bytes32 lendingOracleWorkflowId = vm.envOr("LENDING_ORACLE_WORKFLOW_ID", bytes32(0));
         bytes32 liquidationWorkflowId = vm.envOr("LIQUIDATION_WORKFLOW_ID", bytes32(0));
+        // Second liquidation workflow (slower "safe" cadence) — optional.
+        bytes32 liquidationWorkflowId2 = vm.envOr("LIQUIDATION_WORKFLOW_ID_2", bytes32(0));
+        bytes32[] memory liquidationExtra = new bytes32[](liquidationWorkflowId2 == bytes32(0) ? 0 : 1);
+        if (liquidationExtra.length == 1) liquidationExtra[0] = liquidationWorkflowId2;
 
         LendingOracleConsumer oracleConsumer =
             new LendingOracleConsumer(forwarder, maxDeviationBps, maxPriceAge, lendingOracleWorkflowId);
-        LiquidationConsumer liqConsumer = new LiquidationConsumer(forwarder, maxVerdictAge, liquidationWorkflowId);
+        LiquidationConsumer liqConsumer = new LiquidationConsumer(forwarder, maxVerdictAge, liquidationWorkflowId, liquidationExtra);
         LendingPool pool = new LendingPool(
             IERC20(collateralToken),
             IERC20(debtToken),

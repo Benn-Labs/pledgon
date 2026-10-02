@@ -26,6 +26,14 @@ abstract contract WorkflowBoundReceiver is IReceiver {
     /// @notice The only workflow whose reports this consumer accepts.
     /// bytes32(0) = unbound (any workflow) — simulation only, never production.
     bytes32 public immutable expectedWorkflowId;
+    /// @notice Further workflows allowed to write this consumer, for the case
+    /// where one consumer legitimately has several authors (e.g. the same
+    /// liquidation workflow deployed at two cadences under two names, which
+    /// gives each its own workflowId). Only populated by a derived contract's
+    /// constructor and only when `expectedWorkflowId` is set — an unbound
+    /// consumer accepts everything already, so extras there would be a
+    /// misconfiguration that looks like a restriction but isn't.
+    mapping(bytes32 => bool) public isAdditionalWorkflow;
 
     event WorkflowBound(bytes32 indexed workflowId);
 
@@ -33,6 +41,8 @@ abstract contract WorkflowBoundReceiver is IReceiver {
     error UnexpectedWorkflowId(bytes32 received, bytes32 expected);
     error InvalidMetadataLength(uint256 length);
     error ZeroAddress();
+    error AdditionalWorkflowWhileUnbound();
+    error ZeroWorkflowId();
 
     constructor(address _forwarder, bytes32 _expectedWorkflowId) {
         if (_forwarder == address(0)) revert ZeroAddress();
@@ -41,12 +51,20 @@ abstract contract WorkflowBoundReceiver is IReceiver {
         if (_expectedWorkflowId != bytes32(0)) emit WorkflowBound(_expectedWorkflowId);
     }
 
+    function _allowAdditionalWorkflow(bytes32 workflowId) internal {
+        if (expectedWorkflowId == bytes32(0)) revert AdditionalWorkflowWhileUnbound();
+        if (workflowId == bytes32(0)) revert ZeroWorkflowId();
+        isAdditionalWorkflow[workflowId] = true;
+        emit WorkflowBound(workflowId);
+    }
+
     modifier onlyForwarder() {
         if (msg.sender != forwarder) revert UnauthorizedForwarder(msg.sender);
         _;
     }
 
-    /// @notice Reverts unless metadata was authored by `expectedWorkflowId`.
+    /// @notice Reverts unless metadata was authored by `expectedWorkflowId` or
+    /// one of the additional allowed workflows.
     /// No-op when the consumer is unbound (expectedWorkflowId == 0).
     function _checkWorkflow(bytes calldata metadata) internal view {
         bytes32 expected = expectedWorkflowId;
@@ -55,7 +73,7 @@ abstract contract WorkflowBoundReceiver is IReceiver {
         // is 64 (plus reportId). Anything shorter can't carry a workflowId.
         if (metadata.length < 62) revert InvalidMetadataLength(metadata.length);
         bytes32 received = bytes32(metadata[0:32]);
-        if (received != expected) revert UnexpectedWorkflowId(received, expected);
+        if (received != expected && !isAdditionalWorkflow[received]) revert UnexpectedWorkflowId(received, expected);
     }
 
     function supportsInterface(bytes4 interfaceId) external pure virtual override returns (bool) {

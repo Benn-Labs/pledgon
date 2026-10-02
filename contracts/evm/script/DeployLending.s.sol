@@ -54,11 +54,16 @@ contract DeployLending is Script {
         // workflows are deployed and their IDs known.
         bytes32 lendingOracleWorkflowId = vm.envOr("LENDING_ORACLE_WORKFLOW_ID", bytes32(0));
         bytes32 liquidationWorkflowId = vm.envOr("LIQUIDATION_WORKFLOW_ID", bytes32(0));
+        // The liquidation workflow runs at two cadences (close-watch + safe),
+        // each its own workflowId; the second is optional.
+        bytes32 liquidationWorkflowId2 = vm.envOr("LIQUIDATION_WORKFLOW_ID_2", bytes32(0));
+        bytes32[] memory liquidationExtra = new bytes32[](liquidationWorkflowId2 == bytes32(0) ? 0 : 1);
+        if (liquidationExtra.length == 1) liquidationExtra[0] = liquidationWorkflowId2;
 
         vm.startBroadcast();
         LendingOracleConsumer oracleConsumer =
             new LendingOracleConsumer(forwarder, maxDeviationBps, maxPriceAge, lendingOracleWorkflowId);
-        LiquidationConsumer liqConsumer = new LiquidationConsumer(forwarder, maxVerdictAge, liquidationWorkflowId);
+        LiquidationConsumer liqConsumer = new LiquidationConsumer(forwarder, maxVerdictAge, liquidationWorkflowId, liquidationExtra);
 
         if (lendingOracleWorkflowId == bytes32(0) || liquidationWorkflowId == bytes32(0)) {
             console.log("WARNING: one or more lending consumers deployed UNBOUND (workflow id 0)");
@@ -76,6 +81,13 @@ contract DeployLending is Script {
         );
         vm.stopBroadcast();
 
+        // Optional guard: workflow configs (and so workflow IDs) embed these
+        // addresses, so bound deployments precompute them from the deployer
+        // nonce. Abort (nothing is broadcast) if reality drifted from that.
+        _expect("EXPECTED_ORACLE_CONSUMER", address(oracleConsumer));
+        _expect("EXPECTED_LIQUIDATION_CONSUMER", address(liqConsumer));
+        _expect("EXPECTED_LENDING_POOL", address(pool));
+
         console.log("LendingOracleConsumer:", address(oracleConsumer));
         console.log("LiquidationConsumer:  ", address(liqConsumer));
         console.log("LendingPool:          ", address(pool));
@@ -89,5 +101,12 @@ contract DeployLending is Script {
         string memory path = string.concat("deployments/lending-", vm.toString(block.chainid), ".json");
         vm.writeJson(finalJson, path);
         console.log("Wrote lending deployment record to", path);
+    }
+
+    function _expect(string memory envName, address actual) private view {
+        address expected = vm.envOr(envName, address(0));
+        if (expected != address(0)) {
+            require(expected == actual, string.concat(envName, " mismatch: deployer nonce drifted from the precomputed address"));
+        }
     }
 }

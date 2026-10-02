@@ -37,10 +37,20 @@ contract LiquidationConsumer is WorkflowBoundReceiver {
     error StaleReport(address borrower, uint256 incomingCheckedAt, uint256 storedCheckedAt);
     error FutureCheckedAt(address borrower, uint256 checkedAt, uint256 blockTimestamp);
 
-    constructor(address _forwarder, uint256 _maxVerdictAge, bytes32 _expectedWorkflowId)
-        WorkflowBoundReceiver(_forwarder, _expectedWorkflowId)
-    {
+    /// @param _additionalWorkflowIds Other workflows allowed to write verdicts
+    /// besides `_expectedWorkflowId` — the liquidation workflow runs as two
+    /// deployments (close-watch and slower "safe" cadence) with distinct
+    /// names, hence distinct workflowIds, both reporting here.
+    constructor(
+        address _forwarder,
+        uint256 _maxVerdictAge,
+        bytes32 _expectedWorkflowId,
+        bytes32[] memory _additionalWorkflowIds
+    ) WorkflowBoundReceiver(_forwarder, _expectedWorkflowId) {
         maxVerdictAge = _maxVerdictAge;
+        for (uint256 i = 0; i < _additionalWorkflowIds.length; i++) {
+            _allowAdditionalWorkflow(_additionalWorkflowIds[i]);
+        }
     }
 
     function onReport(bytes calldata metadata, bytes calldata report) external onlyForwarder {
