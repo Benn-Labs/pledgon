@@ -6,6 +6,6 @@
   "responsePricePath": "data.amount",
   "priceDecimals": 8,
   "collateralFeedLabel": "RWA/USD",
-  "consumerAddress": "0xE629330c521314aAF2113585da2F9Ba1d0286128",
+  "consumerAddress": "0x62dc86E42591E7911Fa2c297317837f442069091",
   "gasLimitWei": 500000
 }

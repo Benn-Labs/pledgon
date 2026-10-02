@@ -147,6 +147,13 @@ export const complianceConsumerAbi = [
   },
   {
     type: 'function',
+    inputs: [{ name: '', internalType: 'bytes32', type: 'bytes32' }],
+    name: 'isAdditionalWorkflow',
+    outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
     inputs: [],
     name: 'maxValidity',
     outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
@@ -216,6 +223,7 @@ export const complianceConsumerAbi = [
     ],
     name: 'WorkflowBound',
   },
+  { type: 'error', inputs: [], name: 'AdditionalWorkflowWhileUnbound' },
   {
     type: 'error',
     inputs: [
@@ -258,6 +266,7 @@ export const complianceConsumerAbi = [
     name: 'UnexpectedWorkflowId',
   },
   { type: 'error', inputs: [], name: 'ZeroAddress' },
+  { type: 'error', inputs: [], name: 'ZeroWorkflowId' },
 ] as const
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1486,6 +1495,13 @@ export const lendingOracleConsumerAbi = [
   },
   {
     type: 'function',
+    inputs: [{ name: '', internalType: 'bytes32', type: 'bytes32' }],
+    name: 'isAdditionalWorkflow',
+    outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
     inputs: [{ name: 'feedId', internalType: 'bytes32', type: 'bytes32' }],
     name: 'latestRound',
     outputs: [
@@ -1563,6 +1579,7 @@ export const lendingOracleConsumerAbi = [
     ],
     name: 'WorkflowBound',
   },
+  { type: 'error', inputs: [], name: 'AdditionalWorkflowWhileUnbound' },
   {
     type: 'error',
     inputs: [
@@ -1610,6 +1627,7 @@ export const lendingOracleConsumerAbi = [
     name: 'UnexpectedWorkflowId',
   },
   { type: 'error', inputs: [], name: 'ZeroAddress' },
+  { type: 'error', inputs: [], name: 'ZeroWorkflowId' },
 ] as const
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2073,6 +2091,11 @@ export const liquidationConsumerAbi = [
       { name: '_forwarder', internalType: 'address', type: 'address' },
       { name: '_maxVerdictAge', internalType: 'uint256', type: 'uint256' },
       { name: '_expectedWorkflowId', internalType: 'bytes32', type: 'bytes32' },
+      {
+        name: '_additionalWorkflowIds',
+        internalType: 'bytes32[]',
+        type: 'bytes32[]',
+      },
     ],
     stateMutability: 'nonpayable',
   },
@@ -2095,6 +2118,13 @@ export const liquidationConsumerAbi = [
     inputs: [],
     name: 'forwarder',
     outputs: [{ name: '', internalType: 'address', type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: '', internalType: 'bytes32', type: 'bytes32' }],
+    name: 'isAdditionalWorkflow',
+    outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
     stateMutability: 'view',
   },
   {
@@ -2161,6 +2191,7 @@ export const liquidationConsumerAbi = [
     ],
     name: 'WorkflowBound',
   },
+  { type: 'error', inputs: [], name: 'AdditionalWorkflowWhileUnbound' },
   {
     type: 'error',
     inputs: [
@@ -2198,6 +2229,7 @@ export const liquidationConsumerAbi = [
     name: 'UnexpectedWorkflowId',
   },
   { type: 'error', inputs: [], name: 'ZeroAddress' },
+  { type: 'error', inputs: [], name: 'ZeroWorkflowId' },
 ] as const
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
