@@ -13,6 +13,7 @@ import { unitLabel } from "@/lib/units";
 import { MARKETPLACE_CATEGORIES } from "@/lib/marketplaceCategories";
 import { CategoryTiles, ALL_CATEGORIES } from "@/components/marketplace/CategoryTiles";
 import { StatCard } from "@/components/marketplace/StatCard";
+import { ListingThumbnail } from "@/components/marketplace/ListingThumbnail";
 
 type ListingTuple = readonly [Address, Address, Address, string, number];
 type PricingTuple = readonly [bigint, bigint, bigint, bigint]; // totalQuantity, remainingQuantity, unitPrice, bondRatePerUnit
@@ -87,6 +88,7 @@ export default function BrowsePage() {
 
   const stats = useMemo(() => {
     let active = 0;
+    let shown = 0;
     const sellers = new Set<string>();
     const categoryCounts: Record<string, number> = {};
     // Open inventory value per payment token (quantity is 18-dec scaled).
@@ -96,6 +98,9 @@ export default function BrowsePage() {
       if (!listing) return;
       const [seller, , , , status] = listing;
       const catId = MARKETPLACE_CATEGORIES.find((c) => c.label === listingMetadata.get(Number(id))?.terms.category)?.id;
+      // Delisted/removed listings are hidden from the grid, so they don't count toward the tiles either.
+      if (LISTING_STATUS[status] === "Cancelled" || LISTING_STATUS[status] === "TakenDown") return;
+      shown += 1;
       if (catId) categoryCounts[catId] = (categoryCounts[catId] ?? 0) + 1;
       if (LISTING_STATUS[status] !== "Active") return;
       active += 1;
@@ -109,8 +114,16 @@ export default function BrowsePage() {
       prev.amount += (pricing[1] * pricing[2]) / 10n ** BigInt(QUANTITY_DECIMALS);
       value.set(key, prev);
     });
-    return { active, sellers: sellers.size, categoryCounts, value: [...value.values()] };
+    return { active, shown, sellers: sellers.size, categoryCounts, value: [...value.values()] };
   }, [ids, listingResults, pricingResults, tokenResults, listingMetadata]);
+
+  // Delisted (by the seller) and removed (by the platform admin) listings
+  // leave the browse grid; sold-out ones stay as visible history.
+  const isHidden = (status: number) => LISTING_STATUS[status] === "Cancelled" || LISTING_STATUS[status] === "TakenDown";
+  const isShown = (id: bigint, i: number) => {
+    const result = listingResults?.[i]?.result as ListingTuple | undefined;
+    return Boolean(result) && !isHidden(result![4]);
+  };
 
   if (!marketplace) {
     return <p className="text-sm text-ink-400">Marketplace address not configured.</p>;
@@ -150,18 +163,18 @@ export default function BrowsePage() {
         />
       </div>
 
-      <CategoryTiles selected={categoryFilter} onSelect={setCategoryFilter} counts={stats.categoryCounts} total={ids.length} />
+      <CategoryTiles selected={categoryFilter} onSelect={setCategoryFilter} counts={stats.categoryCounts} total={stats.shown} />
 
       {isLoading && <p className="text-sm text-ink-400">Loading…</p>}
-      {ids.length === 0 && !isLoading && <p className="text-sm text-ink-400">No listings yet.</p>}
-      {ids.length > 0 && categoryFilter !== ALL_CATEGORIES && !ids.some((id) => categoryIdOf(id) === categoryFilter) && (
+      {!isLoading && !ids.some(isShown) && <p className="text-sm text-ink-400">No listings yet.</p>}
+      {ids.some(isShown) && categoryFilter !== ALL_CATEGORIES && !ids.some((id, i) => isShown(id, i) && categoryIdOf(id) === categoryFilter) && (
         <p className="text-sm text-ink-400">No listings in this category yet.</p>
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {ids.map((id, i) => {
           const result = listingResults?.[i]?.result as ListingTuple | undefined;
-          if (!result) return null;
+          if (!result || isHidden(result[4])) return null;
           if (categoryFilter !== ALL_CATEGORIES && categoryIdOf(id) !== categoryFilter) return null;
           const [seller, , , metadataURI, status] = result;
           const pricing = pricingResults?.[i]?.result as PricingTuple | undefined;
@@ -177,10 +190,7 @@ export default function BrowsePage() {
               href={`/marketplace/${id}`}
               className="deal-card bg-ink-900 border border-ink-800 rounded-xl overflow-hidden block"
             >
-              {meta?.thumbnailUrl && (
-                // eslint-disable-next-line @next/next/no-img-element -- arbitrary seller-provided URL
-                <img src={meta.thumbnailUrl} alt="" className="w-full h-36 object-cover bg-ink-800" />
-              )}
+              <ListingThumbnail key={meta?.thumbnailUrl ?? ""} url={meta?.thumbnailUrl} className="w-full h-36" />
               <div className="p-5">
                 <div className="flex items-start justify-between mb-4">
                   <StatusBadge status={LISTING_STATUS[status]} />

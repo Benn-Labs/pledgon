@@ -23,14 +23,16 @@ const MARKETPLACE_ABI = [
     name: "listings",
     stateMutability: "view",
     inputs: [{ name: "listingId", type: "uint256" }],
+    // Must match Marketplace.listings() exactly — the returned tuple is
+    // decoded positionally, so any drift (it once still declared the old
+    // 7-field shape, with bondAmount/vault) makes readContract throw and every
+    // thumbnail/description save fail with a 500 after the listing is created.
     outputs: [
       { name: "seller", type: "address" },
       { name: "arbiter", type: "address" },
       { name: "token", type: "address" },
-      { name: "bondAmount", type: "uint256" },
       { name: "metadataURI", type: "string" },
       { name: "status", type: "uint8" },
-      { name: "vault", type: "address" },
     ],
   },
 ] as const;
@@ -66,7 +68,7 @@ Deno.serve(async (req) => {
       abi: MARKETPLACE_ABI,
       functionName: "listings",
       args: [BigInt(listingId)],
-    })) as readonly [string, string, string, bigint, string, number, string];
+    })) as readonly [string, string, string, string, number];
 
     const onChainSeller = listing[0];
     if (onChainSeller.toLowerCase() !== String(address).toLowerCase()) {

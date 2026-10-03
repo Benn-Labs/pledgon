@@ -2404,6 +2404,16 @@ export const marketplaceAbi = [
     stateMutability: 'payable',
   },
   {
+    type: 'function',
+    inputs: [
+      { name: 'listingId', internalType: 'uint256', type: 'uint256' },
+      { name: 'reason', internalType: 'string', type: 'string' },
+    ],
+    name: 'takeDownListing',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
     type: 'event',
     anonymous: false,
     inputs: [
@@ -2510,6 +2520,31 @@ export const marketplaceAbi = [
     name: 'ListingSoldOut',
   },
   {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'listingId',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: true,
+      },
+      {
+        name: 'admin',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      {
+        name: 'reason',
+        internalType: 'string',
+        type: 'string',
+        indexed: false,
+      },
+    ],
+    name: 'ListingTakenDown',
+  },
+  {
     type: 'error',
     inputs: [{ name: 'sum', internalType: 'uint256', type: 'uint256' }],
     name: 'InvalidBps',
@@ -2540,6 +2575,11 @@ export const marketplaceAbi = [
     name: 'ListingNotActive',
   },
   { type: 'error', inputs: [], name: 'NoMilestones' },
+  {
+    type: 'error',
+    inputs: [{ name: 'caller', internalType: 'address', type: 'address' }],
+    name: 'NotAdmin',
+  },
   {
     type: 'error',
     inputs: [{ name: 'caller', internalType: 'address', type: 'address' }],

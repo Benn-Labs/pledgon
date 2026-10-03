@@ -14,6 +14,7 @@ import { toast, toastTxError } from "@/lib/toast";
 import { StatusBadge, LISTING_STATUS } from "@/components/ui/badges";
 import { useListingMetadata } from "@/hooks/useListingMetadata";
 import { EditListingMetadata } from "@/components/marketplace/EditListingMetadata";
+import { ListingThumbnail } from "@/components/marketplace/ListingThumbnail";
 import { unitLabel } from "@/lib/units";
 
 const QUANTITY_DECIMALS = 18; // matches Marketplace.QUANTITY_SCALE
@@ -27,7 +28,7 @@ export default function ListingDetailPage() {
   const { address: account, isConnected } = useAccount();
   const marketplace = addresses.marketplace;
 
-  const { data: listing } = useReadContract({
+  const { data: listing, refetch: refetchListing } = useReadContract({
     address: marketplace,
     abi: marketplaceAbi,
     functionName: "listings",
@@ -127,6 +128,9 @@ export default function ListingDetailPage() {
   });
 
   const [showReview, setShowReview] = useState(false);
+  const [showDelist, setShowDelist] = useState(false);
+  // Which action owns the in-flight transaction, so only its button shows a busy label.
+  const [action, setAction] = useState<"purchase" | "delist" | null>(null);
 
   const { writeContract, data: hash, isPending, error } = useWriteContract();
   const { data: receipt, isLoading: isConfirming } = useWaitForTransactionReceipt({ hash });
@@ -136,6 +140,11 @@ export default function ListingDetailPage() {
     for (const log of receipt.logs) {
       try {
         const decoded = decodeEventLog({ abi: marketplaceAbi, ...log });
+        if (decoded.eventName === "ListingCancelled") {
+          toast("Listing delisted — it no longer accepts purchases", "success");
+          refetchListing();
+          return;
+        }
         if (decoded.eventName === "ListingPurchased") {
           toast("Escrow vault opened", "success");
           refetchPricing();
@@ -148,7 +157,7 @@ export default function ListingDetailPage() {
         // not a Marketplace event, skip
       }
     }
-  }, [receipt, router, refetchPricing, refetchVaultCount, refetchVaults]);
+  }, [receipt, router, refetchListing, refetchPricing, refetchVaultCount, refetchVaults]);
 
   useEffect(() => {
     if (error) toastTxError(error);
@@ -192,10 +201,7 @@ export default function ListingDetailPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
           <div className="bg-ink-900 border border-ink-800 rounded-xl overflow-hidden">
-            {metadata.thumbnailUrl && (
-              // eslint-disable-next-line @next/next/no-img-element -- arbitrary seller-provided URL
-              <img src={metadata.thumbnailUrl} alt="" className="w-full h-56 object-cover bg-ink-800" />
-            )}
+            {metadata.thumbnailUrl && <ListingThumbnail key={metadata.thumbnailUrl} url={metadata.thumbnailUrl} className="w-full h-56" />}
             <div className="p-6">
             <div className="flex items-start justify-between mb-4">
               <StatusBadge status={LISTING_STATUS[status ?? 0]} />
@@ -373,6 +379,20 @@ export default function ListingDetailPage() {
             ) : isSeller ? (
               <div className="p-4 rounded-lg bg-warning-500/10 border border-warning-500/30 text-center">
                 <p className="text-sm text-warning-400">This is your listing</p>
+                {isActive && (
+                  <>
+                    <button
+                      onClick={() => setShowDelist(true)}
+                      disabled={isPending || isConfirming}
+                      className="btn-press mt-3 w-full py-2.5 rounded-lg bg-ink-800 hover:bg-danger-600 border border-ink-700 hover:border-danger-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold transition-colors"
+                    >
+                      {(isPending || isConfirming) && action === "delist" ? "Delisting…" : "Delist listing"}
+                    </button>
+                    <p className="mt-2 text-xs text-ink-400">
+                      Stops new purchases. Trades already opened from it stay open and are unaffected.
+                    </p>
+                  </>
+                )}
               </div>
             ) : isArbiter ? (
               <div className="p-4 rounded-lg bg-danger-500/10 border border-danger-500/30 text-center">
@@ -386,7 +406,7 @@ export default function ListingDetailPage() {
                   disabled={!quantityValid || isPending || isConfirming}
                   className="btn-press w-full py-3 rounded-lg bg-trust-600 hover:bg-trust-500 disabled:bg-ink-700 disabled:cursor-not-allowed text-white font-semibold glow-trust disabled:shadow-none"
                 >
-                  {isPending || isConfirming ? "Purchasing…" : "Review & Purchase"}
+                  {(isPending || isConfirming) && action === "purchase" ? "Purchasing…" : "Review & Purchase"}
                 </button>
                 {vaultCreationFee !== undefined && vaultCreationFee > 0n && (
                   <p className="text-xs text-ink-500 text-center mt-2">
@@ -399,7 +419,15 @@ export default function ListingDetailPage() {
               </>
             ) : status === 1 ? (
               <div className="p-4 rounded-lg bg-ink-800 text-center">
-                <p className="text-sm text-ink-400">This listing was cancelled by the seller</p>
+                <p className="text-sm text-ink-400">This listing was delisted by the seller</p>
+              </div>
+            ) : status === 3 ? (
+              <div className="p-4 rounded-lg bg-danger-500/10 border border-danger-500/30 text-center">
+                <p className="text-sm text-danger-400">Removed by the platform</p>
+                <p className="text-xs text-ink-400 mt-1">
+                  This listing was taken down for breaching the platform&apos;s terms of use. Trades already opened from
+                  it are unaffected.
+                </p>
               </div>
             ) : (
               <div className="p-4 rounded-lg bg-ink-800 text-center">
@@ -451,6 +479,7 @@ export default function ListingDetailPage() {
         onCancel={() => setShowReview(false)}
         onConfirm={() => {
           if (purchaseQuantity === undefined) return;
+          setAction("purchase");
           writeContract({
             address: marketplace,
             abi: marketplaceAbi,
@@ -460,7 +489,7 @@ export default function ListingDetailPage() {
           });
           setShowReview(false);
         }}
-        isSubmitting={isPending || isConfirming}
+        isSubmitting={(isPending || isConfirming) && action === "purchase"}
         title="Review Purchase"
         lineItems={
           decimals !== undefined
@@ -478,6 +507,25 @@ export default function ListingDetailPage() {
             ? { address: marketplace, abi: marketplaceAbi, functionName: "purchase", args: [listingId, purchaseQuantity] }
             : undefined
         }
+      />
+
+      <TransactionReviewModal
+        open={showDelist}
+        onCancel={() => setShowDelist(false)}
+        onConfirm={() => {
+          setAction("delist");
+          writeContract({ address: marketplace, abi: marketplaceAbi, functionName: "cancelListing", args: [listingId] });
+          setShowDelist(false);
+        }}
+        isSubmitting={(isPending || isConfirming) && action === "delist"}
+        title="Delist this listing?"
+        lineItems={[
+          { label: "Listing", value: `#${id}` },
+          { label: "Effect", value: "No new purchases; open trades unaffected" },
+          { label: "Reversible", value: "No — create a new listing to sell again" },
+        ]}
+        ethValue={0n}
+        contract={{ address: marketplace, abi: marketplaceAbi, functionName: "cancelListing", args: [listingId] }}
       />
     </div>
   );

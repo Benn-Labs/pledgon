@@ -8,6 +8,7 @@ import { addresses } from "@/lib/addresses";
 import { tryParseUnits } from "@/lib/units";
 import { toast, toastTxError } from "@/lib/toast";
 import { AdminIcon } from "@/components/ui/icons";
+import { ListingModeration } from "@/components/marketplace/ListingModeration";
 
 function StatCard({ label, value }: { label: string; value: string }) {
   return (
@@ -157,7 +158,7 @@ export default function AdminPage() {
           <AdminIcon className="w-7 h-7 text-trust-400" />
           Admin
         </h1>
-        <p className="text-ink-400 mt-1">Manage EscrowFactory&apos;s vault-creation fee — owner-gated, connected as the owner wallet.</p>
+        <p className="text-ink-400 mt-1">Fees and marketplace moderation — owner-gated, connected as the owner wallet (a multisig works via WalletConnect).</p>
       </div>
 
       <div className="bg-ink-900 border border-ink-800 rounded-xl p-6 mb-6">
@@ -172,6 +173,8 @@ export default function AdminPage() {
           <StatCard label="Owner" value={owner ?? "…"} />
         </div>
       </div>
+
+      <ListingModeration />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
         <div className="bg-ink-900 border border-ink-800 rounded-xl p-6">

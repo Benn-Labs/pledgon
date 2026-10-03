@@ -1,6 +1,6 @@
 import type { TradeLifecycleStatus } from "@/lib/tradeStatus";
 
-type Status = "Pending" | "DocsSubmitted" | "Released" | "Disputed" | "Refunded" | "Split" | "Active" | "Cancelled" | "Sold";
+type Status = "Pending" | "DocsSubmitted" | "Released" | "Disputed" | "Refunded" | "Split" | "Active" | "Cancelled" | "Sold" | "TakenDown";
 
 const STATUS_CONFIG: Record<Status, { classes: string; dot: string; label: string }> = {
   Pending: { classes: "bg-ink-700 text-ink-300 border-ink-600", dot: "bg-ink-400", label: "Pending" },
@@ -16,10 +16,11 @@ const STATUS_CONFIG: Record<Status, { classes: string; dot: string; label: strin
   Active: { classes: "bg-success-500/20 text-success-400 border-success-500/30", dot: "bg-success-400", label: "Active" },
   Cancelled: { classes: "bg-ink-700 text-ink-400 border-ink-600", dot: "bg-ink-500", label: "Cancelled" },
   Sold: { classes: "bg-trust-500/20 text-trust-400 border-trust-500/30", dot: "bg-trust-400", label: "Sold" },
+  TakenDown: { classes: "bg-danger-500/20 text-danger-400 border-danger-500/30", dot: "bg-danger-400", label: "Removed" },
 };
 
 export const MILESTONE_STATUS: Status[] = ["Pending", "DocsSubmitted", "Released", "Disputed", "Refunded", "Split"];
-export const LISTING_STATUS: Status[] = ["Active", "Cancelled", "Sold"];
+export const LISTING_STATUS: Status[] = ["Active", "Cancelled", "Sold", "TakenDown"];
 
 export function StatusBadge({ status, size = "md" }: { status: Status; size?: "sm" | "md" }) {
   // Defensive fallback: an out-of-range status (e.g. a future enum value)
