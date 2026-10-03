@@ -212,6 +212,101 @@ contract MarketplaceTest is Test {
         marketplace.cancelListing(0);
     }
 
+    // ─── takeDownListing (admin moderation) ───────────────────
+
+    function test_TakeDown_RevertsIfNotAdmin() public {
+        uint256 listingId = _createListing(_singleBps(), Q, 1e6, 0);
+        // The seller cannot use the admin path, and neither can a random account.
+        vm.expectRevert(abi.encodeWithSelector(Marketplace.NotAdmin.selector, seller));
+        vm.prank(seller);
+        marketplace.takeDownListing(listingId, "mine");
+
+        vm.expectRevert(abi.encodeWithSelector(Marketplace.NotAdmin.selector, buyer));
+        vm.prank(buyer);
+        marketplace.takeDownListing(listingId, "nope");
+    }
+
+    function test_TakeDown_SetsTakenDownAndEmitsReason() public {
+        uint256 listingId = _createListing(_singleBps(), Q, 1e6, 0);
+
+        vm.expectEmit(true, true, false, true, address(marketplace));
+        emit Marketplace.ListingTakenDown(listingId, address(this), "counterfeit goods");
+        marketplace.takeDownListing(listingId, "counterfeit goods"); // address(this) owns the factory
+
+        (,,,, Marketplace.ListingStatus status) = marketplace.listings(listingId);
+        assertEq(uint8(status), uint8(Marketplace.ListingStatus.TakenDown));
+    }
+
+    function test_TakeDown_BlocksNewPurchasesAndSellerCancel() public {
+        uint256 listingId = _createListing(_singleBps(), Q, 1e6, 0);
+        marketplace.takeDownListing(listingId, "policy breach");
+
+        vm.expectRevert(
+            abi.encodeWithSelector(Marketplace.ListingNotActive.selector, listingId, Marketplace.ListingStatus.TakenDown)
+        );
+        vm.prank(buyer);
+        marketplace.purchase(listingId, Q);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(Marketplace.ListingNotActive.selector, listingId, Marketplace.ListingStatus.TakenDown)
+        );
+        vm.prank(seller);
+        marketplace.cancelListing(listingId);
+    }
+
+    function test_TakeDown_LeavesExistingVaultsUntouched() public {
+        uint256 listingId = _createListing(_singleBps(), 2 * Q, 1e6, 0);
+        vm.prank(buyer);
+        address vault = marketplace.purchase(listingId, Q); // half bought before the takedown
+
+        marketplace.takeDownListing(listingId, "policy breach");
+
+        // The already-open escrow is a separate contract the admin has no power over.
+        assertEq(EscrowVault(vault).buyer(), buyer);
+        assertEq(EscrowVault(vault).seller(), seller);
+        assertEq(marketplace.listingVaultCount(listingId), 1);
+        assertEq(marketplace.listingVaults(listingId, 0), vault);
+    }
+
+    function test_TakeDown_RevertsIfNotActive() public {
+        uint256 cancelled = _createListing(_singleBps(), Q, 1e6, 0);
+        vm.prank(seller);
+        marketplace.cancelListing(cancelled);
+        vm.expectRevert(
+            abi.encodeWithSelector(Marketplace.ListingNotActive.selector, cancelled, Marketplace.ListingStatus.Cancelled)
+        );
+        marketplace.takeDownListing(cancelled, "too late");
+
+        uint256 sold = _createListing(_singleBps(), Q, 1e6, 0);
+        vm.prank(buyer);
+        marketplace.purchase(sold, Q);
+        vm.expectRevert(
+            abi.encodeWithSelector(Marketplace.ListingNotActive.selector, sold, Marketplace.ListingStatus.Sold)
+        );
+        marketplace.takeDownListing(sold, "too late");
+    }
+
+    function test_TakeDown_RevertsOnInvalidListingId() public {
+        vm.expectRevert(abi.encodeWithSelector(Marketplace.InvalidListingId.selector, 0));
+        marketplace.takeDownListing(0, "n/a");
+    }
+
+    function test_TakeDown_RightFollowsFactoryOwnership() public {
+        address multisig = makeAddr("multisig");
+        uint256 listingId = _createListing(_singleBps(), Q, 1e6, 0);
+
+        factory.transferOwnership(multisig);
+
+        // The previous owner loses the right; the new owner (the multisig) holds it.
+        vm.expectRevert(abi.encodeWithSelector(Marketplace.NotAdmin.selector, address(this)));
+        marketplace.takeDownListing(listingId, "old owner");
+
+        vm.prank(multisig);
+        marketplace.takeDownListing(listingId, "multisig decision");
+        (,,,, Marketplace.ListingStatus status) = marketplace.listings(listingId);
+        assertEq(uint8(status), uint8(Marketplace.ListingStatus.TakenDown));
+    }
+
     // ─── purchase ─────────────────────────────────────────────
 
     function test_Purchase_CreatesVaultWithBuyerAsRealBuyer() public {

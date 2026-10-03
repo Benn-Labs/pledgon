@@ -32,7 +32,10 @@ contract Marketplace {
     enum ListingStatus {
         Active,
         Cancelled,
-        Sold
+        Sold,
+        /// Removed by the platform admin (see `takeDownListing`) rather than
+        /// delisted by its seller.
+        TakenDown
     }
 
     /// @notice Basis-point denominator `milestoneBps` must sum to — matches
@@ -75,12 +78,16 @@ contract Marketplace {
         string metadataURI
     );
     event ListingCancelled(uint256 indexed listingId);
+    /// @notice Emitted alongside the status change when the platform admin
+    /// removes a listing, so the stated reason is part of the public record.
+    event ListingTakenDown(uint256 indexed listingId, address indexed admin, string reason);
     event ListingPurchased(
         uint256 indexed listingId, address indexed buyer, address indexed vault, uint256 quantity, uint256 totalAmount
     );
     event ListingSoldOut(uint256 indexed listingId);
 
     error NotSeller(address caller);
+    error NotAdmin(address caller);
     error InvalidListingId(uint256 listingId);
     error ListingNotActive(uint256 listingId, ListingStatus actual);
     error NoMilestones();
@@ -158,6 +165,29 @@ contract Marketplace {
 
         listing.status = ListingStatus.Cancelled;
         emit ListingCancelled(listingId);
+    }
+
+    /// @notice Platform moderation: the owner of `factory` (the same admin
+    /// key — typically a multisig — that runs the escrow factory) can pull an
+    /// Active listing that breaches the platform's terms (malicious,
+    /// fraudulent, inappropriate). The admin right is deliberately derived
+    /// from `factory.owner()` rather than stored here, so transferring the
+    /// factory's ownership to a multisig moves this right with it and there is
+    /// no second owner to keep in sync.
+    ///
+    /// Scope is intentionally narrow: it only stops NEW purchases. Vaults a
+    /// buyer has already opened from this listing are separate escrow
+    /// contracts the admin has no power over — funds in them stay governed by
+    /// their own milestones, arbiter and deadlines, so a takedown can never be
+    /// used to seize or redirect anyone's money. `reason` is emitted, not
+    /// stored.
+    function takeDownListing(uint256 listingId, string calldata reason) external {
+        if (msg.sender != factory.owner()) revert NotAdmin(msg.sender);
+        Listing storage listing = _mustGet(listingId);
+        if (listing.status != ListingStatus.Active) revert ListingNotActive(listingId, listing.status);
+
+        listing.status = ListingStatus.TakenDown;
+        emit ListingTakenDown(listingId, msg.sender, reason);
     }
 
     /// @notice Buys `quantity` of a listing's remaining supply: opens a new
