@@ -26,7 +26,7 @@ type ListingTuple = readonly [Address, Address, Address, string, number];
  * gate): partially-purchased listings stay Active and their trades deserve
  * titles too.
  */
-export function useListingTitleByVault() {
+function useVaultListingIndex() {
   const { data: listingCount } = useReadContract({
     address: addresses.marketplace,
     abi: marketplaceAbi,
@@ -108,6 +108,11 @@ export function useListingTitleByVault() {
     useMemo(() => [...vaultToListingId.values()], [vaultToListingId]),
   );
 
+  return { vaultToListingId, vaultToOnChainTitle, listingMetadata };
+}
+
+export function useListingTitleByVault() {
+  const { vaultToListingId, vaultToOnChainTitle, listingMetadata } = useVaultListingIndex();
   return useMemo(() => {
     const result = new Map<string, string>();
     for (const [vault, listingId] of vaultToListingId) {
@@ -117,4 +122,9 @@ export function useListingTitleByVault() {
     }
     return result;
   }, [vaultToListingId, vaultToOnChainTitle, listingMetadata]);
+}
+
+/** Maps vault address (lowercased) -> the Marketplace listing it was purchased from. Direct Create-Escrow vaults are absent. */
+export function useListingIdByVault() {
+  return useVaultListingIndex().vaultToListingId;
 }

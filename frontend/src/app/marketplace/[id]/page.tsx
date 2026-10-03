@@ -15,7 +15,7 @@ import { StatusBadge, LISTING_STATUS } from "@/components/ui/badges";
 import { useListingMetadata } from "@/hooks/useListingMetadata";
 import { EditListingMetadata } from "@/components/marketplace/EditListingMetadata";
 import { ListingThumbnail } from "@/components/marketplace/ListingThumbnail";
-import { unitLabel } from "@/lib/units";
+import { formatPerUnit, unitShortLabel } from "@/lib/units";
 
 const QUANTITY_DECIMALS = 18; // matches Marketplace.QUANTITY_SCALE
 
@@ -234,14 +234,14 @@ export default function ListingDetailPage() {
                 <div className="flex items-center justify-between text-sm mb-2">
                   <span className="text-ink-400">Unit Price</span>
                   <span className="font-mono text-ink-100">
-                    {formatToken(unitPrice ?? 0n, decimals, symbol)} / {unitLabel(metadata.terms.unit)}
+                    {formatPerUnit(formatToken(unitPrice ?? 0n, decimals, symbol), metadata.terms.unit)}
                   </span>
                 </div>
                 <div className="flex items-center justify-between text-sm mb-2">
                   <span className="text-ink-400">Available</span>
                   <span className="font-mono text-ink-100">
                     {formatUnits(remainingQuantity ?? 0n, QUANTITY_DECIMALS)} / {formatUnits(totalQuantity, QUANTITY_DECIMALS)}{" "}
-                    {unitLabel(metadata.terms.unit)}
+                    {unitShortLabel(metadata.terms.unit)}
                   </span>
                 </div>
                 <div className="h-1.5 rounded-full bg-ink-700 overflow-hidden">
@@ -333,7 +333,7 @@ export default function ListingDetailPage() {
             {isActive && tokenReady && decimals !== undefined && (
               <div className="mb-4">
                 <label className="block text-xs text-ink-400 mb-2">
-                  Quantity to purchase ({unitLabel(metadata.terms.unit)})
+                  Quantity to purchase ({unitShortLabel(metadata.terms.unit)})
                 </label>
                 <input
                   type="number"

@@ -9,7 +9,7 @@ import { addresses } from "@/lib/addresses";
 import { formatToken } from "@/lib/format";
 import { StatusBadge, LISTING_STATUS } from "@/components/ui/badges";
 import { useListingMetadataMap } from "@/hooks/useListingMetadataMap";
-import { unitLabel } from "@/lib/units";
+import { formatPerUnit, unitShortLabel } from "@/lib/units";
 import { MARKETPLACE_CATEGORIES } from "@/lib/marketplaceCategories";
 import { CategoryTiles, ALL_CATEGORIES } from "@/components/marketplace/CategoryTiles";
 import { StatCard } from "@/components/marketplace/StatCard";
@@ -218,20 +218,20 @@ export default function BrowsePage() {
                     <div className="flex justify-between text-sm">
                       <span className="text-ink-400">Unit Price</span>
                       <span className="font-mono text-ink-100">
-                        {formatToken(unitPrice, decimals, symbol)} / {unitLabel(meta?.terms.unit)}
+                        {formatPerUnit(formatToken(unitPrice, decimals, symbol), meta?.terms.unit)}
                       </span>
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-ink-400">Available</span>
                       <span className="font-semibold font-mono text-ink-100">
                         {formatUnits(remainingQuantity ?? 0n, QUANTITY_DECIMALS)} / {formatUnits(totalQuantity ?? 0n, QUANTITY_DECIMALS)}{" "}
-                        {unitLabel(meta?.terms.unit)}
+                        {unitShortLabel(meta?.terms.unit)}
                       </span>
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-ink-400">Bond Rate</span>
                       <span className="font-mono text-warning-400">
-                        {formatToken(bondRatePerUnit ?? 0n, decimals, symbol)} / {unitLabel(meta?.terms.unit)}
+                        {formatPerUnit(formatToken(bondRatePerUnit ?? 0n, decimals, symbol), meta?.terms.unit)}
                       </span>
                     </div>
                     <div className="flex justify-between text-sm">

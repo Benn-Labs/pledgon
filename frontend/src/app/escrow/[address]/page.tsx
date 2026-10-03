@@ -20,6 +20,7 @@ import { CountdownBadge } from "@/components/ui/CountdownBadge";
 import { deriveTradeStatus, deriveCurrentDeadline } from "@/lib/tradeStatus";
 import { useEscrowMetadata } from "@/hooks/useEscrowMetadata";
 import { EditTradeDescription } from "@/components/trade/EditTradeDescription";
+import { DownloadContractButton } from "@/components/trade/DownloadContractButton";
 
 function TradeNotFound({ address }: { address?: string }) {
   return (
@@ -265,6 +266,24 @@ export default function TradePage() {
             <div className="text-right">
               <div className="text-2xl font-bold font-mono text-white">{formatToken(totalAmount ?? 0n, decimals, symbol)}</div>
               <div className="text-sm text-ink-400">Total Value</div>
+              {symbol && lifecycleStatus && (
+                <DownloadContractButton
+                  vault={vault}
+                  buyer={buyer}
+                  seller={seller}
+                  arbiter={hasArbiter ? arbiter : undefined}
+                  token={token}
+                  symbol={symbol}
+                  decimals={decimals}
+                  totalAmount={totalAmount ?? 0n}
+                  bondAmount={bondAmount ?? 0n}
+                  statusLabel={lifecycleStatus}
+                  description={tradeDescription}
+                  milestones={milestones.map((m) => ({ index: m.index, amount: m.amount, status: m.status }))}
+                  milestoneLabels={milestoneLabels}
+                  fundingDeadline={fundingDeadline}
+                />
+              )}
             </div>
           )}
         </div>

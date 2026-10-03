@@ -40,3 +40,31 @@ export type UnitValue = (typeof UNIT_OPTIONS)[number]["value"];
 export function unitLabel(value: string | undefined): string {
   return UNIT_OPTIONS.find((u) => u.value === value)?.label ?? value ?? "";
 }
+
+// Short, plain-words names for reading a price aloud ("12.5 MOCK / sq meter"),
+// as opposed to UNIT_OPTIONS' dropdown labels, which carry symbols and are too
+// long for a price line. Unknown values fall back to the raw value.
+const UNIT_SHORT_LABELS: Record<UnitValue, string> = {
+  unit: "unit",
+  kg: "kg",
+  ton: "metric ton",
+  g: "gram",
+  lb: "lb",
+  l: "liter",
+  m2: "sq meter",
+  m3: "cu meter",
+  hectare: "hectare",
+  hour: "hour",
+  day: "day",
+};
+
+export function unitShortLabel(value: string | undefined): string {
+  if (!value) return "";
+  return UNIT_SHORT_LABELS[value as UnitValue] ?? value;
+}
+
+/** "12.5 MOCK / sq meter" — or just "12.5 MOCK" when the listing's unit isn't known (off-chain metadata missing). */
+export function formatPerUnit(amount: string, unit: string | undefined): string {
+  const label = unitShortLabel(unit);
+  return label ? `${amount} / ${label}` : amount;
+}
