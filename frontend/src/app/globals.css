@@ -4,8 +4,8 @@
    not theme-switchable (see the frontend design port notes). Palette and
    type ported from frontend/ui/Design.html: a neutral near-black (not
    Tailwind's default blue-tinted slate) plus a warmer accent blue, Manrope
-   for UI text, and Fraunces italic reserved for page-title display type via
-   .font-display. */
+   for UI text, and Chakra Petch (squared techno display face) reserved for
+   page-title display type via .font-display. */
 @theme {
   --color-ink-50: #f8fafc;
   --color-ink-100: #f5f7fa;
@@ -46,7 +46,7 @@
 
   --font-sans: var(--font-manrope);
   --font-mono: var(--font-jetbrains-mono);
-  --font-display: var(--font-fraunces);
+  --font-display: var(--font-chakra-petch);
 
   /* Design.html's cards use a 16px radius, not Tailwind's default 12px for
      rounded-xl — every "bg-ink-900 border border-ink-800 rounded-xl" panel
@@ -94,13 +94,15 @@
   box-shadow: 0 0 20px -5px rgba(91, 138, 240, 0.4);
 }
 
-/* Page-title treatment ported from Design.html: italic Fraunces instead of
-   bold Manrope. Deliberately not applied to every heading — just the
-   top-of-page <h1>s, where a page introduces itself. */
+/* Page-title treatment: Chakra Petch instead of Manrope. Deliberately not
+   applied to every heading — just the top-of-page <h1>s, where a page
+   introduces itself. To swap the face, change the font in layout.tsx and the
+   --font-display variable above. */
 .font-display {
-  font-family: var(--font-display), Georgia, serif;
-  font-style: italic;
-  font-weight: 500;
+  font-family: var(--font-display), var(--font-sans), system-ui, sans-serif;
+  font-style: normal;
+  font-weight: 600;
+  letter-spacing: 0.01em;
 }
 
 body {
@@ -145,4 +147,22 @@ body {
   .category-tile:hover .category-tile-art {
     transform: none;
   }
+}
+
+/* Notification bell: a short ring, then a pause, repeating while unread. */
+@keyframes bell-ring {
+  0%, 22%, 100% { transform: rotate(0); }
+  3% { transform: rotate(16deg); }
+  6% { transform: rotate(-14deg); }
+  9% { transform: rotate(11deg); }
+  12% { transform: rotate(-9deg); }
+  15% { transform: rotate(6deg); }
+  18% { transform: rotate(-3deg); }
+}
+.bell-ring {
+  transform-origin: 50% 12%;
+  animation: bell-ring 4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .bell-ring { animation: none; }
 }

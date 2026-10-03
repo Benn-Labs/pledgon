@@ -9,25 +9,15 @@ import { useEscrowAttention } from "@/hooks/useEscrowAttention";
 import { useTotalValueLocked } from "@/hooks/useTotalValueLocked";
 import { useRecentTrades } from "@/hooks/useRecentTrades";
 import { useLendingPosition } from "@/hooks/useLendingPosition";
-import { useActivityFeed } from "@/hooks/useActivityFeed";
 import { formatToken, formatVaultNumber } from "@/lib/format";
-import { useNow, formatRelativeTime } from "@/lib/countdown";
 import { TradeStatusBadge } from "@/components/ui/badges";
 import { TradeProgressBar } from "@/components/ui/TradeProgressBar";
 import { CountdownBadge } from "@/components/ui/CountdownBadge";
 import { HealthFactorGauge } from "@/components/ui/HealthFactorGauge";
 import { TokenAmount } from "@/components/ui/TokenAmount";
 import { HomeIcon, MarketplaceIcon, EscrowIcon, LendingIcon, ShieldAlertIcon, SwapIcon, FaucetIcon } from "@/components/ui/icons";
-import type { ActivityTone } from "@/lib/activityFeed";
 
 const CLOSED_STATUSES = new Set(["Completed", "Cancelled"]);
-
-const ACTIVITY_DOT: Record<ActivityTone, string> = {
-  info: "bg-trust-400",
-  success: "bg-success-400",
-  warning: "bg-warning-400",
-  danger: "bg-danger-400",
-};
 
 function QuickAccessTile({
   href,
@@ -64,8 +54,6 @@ export default function DashboardPage() {
   const { escrow: escrowTvl, lendingCollateral, lendingLiquidity, isLoading: tvlLoading } = useTotalValueLocked();
   const { trades: recentTrades, isLoading: recentLoading } = useRecentTrades(10);
   const lending = useLendingPosition();
-  const activity = useActivityFeed(recentTrades, recentLoading);
-  const now = useNow(60_000);
   const [tradeTab, setTradeTab] = useState<"active" | "closed">("active");
 
   const { data: listingCount } = useReadContract({
@@ -197,29 +185,6 @@ export default function DashboardPage() {
           <div className="text-5xl font-extrabold text-white">{listingCount?.toString() ?? "…"}</div>
           {listingCount === 0n && <div className="text-sm text-ink-300 mt-1">Nothing listed yet</div>}
         </Link>
-      </div>
-
-      <div className="bg-ink-900 border border-ink-800 rounded-xl p-6 mb-6">
-        <h2 className="font-semibold text-white mb-1">Recent Activity</h2>
-        <p className="text-xs text-ink-500 mb-4">What changed since you were last here, in this browser — not a full on-chain history.</p>
-        {recentLoading ? (
-          <div className="space-y-3">
-            <div className="h-4 rounded bg-ink-800 animate-pulse" />
-            <div className="h-4 w-2/3 rounded bg-ink-800 animate-pulse" />
-          </div>
-        ) : activity.length === 0 ? (
-          <p className="text-sm text-ink-400">Nothing new since your last visit.</p>
-        ) : (
-          <div className="space-y-3">
-            {activity.map((entry) => (
-              <Link key={entry.id} href={`/escrow/${entry.vault}`} className="flex items-start gap-3 group">
-                <span className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${ACTIVITY_DOT[entry.tone]}`} />
-                <p className="text-sm text-ink-300 group-hover:text-white flex-1 min-w-0">{entry.message}</p>
-                <span className="text-xs text-ink-500 shrink-0">{formatRelativeTime(entry.at, now)}</span>
-              </Link>
-            ))}
-          </div>
-        )}
       </div>
 
       <div className="bg-ink-900 border border-ink-800 rounded-xl p-6 mb-6">

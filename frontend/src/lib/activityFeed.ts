@@ -5,6 +5,7 @@ import { formatVaultNumber } from "@/lib/format";
 
 const SNAPSHOT_PREFIX = "pledgon:activitySnapshot:";
 const FEED_PREFIX = "pledgon:activityFeed:";
+const SEEN_PREFIX = "pledgon:activitySeenAt:";
 const MAX_ENTRIES = 20;
 
 export type ActivityTone = "info" | "success" | "warning" | "danger";
@@ -114,4 +115,27 @@ export function computeActivityDiff(account: Address, trades: RecentTrade[]): Ac
 export function persistActivityDiff(account: Address, nextSnapshot: Snapshot, displayFeed: ActivityEntry[]) {
   writeJson(SNAPSHOT_PREFIX + account.toLowerCase(), nextSnapshot);
   writeJson(FEED_PREFIX + account.toLowerCase(), displayFeed);
+}
+
+// ─── Read marker (drives the notification bell's unread count) ───────────
+
+const seenListeners = new Set<() => void>();
+
+/** When this wallet last opened the notifications dropdown, as epoch ms (0 = never). */
+export function getActivitySeenAt(account: Address): number {
+  return readJson<number>(SEEN_PREFIX + account.toLowerCase()) ?? 0;
+}
+
+export function markActivitySeen(account: Address, at: number = Date.now()) {
+  writeJson(SEEN_PREFIX + account.toLowerCase(), at);
+  seenListeners.forEach((cb) => cb());
+}
+
+export function subscribeActivitySeen(cb: () => void) {
+  seenListeners.add(cb);
+  window.addEventListener("storage", cb); // another tab marking read
+  return () => {
+    seenListeners.delete(cb);
+    window.removeEventListener("storage", cb);
+  };
 }

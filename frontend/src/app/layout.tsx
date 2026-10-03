@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Manrope, Fraunces, JetBrains_Mono } from "next/font/google";
+import { Manrope, Chakra_Petch, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/Providers";
 import { AppShell } from "@/components/AppShell";
@@ -11,11 +11,11 @@ const manrope = Manrope({
   subsets: ["latin"],
 });
 
-const fraunces = Fraunces({
-  variable: "--font-fraunces",
+// Page-title display face (see .font-display in globals.css).
+const chakraPetch = Chakra_Petch({
+  variable: "--font-chakra-petch",
   subsets: ["latin"],
-  style: ["italic"],
-  weight: ["500"],
+  weight: ["500", "600", "700"],
 });
 
 const jetbrainsMono = JetBrains_Mono({
@@ -30,7 +30,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`dark ${manrope.variable} ${fraunces.variable} ${jetbrainsMono.variable} h-full antialiased`}>
+    <html lang="en" className={`dark ${manrope.variable} ${chakraPetch.variable} ${jetbrainsMono.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col bg-ink-950 text-ink-100">
         <Providers>
           <ConfigWarning />

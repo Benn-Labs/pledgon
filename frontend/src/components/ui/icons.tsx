@@ -129,3 +129,8 @@ export const SparklesIcon = strokeIcon([
   "M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8L12 3z",
   "M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15z",
 ]);
+
+export const BellIcon = strokeIcon([
+  "M6 8a6 6 0 1112 0c0 7 3 9 3 9H3s3-2 3-9",
+  "M10.3 21a1.94 1.94 0 003.4 0",
+]);
