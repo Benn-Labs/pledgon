@@ -6,6 +6,8 @@ import { useChainId } from "wagmi";
 import { useSignedListingMetadataWrite } from "@/hooks/useSignedMetadataWrite";
 import { useListingMetadata, type ListingMetadata } from "@/hooks/useListingMetadata";
 import { toast, toastTxError } from "@/lib/toast";
+import { MARKETPLACE_CATEGORIES } from "@/lib/marketplaceCategories";
+import { UNIT_OPTIONS } from "@/lib/units";
 
 /**
  * Lets the seller set or update a listing's title/thumbnail/description/
@@ -28,11 +30,14 @@ export function EditListingMetadata({
   listingId,
   metadata,
   onSaved,
+  milestoneCount = 0,
 }: {
   marketplaceAddress: Address;
   listingId: number;
   metadata: ListingMetadata;
   onSaved: (next: ListingMetadata) => void;
+  /** Number of on-chain milestones, so each can be given a name. */
+  milestoneCount?: number;
 }) {
   const chainId = useChainId();
   const { write, isPending } = useSignedListingMetadataWrite();
@@ -43,6 +48,10 @@ export function EditListingMetadata({
   const [description, setDescription] = useState(metadata.description);
   const [location, setLocation] = useState(metadata.terms.location ?? "");
   const [conditionNotes, setConditionNotes] = useState(metadata.terms.conditionNotes ?? "");
+  const [category, setCategory] = useState(metadata.terms.category ?? "");
+  const [unit, setUnit] = useState(metadata.terms.unit ?? "");
+  const labelsOf = (m: ListingMetadata) => Array.from({ length: milestoneCount }, (_, i) => m.terms.milestoneLabels?.[i] ?? "");
+  const [milestoneLabels, setMilestoneLabels] = useState<string[]>(() => labelsOf(metadata));
 
   // Fields the user has edited are theirs — a later prop update (the
   // Supabase row landing, or onSaved feeding back through the parent) must
@@ -59,6 +68,9 @@ export function EditListingMetadata({
       setDescription(metadata.description);
       setLocation(metadata.terms.location ?? "");
       setConditionNotes(metadata.terms.conditionNotes ?? "");
+      setCategory(metadata.terms.category ?? "");
+      setUnit(metadata.terms.unit ?? "");
+      setMilestoneLabels(labelsOf(metadata));
       return;
     }
     if (!dirtyFields.current.has("title")) setTitle(metadata.title);
@@ -66,10 +78,22 @@ export function EditListingMetadata({
     if (!dirtyFields.current.has("description")) setDescription(metadata.description);
     if (!dirtyFields.current.has("location")) setLocation(metadata.terms.location ?? "");
     if (!dirtyFields.current.has("conditionNotes")) setConditionNotes(metadata.terms.conditionNotes ?? "");
-  }, [metadata, listingId]);
+    if (!dirtyFields.current.has("category")) setCategory(metadata.terms.category ?? "");
+    if (!dirtyFields.current.has("unit")) setUnit(metadata.terms.unit ?? "");
+    if (!dirtyFields.current.has("milestoneLabels")) setMilestoneLabels(labelsOf(metadata));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- labelsOf is a pure helper of (metadata, milestoneCount)
+  }, [metadata, listingId, milestoneCount]);
 
   async function save() {
-    const terms = { ...metadata.terms, location, conditionNotes };
+    const terms = {
+      ...metadata.terms,
+      location,
+      conditionNotes,
+      ...(category ? { category } : {}),
+      ...(unit ? { unit } : {}),
+      // Index-aligned with the on-chain milestoneBps; only stored once at least one is named.
+      ...(milestoneLabels.some((l) => l.trim()) ? { milestoneLabels: milestoneLabels.map((l) => l.trim()) } : {}),
+    };
     const { ok, error } = await write({ chainId, marketplaceAddress, listingId, title, thumbnailUrl, description, terms });
     if (ok) {
       toast("Listing details saved", "success");
@@ -86,7 +110,7 @@ export function EditListingMetadata({
         onClick={() => setEditing(true)}
         className="btn-press px-3 py-1.5 rounded-lg border border-trust-600/40 text-trust-400 hover:bg-trust-500/10 text-xs font-medium"
       >
-        Edit title, thumbnail & description
+        Edit listing details
       </button>
     );
   }
@@ -114,6 +138,44 @@ export function EditListingMetadata({
             setThumbnailUrl(e.target.value);
           }}
         />
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-xs text-ink-400 mb-1">Category</label>
+          <select
+            className="w-full bg-ink-800 border border-ink-700 rounded-lg px-3 py-2 text-sm text-ink-200 focus:outline-none focus:border-trust-500"
+            value={category}
+            onChange={(e) => {
+              dirtyFields.current.add("category");
+              setCategory(e.target.value);
+            }}
+          >
+            <option value="">Not set</option>
+            {MARKETPLACE_CATEGORIES.map((c) => (
+              <option key={c.id} value={c.label}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs text-ink-400 mb-1">Price unit</label>
+          <select
+            className="w-full bg-ink-800 border border-ink-700 rounded-lg px-3 py-2 text-sm text-ink-200 focus:outline-none focus:border-trust-500"
+            value={unit}
+            onChange={(e) => {
+              dirtyFields.current.add("unit");
+              setUnit(e.target.value);
+            }}
+          >
+            <option value="">Not set</option>
+            {UNIT_OPTIONS.map((u) => (
+              <option key={u.value} value={u.value}>
+                {u.label}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
@@ -151,6 +213,25 @@ export function EditListingMetadata({
           }}
         />
       </div>
+      {milestoneCount > 0 && (
+        <div>
+          <label className="block text-xs text-ink-400 mb-1">Milestone names</label>
+          <div className="space-y-2">
+            {milestoneLabels.map((label, i) => (
+              <input
+                key={i}
+                className="w-full bg-ink-800 border border-ink-700 rounded-lg px-3 py-2 text-sm text-ink-200 focus:outline-none focus:border-trust-500"
+                placeholder={`Milestone ${i + 1}`}
+                value={label}
+                onChange={(e) => {
+                  dirtyFields.current.add("milestoneLabels");
+                  setMilestoneLabels((prev) => prev.map((l, n) => (n === i ? e.target.value : l)));
+                }}
+              />
+            ))}
+          </div>
+        </div>
+      )}
       <div className="flex gap-2">
         <button
           onClick={save}

@@ -15,6 +15,7 @@ import { StatusBadge, LISTING_STATUS } from "@/components/ui/badges";
 import { useListingMetadata } from "@/hooks/useListingMetadata";
 import { EditListingMetadata } from "@/components/marketplace/EditListingMetadata";
 import { ListingThumbnail } from "@/components/marketplace/ListingThumbnail";
+import { DownloadListingTermsButton } from "@/components/marketplace/DownloadListingTermsButton";
 import { formatPerUnit, unitShortLabel } from "@/lib/units";
 
 const QUANTITY_DECIMALS = 18; // matches Marketplace.QUANTITY_SCALE
@@ -253,9 +254,34 @@ export default function ListingDetailPage() {
               </div>
             )}
 
+            {marketplace && token && seller && arbiter && symbol && decimals !== undefined && pricing && milestoneBps && status !== undefined && (
+              <div className="mb-4">
+                <DownloadListingTermsButton
+                  marketplace={marketplace}
+                  listingId={Number(id)}
+                  seller={seller}
+                  arbiter={arbiter}
+                  token={token}
+                  symbol={symbol}
+                  decimals={decimals}
+                  status={status}
+                  metadataURI={metadataURI ?? ""}
+                  metadata={metadata}
+                  pricing={pricing}
+                  milestoneBps={milestoneBps}
+                />
+              </div>
+            )}
+
             {isSeller && marketplace && (
               <div className="mb-4">
-                <EditListingMetadata marketplaceAddress={marketplace} listingId={Number(id)} metadata={metadata} onSaved={setMetadata} />
+                <EditListingMetadata
+                  marketplaceAddress={marketplace}
+                  listingId={Number(id)}
+                  metadata={metadata}
+                  onSaved={setMetadata}
+                  milestoneCount={milestoneBps?.length ?? 0}
+                />
               </div>
             )}
             <div className="grid grid-cols-2 gap-4 mb-6">
