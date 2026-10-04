@@ -3,12 +3,13 @@
 import { useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useAccount, useReadContract } from "wagmi";
-import { marketplaceAbi, complianceConsumerAbi } from "@/generated/contracts";
+import { marketplaceAbi } from "@/generated/contracts";
 import { addresses, isLendingConfigured } from "@/lib/addresses";
 import { useEscrowAttention } from "@/hooks/useEscrowAttention";
 import { useTotalValueLocked } from "@/hooks/useTotalValueLocked";
 import { useRecentTrades } from "@/hooks/useRecentTrades";
 import { useLendingPosition } from "@/hooks/useLendingPosition";
+import { useEffectiveTier } from "@/hooks/useEffectiveTier";
 import { formatToken, formatVaultNumber } from "@/lib/format";
 import { TradeStatusBadge } from "@/components/ui/badges";
 import { TradeProgressBar } from "@/components/ui/TradeProgressBar";
@@ -63,13 +64,7 @@ export default function DashboardPage() {
     query: { enabled: Boolean(addresses.marketplace) },
   });
 
-  const { data: tier } = useReadContract({
-    address: addresses.complianceConsumer,
-    abi: complianceConsumerAbi,
-    functionName: "tierOf",
-    args: account ? [account] : undefined,
-    query: { enabled: Boolean(addresses.complianceConsumer && account) },
-  });
+  const { tier, isSuperUser } = useEffectiveTier(account);
 
   const activeTrades = useMemo(() => recentTrades.filter((t) => !CLOSED_STATUSES.has(t.status)), [recentTrades]);
   const closedTrades = useMemo(() => recentTrades.filter((t) => CLOSED_STATUSES.has(t.status)), [recentTrades]);
@@ -512,7 +507,7 @@ export default function DashboardPage() {
           icon={<ShieldAlertIcon className="w-4 h-4 text-trust-400" />}
           iconBg="bg-trust-500/15"
           title="Compliance"
-          caption={tier !== undefined ? `Tier ${tier} · your KYC tier & caps` : "Your KYC tier & caps"}
+          caption={tier !== undefined ? `Tier ${tier}${isSuperUser ? " · Super user" : ""} · your KYC tier & caps` : "Your KYC tier & caps"}
         />
         <QuickAccessTile
           href="/swap"

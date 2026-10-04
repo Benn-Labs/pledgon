@@ -137,7 +137,7 @@ export function FundPanel({
           <div className="flex items-center justify-between text-sm">
             <span className="text-ink-400">Your 30-day volume</span>
             <span className="font-mono text-ink-200">
-              {formatToken(currentVolume, decimals, symbol)} / {formatToken(cap, decimals, symbol)}
+              {formatToken(currentVolume, decimals, symbol)} / {cap === maxUint256 ? "Unlimited" : formatToken(cap, decimals, symbol)}
             </span>
           </div>
         )}
