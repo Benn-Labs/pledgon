@@ -300,6 +300,13 @@ export default function LendingPage() {
     setRepayAmount(formatUnits(capped, debtDecimals));
   }
 
+  // With no debt the whole deposit can leave; with debt, how much is safe depends
+  // on the price and threshold, so there is no one-click "Max" in that case.
+  function withdrawMax() {
+    if (collDecimals === undefined) return;
+    setWithdrawAmount(formatUnits(collateralAmount, collDecimals));
+  }
+
   function approveCollateral() {
     if (!addresses.lendingPool || !addresses.collateralToken || collDecimals === undefined) return;
     if (depositParsed === undefined) {
@@ -655,6 +662,9 @@ export default function LendingPage() {
         <ActionPanel
           title="Withdraw Collateral"
           tokenSymbol={collSymbol}
+          balance={collateralAmount}
+          balanceLabel="Deposited collateral"
+          decimals={collDecimals}
           amount={withdrawAmount}
           setAmount={setWithdrawAmount}
           submitLabel="Withdraw"
@@ -662,6 +672,7 @@ export default function LendingPage() {
           activeHere={activeHere("withdraw")}
           limit={collateralAmount}
           limitMessage="Exceeds your deposited collateral"
+          onMax={debtAmount === 0n && collateralAmount > 0n ? withdrawMax : undefined}
           onSubmit={withdrawCollateral}
         />
 
