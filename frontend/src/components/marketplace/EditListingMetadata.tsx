@@ -43,6 +43,8 @@ export function EditListingMetadata({
   const { write, isPending } = useSignedListingMetadataWrite();
   const { isLoading: metadataLoading } = useListingMetadata(marketplaceAddress, listingId);
   const [editing, setEditing] = useState(false);
+  // Kept on screen (a toast fades before you can read a wallet/signature error).
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [title, setTitle] = useState(metadata.title);
   const [thumbnailUrl, setThumbnailUrl] = useState(metadata.thumbnailUrl);
   const [description, setDescription] = useState(metadata.description);
@@ -85,6 +87,7 @@ export function EditListingMetadata({
   }, [metadata, listingId, milestoneCount]);
 
   async function save() {
+    setSaveError(null);
     const terms = {
       ...metadata.terms,
       location,
@@ -97,9 +100,11 @@ export function EditListingMetadata({
     const { ok, error } = await write({ chainId, marketplaceAddress, listingId, title, thumbnailUrl, description, terms });
     if (ok) {
       toast("Listing details saved", "success");
+      setSaveError(null);
       onSaved({ ...metadata, title, thumbnailUrl, description, terms });
       setEditing(false);
     } else {
+      setSaveError(error ?? "Couldn't save — no reason was returned");
       toastTxError(error, "Couldn't save");
     }
   }
@@ -231,6 +236,11 @@ export function EditListingMetadata({
             ))}
           </div>
         </div>
+      )}
+      {saveError && (
+        <p role="alert" className="rounded-lg border border-danger-500/30 bg-danger-500/10 px-3 py-2 text-xs text-danger-400">
+          Not saved: {saveError}
+        </p>
       )}
       <div className="flex gap-2">
         <button

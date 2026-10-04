@@ -9,6 +9,7 @@ import { tryParseUnits } from "@/lib/units";
 import { toast, toastTxError } from "@/lib/toast";
 import { AdminIcon } from "@/components/ui/icons";
 import { ListingModeration } from "@/components/marketplace/ListingModeration";
+import { SuperUserPanel } from "@/components/admin/SuperUserPanel";
 
 function StatCard({ label, value }: { label: string; value: string }) {
   return (
@@ -175,6 +176,8 @@ export default function AdminPage() {
       </div>
 
       <ListingModeration />
+
+      <SuperUserPanel />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
         <div className="bg-ink-900 border border-ink-800 rounded-xl p-6">

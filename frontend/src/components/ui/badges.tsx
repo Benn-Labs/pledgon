@@ -41,7 +41,7 @@ const TIER_COLORS = [
   "bg-success-500/20 text-success-400 border-success-500/30",
 ];
 
-export function VerificationBadge({ tier }: { tier: number }) {
+export function VerificationBadge({ tier, superUser = false }: { tier: number; superUser?: boolean }) {
   return (
     <span className={`inline-flex items-center gap-1.5 rounded-full border font-medium px-3 py-1 text-sm ${TIER_COLORS[tier] ?? TIER_COLORS[0]}`}>
       <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -53,6 +53,7 @@ export function VerificationBadge({ tier }: { tier: number }) {
         />
       </svg>
       Tier {tier}
+      {superUser && <span className="opacity-80">· Super user</span>}
     </span>
   );
 }

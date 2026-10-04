@@ -3,6 +3,7 @@
 import { useAccount, useReadContract } from "wagmi";
 import { complianceConsumerAbi, escrowFactoryAbi } from "@/generated/contracts";
 import { addresses } from "@/lib/addresses";
+import { useEffectiveTier } from "@/hooks/useEffectiveTier";
 import { VerificationBadge } from "@/components/ui/badges";
 import { ShieldAlertIcon } from "@/components/ui/icons";
 
@@ -14,13 +15,7 @@ function formatTimestamp(seconds: bigint): string {
 export default function CompliancePage() {
   const { address: account, isConnected } = useAccount();
 
-  const { data: tier } = useReadContract({
-    address: addresses.complianceConsumer,
-    abi: complianceConsumerAbi,
-    functionName: "tierOf",
-    args: account ? [account] : undefined,
-    query: { enabled: Boolean(addresses.complianceConsumer && account) },
-  });
+  const { tier, onChainTier, isSuperUser } = useEffectiveTier(account);
 
   const { data: verifiedAt } = useReadContract({
     address: addresses.complianceConsumer,
@@ -90,7 +85,7 @@ export default function CompliancePage() {
               </p>
             </div>
           </div>
-          {tier !== undefined && <VerificationBadge tier={tier} />}
+          {tier !== undefined && <VerificationBadge tier={tier} superUser={isSuperUser} />}
         </div>
 
         {tier0CapUsd !== undefined && tier1CapUsd !== undefined && (
@@ -122,6 +117,13 @@ export default function CompliancePage() {
             </div>
           </div>
         </div>
+
+        {isSuperUser && (
+          <p className="mb-3 rounded-lg border border-warning-500/30 bg-warning-500/10 px-3 py-2 text-xs text-warning-400">
+            This wallet is a <strong>super user</strong>: the platform admin has exempted it from the volume caps, so it
+            is treated as top tier (uncapped) when funding. Its on-chain KYC tier is {onChainTier ?? "…"}, unchanged.
+          </p>
+        )}
 
         <p className="text-xs text-ink-500 mt-3">
           Caps are USD-equivalent, assuming a ~1:1 stablecoin peg — a trade in a non-stablecoin token would need its

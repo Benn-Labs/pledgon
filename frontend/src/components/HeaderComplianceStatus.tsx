@@ -1,9 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useAccount, useReadContract } from "wagmi";
-import { complianceConsumerAbi } from "@/generated/contracts";
-import { addresses } from "@/lib/addresses";
+import { useAccount } from "wagmi";
+import { useEffectiveTier } from "@/hooks/useEffectiveTier";
 import { VerificationBadge } from "@/components/ui/badges";
 
 /** Shows the connected wallet's real on-chain compliance tier at all times,
@@ -14,19 +13,13 @@ import { VerificationBadge } from "@/components/ui/badges";
 export function HeaderComplianceStatus() {
   const { address: account, isConnected } = useAccount();
 
-  const { data: tier } = useReadContract({
-    address: addresses.complianceConsumer,
-    abi: complianceConsumerAbi,
-    functionName: "tierOf",
-    args: account ? [account] : undefined,
-    query: { enabled: Boolean(addresses.complianceConsumer && account) },
-  });
+  const { tier, isSuperUser } = useEffectiveTier(account);
 
   if (!isConnected || tier === undefined) return null;
 
   return (
     <Link href="/compliance" className="hover:opacity-80">
-      <VerificationBadge tier={tier} />
+      <VerificationBadge tier={tier} superUser={isSuperUser} />
     </Link>
   );
 }

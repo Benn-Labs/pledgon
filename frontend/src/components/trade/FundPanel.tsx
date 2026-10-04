@@ -4,7 +4,8 @@ import { useEffect } from "react";
 import type { Address } from "viem";
 import { erc20Abi, maxUint256 } from "viem";
 import { useAccount, useReadContract, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
-import { escrowVaultAbi, complianceConsumerAbi, escrowFactoryAbi } from "@/generated/contracts";
+import { escrowVaultAbi, escrowFactoryAbi } from "@/generated/contracts";
+import { useEffectiveTier } from "@/hooks/useEffectiveTier";
 import { addresses } from "@/lib/addresses";
 import { formatToken } from "@/lib/format";
 import { toast, toastTxError } from "@/lib/toast";
@@ -40,13 +41,8 @@ export function FundPanel({
   const { address: account } = useAccount();
   const isBuyer = account?.toLowerCase() === buyer.toLowerCase();
 
-  const { data: tier } = useReadContract({
-    address: addresses.complianceConsumer,
-    abi: complianceConsumerAbi,
-    functionName: "tierOf",
-    args: [buyer],
-    query: { enabled: Boolean(addresses.complianceConsumer) },
-  });
+  // Effective tier: a super user (owner-exempted wallet) is top tier / uncapped.
+  const { tier } = useEffectiveTier(buyer);
 
   const { data: currentVolume } = useReadContract({
     address: addresses.escrowFactory,
