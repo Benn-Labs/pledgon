@@ -2,6 +2,6 @@
   "arbitratorRegistry": "0xA2c80F3d116608f510Effa03AFc10C85d88731E1",
   "complianceConsumer": "0xB53debF35709B1C040bAbf0B41b3f5A92B908E0c",
   "confirmationConsumer": "0x075846414E0D911B3A1aF83AC85CF04bd09A953a",
-  "escrowFactory": "0xf40d6E264a8c5A7ff0435961627dEc6Cb1d017b3",
-  "marketplace": "0xd66d3dbeCC088696E74f699201D8Efc571304D83"
+  "escrowFactory": "0x98062049A1c96b223d4F441524572a5B6E0408fc",
+  "marketplace": "0x2091F788c40A62A70BdCE605821b8e429184B724"
 }

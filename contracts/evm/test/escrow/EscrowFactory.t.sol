@@ -394,6 +394,76 @@ contract EscrowFactoryTest is Test {
         assertEq(factory.currentPeriodVolume(buyer), firstAmount + secondAmount);
     }
 
+    // ─── Super user (volume-cap exemption) ──────────────────────
+
+    function test_SetSuperUser_OnlyOwner() public {
+        vm.expectRevert(abi.encodeWithSelector(EscrowFactory.NotOwner.selector, buyer));
+        vm.prank(buyer);
+        factory.setSuperUser(buyer, true);
+    }
+
+    function test_SetSuperUser_RevertsOnZeroAddress() public {
+        vm.expectRevert(EscrowFactory.ZeroAddress.selector);
+        factory.setSuperUser(address(0), true);
+    }
+
+    function test_SetSuperUser_EmitsAndSets() public {
+        vm.expectEmit(true, false, false, true, address(factory));
+        emit EscrowFactory.SuperUserSet(buyer, true);
+        factory.setSuperUser(buyer, true);
+        assertTrue(factory.isSuperUser(buyer));
+
+        factory.setSuperUser(buyer, false);
+        assertFalse(factory.isSuperUser(buyer));
+    }
+
+    function test_SuperUser_CanFundFarAboveEveryCap() public {
+        factory.setSuperUser(buyer, true);
+        uint256 huge = TIER1_CAP_USD * 1000 * 10 ** 6; // 1000x the tier-1 cap, with no compliance report at all
+
+        vm.prank(buyer);
+        address vault = factory.createTrade(seller, arbiter, IERC20(address(token)), 0, _amounts(huge, 0), 0, 0, 0);
+        _fundAsBuyer(EscrowVault(vault), huge);
+
+        assertTrue(EscrowVault(vault).funded());
+        assertEq(factory.currentPeriodVolume(buyer), 0, "an exempt buyer's volume is not recorded");
+    }
+
+    function test_SuperUser_ExemptionIsPerWallet() public {
+        address other = makeAddr("other");
+        factory.setSuperUser(buyer, true);
+        uint256 overCap = TIER0_CAP_USD * 10 ** 6 + 1;
+
+        vm.prank(other);
+        address vault = factory.createTrade(seller, arbiter, IERC20(address(token)), 0, _amounts(overCap, 0), 0, 0, 0);
+        token.mint(other, overCap);
+        vm.startPrank(other);
+        token.approve(vault, overCap);
+        vm.expectRevert(
+            abi.encodeWithSelector(EscrowVault.ComplianceRequired.selector, other, overCap, TIER0_CAP_USD * 10 ** 6)
+        );
+        EscrowVault(vault).fund();
+        vm.stopPrank();
+    }
+
+    function test_SuperUser_RevokingRestoresTheCap() public {
+        factory.setSuperUser(buyer, true);
+        uint256 overCap = TIER0_CAP_USD * 10 ** 6 + 1;
+        vm.prank(buyer);
+        address vault = factory.createTrade(seller, arbiter, IERC20(address(token)), 0, _amounts(overCap, 0), 0, 0, 0);
+
+        // Revoked after the vault exists but before it is funded: the cap applies again.
+        factory.setSuperUser(buyer, false);
+        token.mint(buyer, overCap);
+        vm.startPrank(buyer);
+        token.approve(vault, overCap);
+        vm.expectRevert(
+            abi.encodeWithSelector(EscrowVault.ComplianceRequired.selector, buyer, overCap, TIER0_CAP_USD * 10 ** 6)
+        );
+        EscrowVault(vault).fund();
+        vm.stopPrank();
+    }
+
     // ─── Vault creation fee ─────────────────────────────────────
 
     function test_CreateTrade_SucceedsWithZeroFeeAndZeroValue() public {

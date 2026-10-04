@@ -73,6 +73,14 @@ contract EscrowFactory {
 
     address[] public allVaults;
     mapping(address => bool) public isVault;
+    /// @notice Wallets the owner has exempted from the volume/tier caps — a
+    /// testing and operations aid, not a compliance tier: a super user is
+    /// treated as top-tier (uncapped) when funding a vault. Owner-managed and
+    /// revocable; consulted at `fund()` time, so granting or revoking applies
+    /// to trades that are already created but not yet funded. Leave it empty
+    /// (or revoke every entry) for a deployment where the caps must bind
+    /// everyone.
+    mapping(address => bool) public isSuperUser;
     mapping(address => address[]) public vaultsByBuyer;
     mapping(address => address[]) public vaultsBySeller;
     mapping(address => mapping(uint256 => uint256)) private _volumeByPeriod;
@@ -86,6 +94,7 @@ contract EscrowFactory {
         uint256 bondAmount
     );
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+    event SuperUserSet(address indexed account, bool enabled);
     event VaultCreationFeeUpdated(uint256 previousFee, uint256 newFee);
     event FeeRecipientUpdated(address indexed previousRecipient, address indexed newRecipient);
     event FeesWithdrawn(address indexed recipient, uint256 amount);
@@ -189,8 +198,13 @@ contract EscrowFactory {
 
     /// @notice Adds `amount` to `buyer`'s volume for the current period.
     /// Callable only by a vault this factory deployed — see EscrowVault.fund().
+    /// A super user's volume is neither recorded nor counted: returning 0 makes
+    /// the vault's `periodVolume > cap` check pass at every tier, which is
+    /// exactly "top tier / uncapped" without the vault needing to know about
+    /// super users at all.
     function recordVolume(address buyer, uint256 amount) external returns (uint256 periodVolume) {
         if (!isVault[msg.sender]) revert NotAVault(msg.sender);
+        if (isSuperUser[buyer]) return 0;
         uint256 period = block.timestamp / VOLUME_WINDOW;
         periodVolume = _volumeByPeriod[buyer][period] + amount;
         _volumeByPeriod[buyer][period] = periodVolume;
@@ -264,6 +278,13 @@ contract EscrowFactory {
         if (newOwner == address(0)) revert ZeroAddress();
         emit OwnershipTransferred(owner, newOwner);
         owner = newOwner;
+    }
+
+    /// @notice Grants or revokes the volume-cap exemption (see `isSuperUser`).
+    function setSuperUser(address account, bool enabled) external onlyOwner {
+        if (account == address(0)) revert ZeroAddress();
+        isSuperUser[account] = enabled;
+        emit SuperUserSet(account, enabled);
     }
 
     function setVaultCreationFee(uint256 newFee) external onlyOwner {
