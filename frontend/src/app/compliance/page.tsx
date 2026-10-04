@@ -120,8 +120,9 @@ export default function CompliancePage() {
 
         {isSuperUser && (
           <p className="mb-3 rounded-lg border border-warning-500/30 bg-warning-500/10 px-3 py-2 text-xs text-warning-400">
-            This wallet is a <strong>super user</strong>: the platform admin has exempted it from the volume caps, so it
-            is treated as top tier (uncapped) when funding. Its on-chain KYC tier is {onChainTier ?? "…"}, unchanged.
+            This wallet is <strong>verified (admin)</strong>: the platform admin has marked it verified and exempted it
+            from the volume caps, so it is treated as top tier (uncapped) when funding. Its on-chain KYC tier is{" "}
+            {onChainTier ?? "…"}, unchanged.
           </p>
         )}
 

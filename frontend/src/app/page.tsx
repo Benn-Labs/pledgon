@@ -507,7 +507,7 @@ export default function DashboardPage() {
           icon={<ShieldAlertIcon className="w-4 h-4 text-trust-400" />}
           iconBg="bg-trust-500/15"
           title="Compliance"
-          caption={tier !== undefined ? `Tier ${tier}${isSuperUser ? " · Super user" : ""} · your KYC tier & caps` : "Your KYC tier & caps"}
+          caption={tier !== undefined ? `Tier ${tier}${isSuperUser ? " · Verified (admin)" : ""} · your KYC tier & caps` : "Your KYC tier & caps"}
         />
         <QuickAccessTile
           href="/swap"

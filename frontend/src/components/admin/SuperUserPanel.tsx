@@ -9,7 +9,7 @@ import { toast, toastTxError } from "@/lib/toast";
 
 /**
  * Owner-only: exempt a wallet from the volume/tier caps (EscrowFactory
- * .setSuperUser). A super user is treated as top-tier (uncapped) when funding
+ * .setSuperUser). A verified (admin) wallet ("super user" in the contract) is treated as top-tier (uncapped) when funding
  * a vault — meant for testing and operations, not as a compliance tier. It is
  * checked at fund() time, so a grant or revocation applies to trades that
  * already exist but aren't funded yet. Revoke every entry (or never grant
@@ -34,7 +34,7 @@ export function SuperUserPanel() {
 
   useEffect(() => {
     if (!isSuccess) return;
-    toast("Super-user list updated", "success");
+    toast("Verified (admin) list updated", "success");
     refetch();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- refetch is stable; fire once per confirmed tx
   }, [isSuccess]);
@@ -55,11 +55,11 @@ export function SuperUserPanel() {
 
   return (
     <div className="bg-ink-900 border border-warning-500/30 rounded-xl p-6 mb-6">
-      <h3 className="font-semibold text-white mb-1">Super Users</h3>
+      <h3 className="font-semibold text-white mb-1">Verified (admin) Wallets</h3>
       <p className="text-xs text-ink-500 mb-4">
-        A super user is treated as top-tier (uncapped) when funding a trade — for testing and operations, not a KYC
-        tier. Their volume is not recorded. Applies at funding time, so it covers trades created but not yet funded.
-        Anyone not listed keeps the normal caps.
+        A wallet marked verified (admin) is treated as top-tier (uncapped) when funding a trade. This is an admin decision, not a KYC
+        result — it does not change the wallet&apos;s on-chain KYC tier. Their volume is not recorded. Applies at
+        funding time, so it covers trades created but not yet funded. Anyone not listed keeps the normal caps.
       </p>
       <input
         className="w-full bg-ink-800 border border-ink-700 rounded-lg px-4 py-3 text-ink-200 font-mono mb-2 focus:outline-none focus:border-warning-500"
@@ -75,7 +75,7 @@ export function SuperUserPanel() {
         )}
         {target && isSuper !== undefined && (
           <span className={`text-xs font-medium ${isSuper ? "text-success-400" : "text-ink-500"}`}>
-            {isSuper ? "Currently a super user" : "Not a super user"}
+            {isSuper ? "Currently verified (admin)" : "Not verified (admin)"}
           </span>
         )}
       </div>

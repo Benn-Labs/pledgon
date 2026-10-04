@@ -53,7 +53,7 @@ export function VerificationBadge({ tier, superUser = false }: { tier: number; s
         />
       </svg>
       Tier {tier}
-      {superUser && <span className="opacity-80">· Super user</span>}
+      {superUser && <span className="opacity-80">· Verified (admin)</span>}
     </span>
   );
 }

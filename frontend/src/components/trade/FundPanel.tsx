@@ -41,7 +41,7 @@ export function FundPanel({
   const { address: account } = useAccount();
   const isBuyer = account?.toLowerCase() === buyer.toLowerCase();
 
-  // Effective tier: a super user (owner-exempted wallet) is top tier / uncapped.
+  // Effective tier: a verified (admin) wallet (owner-exempted) is top tier / uncapped.
   const { tier } = useEffectiveTier(buyer);
 
   const { data: currentVolume } = useReadContract({
