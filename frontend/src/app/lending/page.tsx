@@ -9,6 +9,7 @@ import { lendingPoolAbi, liquidationConsumerAbi } from "@/generated/contracts";
 import { addresses, isLendingConfigured } from "@/lib/addresses";
 import { useToken } from "@/hooks/useToken";
 import { useLendingPosition } from "@/hooks/useLendingPosition";
+import { useLenderRewards } from "@/hooks/useLenderRewards";
 import { useLendingBorrowers, useRegisterBorrowerFromDeposit } from "@/hooks/useLendingBorrowers";
 import { formatToken } from "@/lib/format";
 import { tryParseUnits } from "@/lib/units";
@@ -94,6 +95,7 @@ export default function LendingPage() {
   const { decimals: collDecimals, symbol: collSymbol } = useToken(addresses.collateralToken);
   const { decimals: debtDecimals, symbol: debtSymbol } = useToken(addresses.debtToken);
   const { hasPrice, healthFactor, ltvBps, liquidationThresholdBps, price, priceDecimals } = useLendingPosition();
+  const { rewards: feeRewards, windowSeconds: rewardSeconds, windowLabel: rewardWindow, isError: rewardsError } = useLenderRewards();
   const { borrowers: atRiskBorrowers, isLoading: borrowersLoading } = useLendingBorrowers();
   const registerBorrowerFromDeposit = useRegisterBorrowerFromDeposit();
 
@@ -537,6 +539,24 @@ export default function LendingPage() {
             </div>
           </div>
         </div>
+        {!rewardsError && feeRewards !== undefined && rewardSeconds !== undefined && debtDecimals !== undefined && (
+          <p className="text-xs text-ink-400 mb-6">
+            <span className="font-semibold text-trust-400">Fee rewards:</span>{" "}
+            {feeRewards > 0n ? (
+              <>
+                {formatToken(feeRewards, debtDecimals, debtSymbol, 2)} shared with lenders from platform fees in the last{" "}
+                {rewardWindow}
+                {poolTotalSupply !== undefined && poolTotalSupply > 0n && (
+                  <> — about {((Number((feeRewards * 1_000_000n) / poolTotalSupply) / 10_000) * ((365 * 86_400) / rewardSeconds)).toFixed(2)}% a year
+                  on top of borrower interest, if repeated</>
+                )}
+                .
+              </>
+            ) : (
+              <>none in the last {rewardWindow}. A share of platform fees is paid into the pool for lenders from time to time.</>
+            )}
+          </p>
+        )}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {needsSupplyApproval ? (
             <div className="bg-ink-950/60 border border-ink-800 shadow-[inset_0_1px_2px_rgba(0,0,0,0.3)] rounded-xl p-6">
