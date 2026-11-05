@@ -15,3 +15,9 @@ contracts/evm/cache/
 contracts/evm/broadcast/
 
 node_modules/
+
+# Agent tooling (skills installed by AI coding agents - per-machine, not project source)
+.agents/
+.claude/skills/
+agent/
+skills-lock.json

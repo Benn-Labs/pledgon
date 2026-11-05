@@ -13,6 +13,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -78,6 +79,13 @@ func run(root, chainID, target string) error {
 		}
 
 		configPath := filepath.Join(root, "workflows", w.workflow, fmt.Sprintf("config.%s.json", target))
+		if _, err := os.Stat(configPath); errors.Is(err, os.ErrNotExist) {
+			// Not every workflow has a config for every target (only
+			// liquidation-protection has the *-safe tiers) — a missing file
+			// means this workflow simply isn't deployed under that target.
+			fmt.Printf("skip %s.%s: no config.%s.json for this workflow\n", w.workflow, w.configField, target)
+			continue
+		}
 		if err := patchAddressField(configPath, w.configField, address); err != nil {
 			return fmt.Errorf("patch %s: %w", configPath, err)
 		}

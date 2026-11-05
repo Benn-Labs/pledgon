@@ -3,9 +3,36 @@
 **Handoff document for the developer agent.** Covers what the audit found, what was
 fixed, how it was verified, and what remains.
 
-- Audit date: 2026-09-26 (session work)
+- Audit date: 2026-09-26 (fixes); deployment to Sepolia: 2026-11-04
 - Scope: all contracts in `contracts/evm/src`, all 5 CRE workflows in `workflows/`, deploy scripts/config, Next.js frontend in `frontend/`
 - Verification baseline after fixes: `forge test` **254/254 pass** (7 suites, was 243 before fixes), `go test ./workflows/...` **5/5 packages pass**, `npx tsc --noEmit` **clean**, `next build` **passes** (13 routes — see font caveat in §6)
+
+---
+
+## 0. Deployment status (Sepolia, 2026-11-04)
+
+The lending stack with all audit fixes is **live**:
+
+| Component | Address | Notes |
+|---|---|---|
+| LendingPool | `0xD389c90a61F4de210D2632Df1545082D53d41ed9` | maxPriceAge 900s, threshold 8000, rate 500 |
+| LendingOracleConsumer | `0xe94F2C9654c84091bbbF82c8Cac07e606215A84D` | **unbound** (workflowId 0), deviation cap 5000 |
+| LiquidationConsumer | `0xa2695De5596537D12e256C033a94f0fE35196e24` | **unbound**, maxVerdictAge 900s |
+
+DON workflows (all ACTIVE): `lending-oracle-staging`, `liquidation-protection-staging`,
+`liquidation-protection-staging-safe` (hourly tier). Staging configs carry
+`gasLimitWei: 3000000` — **required** (see §6). `trade-expiry-staging` NOT deployed:
+org quota is 3 active workflows on don_family zone-a. `escrow-confirmation` /
+`compliance-check` undeployed (need real `vaultAddresses` / webhook signer resp.).
+
+**The MEDIUM-5 workflowId binding is deployed but set to 0 (unbound) — deferred.**
+Reason: the CRE workflow ID is a function of the **exact config file bytes**
+(verified: changing `consumerAddress` or even a trailing newline changes the ID),
+and the consumer address is itself in the config → constructor-level binding is
+circular (no fixed point). The Chainlink-standard fix is a post-deploy setter
+(`setExpectedWorkflowId`, as in the official `ReceiverTemplate`): deploy consumers
+unbound → deploy workflows → bind via setter. Implement later; consumers are no
+worse than pre-audit until then (they trust the forwarder/DON).
 
 ---
 
@@ -238,7 +265,15 @@ future-timestamp guards (previously described as aspirational).
    `aria-live`, TransactionReviewModal focus trap, swap-widget load retry,
    seller thumbnail URL scheme allowlist, formatting consistency
    (`formatToken` `maxDecimals`).
-6. **Duplicate vault-lifecycle flattening** in `useRecentTrades` /
+6. **Milestone-document rollback is incomplete** — `MilestoneRow.tsx` declares
+   `uploadedDocToRollBack`/`isReceiptError` (lint-flagged as unused) but the
+   cleanup effect was never wired, and there is no delete counterpart to the
+   `write-milestone-document` edge function. Finish properly: add a signed
+   `delete-milestone-document` function (lookup `storage_path` from
+   `escrow_milestone_documents`, delete the Storage object + row), return
+   `storagePath` from the upload hook, and roll back on signature rejection /
+   revert.
+7. **Duplicate vault-lifecycle flattening** in `useRecentTrades` /
    `useEscrowAttention` / `escrow/page.tsx` — extract one `useVaultLifecycle`
    hook when next touching all three.
 

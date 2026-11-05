@@ -1,12 +1,12 @@
 {
   "schedule": "0 0 * * * *",
   "chainSelectorName": "ethereum-testnet-sepolia",
-  "lendingPoolAddress": "0xA16A41a0ecd1878be973E860436A28BA520bdE00",
+  "lendingPoolAddress": "0xD389c90a61F4de210D2632Df1545082D53d41ed9",
   "borrowers": ["0xaFcC15D77C44Acb44feF40eF45A637FfAc5e6599"],
   "verificationUrl": "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd",
   "secretId": "LENDING_PRICE_API_TOKEN",
   "responsePricePath": "ethereum.usd",
   "priceDecimals": 8,
-  "consumerAddress": "0xB77CCb22393A49071920DBA00aA20907d0C5A74d",
-  "gasLimitWei": 500000
+  "consumerAddress": "0xa2695De5596537D12e256C033a94f0fE35196e24",
+  "gasLimitWei": 3000000
 }
