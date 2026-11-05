@@ -36,6 +36,37 @@ worse than pre-audit until then (they trust the forwarder/DON).
 
 ---
 
+## 0a. Fixes at a glance — previous vs current behavior
+
+### Contracts
+
+| Area | Before | After |
+|---|---|---|
+| `LendingPool.liquidate()` | Trusted a **permanent** `eligible=true` DON verdict alone; no on-chain re-check. A borrower who topped up collateral after the verdict could be liquidated while healthy (~25% instant liquidator profit at 80% LTV). | Requires a **fresh** verdict (`LiquidationConsumer.maxVerdictAge`, 15 min — stale reads ineligible) **and** an on-chain undercollateralization re-check at execution time. Both-direction-safe: verdict-only can't touch a healthy position, price-only can't trigger without the DON. |
+| Price freshness | `collateralValueInDebtUnits` only rejected "never reported" — a **frozen price was used forever** by borrow/withdraw. | `maxPriceAge` (900s) fails closed at the single valuation read site; all callers (borrow/withdraw/liquidate) revert `StalePrice` on a stalled feed. |
+| Report timestamps | Lending consumers accepted **future** `updatedAt`/`checkedAt` — one buggy report made every later genuine report revert `StaleReport` for N seconds (feed bricked, or borrower pinned `eligible=true` while fixes revert). | Both lending consumers reject future timestamps (mirrors `ComplianceConsumer.FutureVerifiedAt`, now with regression tests). |
+| Price sanity | Any single-tick value accepted if newer (0 or 10× from a glitching API). | `maxDeviationBps` (50%, 0=off) rejects out-of-band single-tick moves in both directions; documented as garbage protection, not a crash circuit-breaker. |
+| Consumer authentication | Forwarder-only: any workflow registered on the shared DON could address any consumer if the payload decoded. | Shared `WorkflowBoundReceiver` base with `expectedWorkflowId` binding (metadata layout per Chainlink docs). **Deployed unbound** — binding is constructor-arg-based, and the CRE workflow ID hashes the exact config bytes (which contain the consumer address) → circular. Follow-up: post-deploy `setExpectedWorkflowId` setter (Chainlink `ReceiverTemplate` pattern). |
+
+### Frontend
+
+| Area | Before | After |
+|---|---|---|
+| Crash on bad input | Typing non-numeric text into lending/admin/escrow-create inputs crashed the whole app (render-time `parseUnits`). | Safe-parse helper (`lib/units.ts`); invalid input degrades gracefully + toasts. |
+| Listing titles | `useListingTitleByVault` destructured a non-existent 7-tuple → always empty map; marketplace trades never showed titles. | Rewritten over `listingVaults`; Supabase title with on-chain metadataURI fallback. |
+| Data freshness | Zero polling — counterparty actions invisible until remount; loading tiles showed false zeros ("all caught up" while loading). | 15s polling on attention/position/vault hooks; loading skeletons; lending "live feed" banner gated on actual price presence. |
+| Error UX | Raw `error.message` (long revert JSON); wallet rejection = scary red toast; approve failures silent; several success paths silent. | `toastTxError` (rejection → neutral "Cancelled", reverts shortened); approve errors surfaced in Bond/Fund panels; success toasts added. |
+| Dead ends | Bad escrow address → infinite "Loading trade…"; `/marketplace/abc` → render crash; editing metadata before load → blank overwrite. | Validation + not-found states; metadata form syncs when data arrives. |
+
+### Operations (learned during the 2026-11-04 deployment)
+
+| Area | Before | After |
+|---|---|---|
+| Report delivery | `gasLimitWei: 500000` — under Sepolia's new gas schedule `onReport` costs ~354k, so deliveries reverted silently inside the forwarder (tx status 0x1, no consumer effect). | `gasLimitWei: 3000000` in all lending configs; verified landing on-chain every tick. |
+| Contract deploys | Standard forge gas estimates — **~6.8× too low** on current Sepolia (code-deposit repriced ~1630 gas/byte; forge 1.8.1 still models 200). Every CREATE OOG'd at its limit. | `--gas-estimate-multiplier 900` documented as required for Sepolia deploys until forge ships the new schedule. |
+
+---
+
 ## 1. Executive summary
 
 The audit found **no critical fund-loss bugs**. Two high-severity issues in the
