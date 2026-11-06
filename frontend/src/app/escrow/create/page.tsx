@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { decodeEventLog, formatEther, isAddress, zeroAddress, type Address } from "viem";
 import { useAccount, useChainId, useReadContract, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
+import { sepolia } from "wagmi/chains";
 import { escrowFactoryAbi } from "@/generated/contracts";
 import { addresses } from "@/lib/addresses";
 import { useToken } from "@/hooks/useToken";
@@ -210,6 +211,11 @@ export default function CreateEscrowPage() {
         address: addresses.escrowFactory,
         abi: escrowFactoryAbi,
         functionName: "createTrade",
+        // Pin the chain: without this the tx goes to whatever chain the wallet
+        // is currently on (e.g. Ethereum mainnet), where the Sepolia factory
+        // address has no code and the wallet refuses to sign. Passing chainId
+        // makes the connector prompt a network switch first.
+        chainId: sepolia.id,
         args: [
           counterpartyInput as Address,
           arbiterAddress,
@@ -231,6 +237,7 @@ export default function CreateEscrowPage() {
         address: addresses.escrowFactory,
         abi: escrowFactoryAbi,
         functionName: "createTradeFor",
+        chainId: sepolia.id,
         args: [
           counterpartyInput as Address,
           account,
