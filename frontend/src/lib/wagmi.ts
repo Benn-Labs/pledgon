@@ -5,7 +5,7 @@ import { http } from "wagmi";
 const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID;
 
 export const wagmiConfig = getDefaultConfig({
-  appName: "DEEDS",
+  appName: "PLEDGON",
   projectId: projectId || "MISSING_WALLETCONNECT_PROJECT_ID",
   chains: [sepolia],
   transports: {
