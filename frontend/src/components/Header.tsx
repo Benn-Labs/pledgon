@@ -35,9 +35,10 @@ export function Header({ onOpenMenu }: { onOpenMenu: () => void }) {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h10" />
             </svg>
           </button>
-          <Link href="/" aria-label="PLEDGON home" className="flex items-center">
+          <Link href="/" aria-label="PLEDGON home" className="flex items-center gap-2">
             {/* eslint-disable-next-line @next/next/no-img-element -- fixed local brand asset */}
-            <img src="/logo.png" alt="PLEDGON" width={125} height={24} className="h-6 w-auto" />
+            <img src="/logo-mark.png" alt="" width={21} height={24} className="h-6 w-auto" />
+            <span className="font-display text-white text-lg leading-none">PLEDGON</span>
           </Link>
         </div>
 

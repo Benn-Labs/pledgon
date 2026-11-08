@@ -77,12 +77,13 @@ export function Sidebar({
           ${mobileOpen ? "translate-x-0" : "-translate-x-full"}`}
       >
         <div className={`flex h-16 shrink-0 items-center border-b border-ink-800 px-4 ${collapsed ? "lg:justify-center lg:px-0" : ""}`}>
-          <Link href="/" onClick={onCloseMobile} aria-label="PLEDGON home" className="flex items-center">
+          <Link href="/" onClick={onCloseMobile} aria-label="PLEDGON home" className="flex items-center gap-2.5">
+            {/* eslint-disable-next-line @next/next/no-img-element -- fixed local brand asset */}
+            <img src="/logo-mark.png" alt="" width={29} height={32} className="h-8 w-auto" />
             {/* Wordmark when expanded (always, in the mobile drawer); icon-only in the collapsed rail. */}
+            <span className={`font-display text-white text-xl leading-none ${labelClass}`}>PLEDGON</span>
             {/* eslint-disable-next-line @next/next/no-img-element -- fixed local brand asset */}
-            <img src="/logo.png" alt="PLEDGON" width={167} height={32} className={`h-8 w-auto ${labelClass}`} />
-            {/* eslint-disable-next-line @next/next/no-img-element -- fixed local brand asset */}
-            <img src="/logo-mark.png" alt="" width={40} height={32} className={`h-8 w-auto ${collapsed ? "hidden lg:block" : "hidden"}`} />
+            <img src="/logo-mark.png" alt="" width={29} height={32} className={`h-8 w-auto ${collapsed ? "hidden lg:block" : "hidden"}`} />
           </Link>
         </div>
 

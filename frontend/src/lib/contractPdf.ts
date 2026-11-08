@@ -176,7 +176,11 @@ async function createLayout(base: PdfBase, footerLabel: string) {
     doc.rect(0, 0, PAGE_W, h, "F");
     if (base.logoDataUrl) {
       const logoH = tall ? 10 : 6;
-      doc.addImage(base.logoDataUrl, "PNG", M, (h - logoH) / 2, logoH * (720 / 145), logoH);
+      const props = doc.getImageProperties(base.logoDataUrl);
+      const logoW = logoH * (props.width / props.height);
+      doc.addImage(base.logoDataUrl, "PNG", M, (h - logoH) / 2, logoW, logoH);
+      doc.setTextColor("#ffffff").setFont("helvetica", "bold").setFontSize(tall ? 13 : 8.5);
+      doc.text("PLEDGON", M + logoW + 2.5, h / 2, { baseline: "middle" });
     } else {
       doc.setTextColor("#ffffff").setFont("helvetica", "bold").setFontSize(tall ? 14 : 10).text("PLEDGON", M, h / 2 + 1.5);
     }
@@ -593,7 +597,7 @@ export async function downloadListingPdf(model: ListingPdfModel): Promise<void> 
 }
 
 /** Browser: fetch the brand logo as a PNG data URL for the header band. */
-export async function loadLogoDataUrl(path = "/logo.png"): Promise<string | undefined> {
+export async function loadLogoDataUrl(path = "/logo-mark.png"): Promise<string | undefined> {
   try {
     const blob = await (await fetch(path)).blob();
     return await new Promise<string>((resolve, reject) => {
