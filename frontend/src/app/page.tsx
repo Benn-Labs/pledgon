@@ -105,7 +105,7 @@ export default function DashboardPage() {
         <div className="flex gap-2">
           <Link
             href="/escrow/create"
-            className="btn-press px-4 py-2.5 rounded-lg bg-trust-600 hover:bg-trust-500 text-white text-sm font-semibold glow-trust flex items-center gap-2"
+            className="btn-press px-4 py-2.5 rounded-lg bg-linear-to-r from-trust-500 to-trust-700 hover:from-trust-400 hover:to-trust-600 text-white text-sm font-semibold glow-trust flex items-center gap-2"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -125,7 +125,7 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        <Link href="/escrow" className="deal-card block bg-ink-900 border border-ink-800 rounded-xl p-5">
+        <Link href="/escrow" className="deal-card block bg-ink-850 border border-ink-800 rounded-xl p-5">
           <div className="flex items-center justify-between mb-4">
             <div className="w-9 h-9 rounded-lg bg-trust-500/15 flex items-center justify-center shrink-0">
               <svg className="w-4 h-4 text-trust-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -142,7 +142,7 @@ export default function DashboardPage() {
         <Link
           href="/escrow"
           className={`deal-card block rounded-xl p-5 border ${
-            attentionCount > 0 ? "bg-warning-500/10 border-warning-500/30" : "bg-ink-900 border-ink-800"
+            attentionCount > 0 ? "bg-warning-500/10 border-warning-400/50 glow-warning" : "bg-ink-850 border-ink-800"
           }`}
         >
           <div className="flex items-center justify-between mb-4">
@@ -165,12 +165,12 @@ export default function DashboardPage() {
               Needs Attention
             </span>
           </div>
-          <div className={`text-5xl font-extrabold ${attentionCount > 0 ? "text-warning-400" : "text-white"}`}>
+          <div className={`text-5xl font-extrabold ${attentionCount > 0 ? "text-warning-400 attention-pulse" : "text-white"}`}>
             {attentionLoading ? <span className="block h-10 w-14 rounded bg-ink-800 animate-pulse" /> : attentionCount}
           </div>
           {!attentionLoading && attentionCount === 0 && <div className="text-sm text-ink-300 mt-1">You&apos;re all caught up</div>}
         </Link>
-        <Link href="/marketplace" className="deal-card block bg-ink-900 border border-ink-800 rounded-xl p-5">
+        <Link href="/marketplace" className="deal-card block bg-ink-850 border border-ink-800 rounded-xl p-5">
           <div className="flex items-center justify-between mb-4">
             <div className="w-9 h-9 rounded-lg bg-warning-500/15 flex items-center justify-center shrink-0">
               <HomeIcon className="w-4 h-4 text-warning-400" />
@@ -249,7 +249,7 @@ export default function DashboardPage() {
                 <div className="grid grid-cols-2 gap-3">
                   {lendingCollateral && (
                     <div className="px-4 py-3 rounded-lg bg-ink-950/60 border border-ink-800 shadow-[inset_0_1px_2px_rgba(0,0,0,0.3)]">
-                      <div className="flex items-center gap-1.5 text-xs text-ink-400 mb-1.5">
+                      <div className="flex items-center gap-2 text-xs text-ink-400 mb-1.5">
                         <span className="w-1.5 h-1.5 rounded-full bg-warning-400 shrink-0" />
                         Collateral Deposited
                       </div>
@@ -258,7 +258,7 @@ export default function DashboardPage() {
                   )}
                   {lendingLiquidity && (
                     <div className="px-4 py-3 rounded-lg bg-ink-950/60 border border-ink-800 shadow-[inset_0_1px_2px_rgba(0,0,0,0.3)]">
-                      <div className="flex items-center gap-1.5 text-xs text-ink-400 mb-1.5">
+                      <div className="flex items-center gap-2 text-xs text-ink-400 mb-1.5">
                         <span className="w-1.5 h-1.5 rounded-full bg-trust-400 shrink-0" />
                         Available to Borrow
                       </div>
@@ -418,7 +418,7 @@ export default function DashboardPage() {
                 <div className="flex gap-2 mt-4">
                   <Link
                     href="/escrow/create"
-                    className="btn-press px-4 py-2 rounded-lg bg-trust-600 hover:bg-trust-500 text-white text-sm font-semibold"
+                    className="btn-press px-4 py-2 rounded-lg bg-linear-to-r from-trust-500 to-trust-700 hover:from-trust-400 hover:to-trust-600 text-white text-sm font-semibold glow-trust"
                   >
                     Create Escrow
                   </Link>

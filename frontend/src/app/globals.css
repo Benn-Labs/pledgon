@@ -16,6 +16,7 @@
   --color-ink-600: #3d4557;
   --color-ink-700: #2a3140;
   --color-ink-800: #1b212c;
+  --color-ink-850: #151a24;
   --color-ink-900: #10141d;
   --color-ink-950: #05070c;
 
@@ -92,6 +93,36 @@
 
 .glow-trust {
   box-shadow: 0 0 20px -5px rgba(91, 138, 240, 0.4);
+}
+
+/* "Needs Attention" alert surface: a warm inner wash plus an outer amber
+   halo, so the card reads as an intentional alert instead of a muddy
+   gradient on the near-black body. The .deal-card:hover rule would
+   otherwise replace this shadow, so the hover state re-composes it. */
+.glow-warning {
+  box-shadow:
+    inset 0 0 28px rgba(245, 158, 11, 0.12),
+    0 0 28px -8px rgba(245, 158, 11, 0.4);
+}
+.deal-card.glow-warning:hover {
+  box-shadow:
+    inset 0 0 28px rgba(245, 158, 11, 0.16),
+    0 10px 40px -10px rgba(0, 0, 0, 0.3),
+    0 0 28px -6px rgba(245, 158, 11, 0.45);
+}
+
+/* Urgency cue for the "Needs Attention" count: a soft amber halo that
+   breathes while a trade waits on the user (dispute, pending release,
+   bond due). */
+@keyframes attention-pulse {
+  0%, 100% { text-shadow: 0 0 0 rgba(251, 191, 36, 0); }
+  50% { text-shadow: 0 0 18px rgba(251, 191, 36, 0.55); }
+}
+.attention-pulse {
+  animation: attention-pulse 2s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .attention-pulse { animation: none; }
 }
 
 /* Page-title treatment: Chakra Petch instead of Manrope. Deliberately not
