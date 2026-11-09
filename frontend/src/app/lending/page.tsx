@@ -396,12 +396,17 @@ export default function LendingPage() {
   }
 
   function approveDebtForLiquidate() {
-    if (!addresses.lendingPool || !addresses.debtToken) return;
+    if (!addresses.lendingPool || !addresses.debtToken || targetDebtAmount === 0n) return;
+    // The liquidation pulls the *current* debt at execution time, which is always
+    // >= the amount we read from positions() because interest accrues every second.
+    // Approve a small buffer so the allowance isn't immediately stale by the time
+    // the user clicks Liquidate — otherwise the UI asks for approval again.
+    const buffered = targetDebtAmount + targetDebtAmount / 100n + 1n;
     send("approveLiq", {
       address: addresses.debtToken,
       abi: erc20Abi,
       functionName: "approve",
-      args: [addresses.lendingPool, targetDebtAmount],
+      args: [addresses.lendingPool, buffered],
     });
   }
 
