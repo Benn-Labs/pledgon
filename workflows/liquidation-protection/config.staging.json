@@ -2,7 +2,7 @@
   "schedule": "0 */5 * * * *",
   "chainSelectorName": "ethereum-testnet-sepolia",
   "lendingPoolAddress": "0xD389c90a61F4de210D2632Df1545082D53d41ed9",
-  "borrowers": ["0x612B47bde1B1CE974b56C9AEF4650091Bc46A1b3"],
+  "borrowers": ["0xe713298BA0B581D78aca144C6d5135957ef296BB"],
   "verificationUrl": "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd",
   "secretId": "LENDING_PRICE_API_TOKEN",
   "responsePricePath": "ethereum.usd",
