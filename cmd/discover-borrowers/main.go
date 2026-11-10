@@ -36,11 +36,16 @@
 //
 //	go run ./cmd/discover-borrowers --chain-id 11155111 --target staging \
 //	  --rpc-url https://... --from-block 11738425
+//
+// --req-delay-ms (default 150) paces chunk requests to stay under free-tier
+// RPC compute-units/second caps; raise it for a tighter cap, lower it for an
+// uncapped endpoint.
 package main
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"math/big"
@@ -49,6 +54,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	ethereum "github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -56,6 +62,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/rpc"
 )
 
 var collateralDepositedTopic = crypto.Keccak256Hash([]byte("CollateralDeposited(address,uint256)"))
@@ -69,20 +76,21 @@ func main() {
 	fromBlock := flag.Uint64("from-block", 0, "block to start scanning from — typically the pool's deployment block (required)")
 	chunkBlocks := flag.Uint64("chunk-blocks", 10, "blocks per eth_getLogs request — many free RPC tiers (Alchemy included) cap this at 10")
 	ltvMarginBps := flag.Uint64("ltv-margin-bps", 2000, "a borrower is close-watch if their LTV is within this many bps of the liquidation threshold (e.g. 2000 = within 20 percentage points); everyone else is safe")
+	reqDelayMs := flag.Uint64("req-delay-ms", 150, "pause between eth_getLogs chunk requests to stay under free-tier RPC compute-units/second caps (0 disables)")
 	flag.Parse()
 
 	if *chainID == "" || *rpcURL == "" || *fromBlock == 0 {
-		fmt.Fprintln(os.Stderr, "usage: discover-borrowers --chain-id <id> --rpc-url <url> --from-block <n> [--target staging|production] [--chunk-blocks <n>] [--ltv-margin-bps <n>]")
+		fmt.Fprintln(os.Stderr, "usage: discover-borrowers --chain-id <id> --rpc-url <url> --from-block <n> [--target staging|production] [--chunk-blocks <n>] [--ltv-margin-bps <n>] [--req-delay-ms <n>]")
 		os.Exit(1)
 	}
 
-	if err := run(".", *chainID, *target, *rpcURL, *fromBlock, *chunkBlocks, *ltvMarginBps); err != nil {
+	if err := run(".", *chainID, *target, *rpcURL, *fromBlock, *chunkBlocks, *ltvMarginBps, *reqDelayMs); err != nil {
 		fmt.Fprintln(os.Stderr, "discover-borrowers:", err)
 		os.Exit(1)
 	}
 }
 
-func run(root, chainID, target, rpcURL string, fromBlock, chunkBlocks, ltvMarginBps uint64) error {
+func run(root, chainID, target, rpcURL string, fromBlock, chunkBlocks, ltvMarginBps, reqDelayMs uint64) error {
 	deploymentsPath := filepath.Join(root, "contracts", "evm", "deployments", chainID+".json")
 	raw, err := os.ReadFile(deploymentsPath)
 	if err != nil {
@@ -114,7 +122,7 @@ func run(root, chainID, target, rpcURL string, fromBlock, chunkBlocks, ltvMargin
 		return fmt.Errorf("read latest block: %w", err)
 	}
 
-	borrowers, err := scanBorrowers(client, poolAddress, fromBlock, latest, chunkBlocks)
+	borrowers, err := scanBorrowers(client, poolAddress, fromBlock, latest, chunkBlocks, reqDelayMs)
 	if err != nil {
 		return fmt.Errorf("scan CollateralDeposited logs: %w", err)
 	}
@@ -151,12 +159,60 @@ type logFilterer interface {
 	FilterLogs(ctx context.Context, q ethereum.FilterQuery) ([]types.Log, error)
 }
 
+// Free-tier RPCs (Alchemy especially) throttle eth_getLogs by compute units
+// per second: a tight chunk loop trips the cap and, without retries, aborts
+// the whole scan on the first 429. filterLogsWithRetry retries rate-limit
+// errors with capped exponential backoff, and scanBorrowers pauses between
+// chunks so the steady-state request rate stays under the cap to begin with.
+
+var sleep = time.Sleep // replaceable in tests
+
+const maxRateLimitRetries = 6
+
+var rateLimitBackoff = []time.Duration{
+	500 * time.Millisecond,
+	time.Second,
+	2 * time.Second,
+	4 * time.Second,
+	8 * time.Second,
+	16 * time.Second,
+}
+
+func isRateLimitErr(err error) bool {
+	var httpErr rpc.HTTPError
+	if errors.As(err, &httpErr) && httpErr.StatusCode == 429 {
+		return true
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "429") ||
+		strings.Contains(msg, "too many requests") ||
+		strings.Contains(msg, "compute units") ||
+		strings.Contains(msg, "rate limit")
+}
+
+func filterLogsWithRetry(client logFilterer, q ethereum.FilterQuery) ([]types.Log, error) {
+	for attempt := 0; ; attempt++ {
+		logs, err := client.FilterLogs(context.Background(), q)
+		if err == nil {
+			return logs, nil
+		}
+		if !isRateLimitErr(err) || attempt == maxRateLimitRetries {
+			return nil, err
+		}
+		backoff := rateLimitBackoff[min(attempt, len(rateLimitBackoff)-1)]
+		fmt.Fprintf(os.Stderr, "rate limited on blocks %s-%s, backing off %s (%d/%d)\n",
+			q.FromBlock, q.ToBlock, backoff, attempt+1, maxRateLimitRetries)
+		sleep(backoff)
+	}
+}
+
 // scanBorrowers pages eth_getLogs in chunkBlocks-sized windows from fromBlock
 // to toBlock (inclusive) — many free RPC tiers (Alchemy included) cap
 // eth_getLogs at a small block range (10, in Alchemy's case — see the
 // frontend's own chunked eth_getLogs workaround for the same limit), so a
-// single wide query would fail outright on those tiers.
-func scanBorrowers(client logFilterer, pool common.Address, fromBlock, toBlock, chunkBlocks uint64) ([]string, error) {
+// single wide query would fail outright on those tiers. reqDelayMs pauses
+// between chunk requests to stay under per-second compute-unit caps.
+func scanBorrowers(client logFilterer, pool common.Address, fromBlock, toBlock, chunkBlocks, reqDelayMs uint64) ([]string, error) {
 	if chunkBlocks == 0 {
 		chunkBlocks = 10
 	}
@@ -166,7 +222,7 @@ func scanBorrowers(client logFilterer, pool common.Address, fromBlock, toBlock, 
 		if end > toBlock {
 			end = toBlock
 		}
-		logs, err := client.FilterLogs(context.Background(), ethereum.FilterQuery{
+		logs, err := filterLogsWithRetry(client, ethereum.FilterQuery{
 			FromBlock: new(big.Int).SetUint64(start),
 			ToBlock:   new(big.Int).SetUint64(end),
 			Addresses: []common.Address{pool},
@@ -180,6 +236,9 @@ func scanBorrowers(client logFilterer, pool common.Address, fromBlock, toBlock, 
 		}
 		if end == toBlock {
 			break
+		}
+		if reqDelayMs > 0 {
+			sleep(time.Duration(reqDelayMs) * time.Millisecond)
 		}
 	}
 	return sortedAddresses(seen), nil

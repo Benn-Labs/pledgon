@@ -3,15 +3,18 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"math/big"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	ethereum "github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -90,7 +93,7 @@ func TestScanBorrowers_ChunksAcrossBlockRangeAndDedupes(t *testing.T) {
 		},
 	}
 
-	got, err := scanBorrowers(stub, pool, 100, 115, 10)
+	got, err := scanBorrowers(stub, pool, 100, 115, 10, 0)
 	require.NoError(t, err)
 	assert.Equal(t, []string{a.Hex(), b.Hex()}, got)
 }
@@ -106,9 +109,93 @@ func TestScanBorrowers_SingleWindowWhenRangeFitsInOneChunk(t *testing.T) {
 		},
 	}
 
-	got, err := scanBorrowers(stub, pool, 100, 104, 10)
+	got, err := scanBorrowers(stub, pool, 100, 104, 10, 0)
 	require.NoError(t, err)
 	assert.Equal(t, []string{a.Hex()}, got)
+}
+
+// ─── filterLogsWithRetry ───────────────────────────────────
+
+// scriptedFilterer returns errs[i] for call i+1 while errs last, then logs.
+type scriptedFilterer struct {
+	t      *testing.T
+	window [2]uint64
+	logs   []types.Log
+	errs   []error
+	calls  int
+}
+
+func (s *scriptedFilterer) FilterLogs(_ context.Context, q ethereum.FilterQuery) ([]types.Log, error) {
+	s.calls++
+	if q.FromBlock.Uint64() != s.window[0] || q.ToBlock.Uint64() != s.window[1] {
+		s.t.Fatalf("unexpected block window queried: %s-%s", q.FromBlock, q.ToBlock)
+	}
+	if s.calls <= len(s.errs) {
+		return nil, s.errs[s.calls-1]
+	}
+	return s.logs, nil
+}
+
+func stubSleep(t *testing.T) {
+	t.Helper()
+	old := sleep
+	sleep = func(time.Duration) {}
+	t.Cleanup(func() { sleep = old })
+}
+
+func TestFilterLogsWithRetry_RecoversFromRateLimit(t *testing.T) {
+	stubSleep(t)
+	a := common.HexToAddress("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+	f := &scriptedFilterer{
+		t:      t,
+		window: [2]uint64{100, 109},
+		logs:   []types.Log{{Topics: []common.Hash{collateralDepositedTopic, topicAddress(a)}}},
+		errs: []error{
+			rpc.HTTPError{StatusCode: 429, Status: "429 Too Many Requests"},
+			errors.New("Your app has exceeded its compute units per second capacity"),
+			rpc.HTTPError{StatusCode: 429, Status: "429 Too Many Requests"},
+		},
+	}
+
+	got, err := filterLogsWithRetry(f, ethereum.FilterQuery{
+		FromBlock: big.NewInt(100),
+		ToBlock:   big.NewInt(109),
+	})
+	require.NoError(t, err)
+	assert.Len(t, got, 1)
+	assert.Equal(t, 4, f.calls) // 3 failures, then the success
+}
+
+func TestFilterLogsWithRetry_NonRateLimitErrorFailsImmediately(t *testing.T) {
+	stubSleep(t)
+	f := &scriptedFilterer{
+		t:      t,
+		window: [2]uint64{100, 109},
+		errs:   []error{errors.New("execution reverted")},
+	}
+
+	_, err := filterLogsWithRetry(f, ethereum.FilterQuery{
+		FromBlock: big.NewInt(100),
+		ToBlock:   big.NewInt(109),
+	})
+	require.Error(t, err)
+	assert.Equal(t, 1, f.calls)
+}
+
+func TestFilterLogsWithRetry_GivesUpAfterMaxRetries(t *testing.T) {
+	stubSleep(t)
+	errs := make([]error, maxRateLimitRetries+1)
+	for i := range errs {
+		errs[i] = rpc.HTTPError{StatusCode: 429, Status: "429 Too Many Requests"}
+	}
+	f := &scriptedFilterer{t: t, window: [2]uint64{100, 109}, errs: errs}
+
+	_, err := filterLogsWithRetry(f, ethereum.FilterQuery{
+		FromBlock: big.NewInt(100),
+		ToBlock:   big.NewInt(109),
+	})
+	require.Error(t, err)
+	assert.Equal(t, maxRateLimitRetries+1, f.calls)
 }
 
 // ─── patchBorrowers ────────────────────────────────────────
@@ -176,13 +263,13 @@ func TestRun_ErrorsIfLendingPoolNotDeployed(t *testing.T) {
 }
 `)
 
-	err := run(root, "11155111", "staging", "https://example.com/rpc", 100, 10, 2000)
+	err := run(root, "11155111", "staging", "https://example.com/rpc", 100, 10, 2000, 0)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not deployed")
 }
 
 func TestRun_ErrorsIfDeploymentsFileMissing(t *testing.T) {
-	err := run(t.TempDir(), "11155111", "staging", "https://example.com/rpc", 100, 10, 2000)
+	err := run(t.TempDir(), "11155111", "staging", "https://example.com/rpc", 100, 10, 2000, 0)
 	require.Error(t, err)
 }
 
