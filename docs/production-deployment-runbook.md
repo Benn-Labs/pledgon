@@ -204,6 +204,29 @@ follow-up before real volume:
 
 ---
 
+## Liquidation borrower refresh (recurring ops)
+
+The liquidation workflows only monitor borrowers baked into their config at
+deploy time; a new `depositCollateral` is invisible to them until the config is
+refreshed and both instances redeployed. After any new borrower, or on a
+schedule once churn justifies it:
+
+- [ ] `scripts/refresh-liquidation-borrowers.sh --rpc-url <sepolia-rpc>
+      [--target staging]` — rescans `CollateralDeposited`, repatches both tier
+      configs, then prompts before redeploying + activating the two workflow
+      instances.
+- [ ] Update `WorkflowID.txt` from `cre workflow list` — a redeploy changes the
+      workflow IDs (config bytes hash into the ID).
+
+Fully automated refresh was deliberately not built: a config change only takes
+effect via a credentialled `cre workflow deploy` + `activate` (org-quota
+limited), and the workflow can't self-discover borrowers across ticks (see
+docs/architecture.md, "Multi-borrower monitoring"). The script keeps the manual
+path to one command; promote it to CI only together with a secrets story for
+the CRE deploy credentials.
+
+---
+
 ## Rollback / incident plan
 
 Contracts are immutable (no upgrade path) — incident response is:
@@ -245,3 +268,11 @@ Contracts are immutable (no upgrade path) — incident response is:
 | trade-expiry-production | | |
 | escrow-confirmation-production | | |
 | compliance-check-production | | |
+
+Note: `liquidation-protection-production` / `-safe` (and every other production
+row above) have **never been deployed** — the empty Deployed-ID cells are
+original, not deletions. The production configs mirror the current Sepolia
+lending stack as a ready second slot; deploying them today would duplicate
+monitoring of the same pool and exceed the org's 3-active-workflow quota
+(`docs/audit-remediation-summary.md`). Deploy only alongside a separate
+production lending stack.
