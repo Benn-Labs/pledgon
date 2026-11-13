@@ -37,12 +37,8 @@ function describeWindow(blocks: bigint): { seconds: number; label: string } {
  */
 export function useLenderRewards(market?: LendingMarket) {
   const selectedMarket = market ?? lendingMarkets[0];
-  if (!selectedMarket) {
-    return { rewards: undefined, windowSeconds: undefined, windowLabel: undefined, isLoading: false, isError: false };
-  }
-
-  const pool = selectedMarket.lendingPool;
-  const token = selectedMarket.debtToken;
+  const pool = selectedMarket?.lendingPool;
+  const token = selectedMarket?.debtToken;
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["lenderRewards", pool, token],
@@ -75,6 +71,10 @@ export function useLenderRewards(market?: LendingMarket) {
       throw lastError;
     },
   });
+
+  if (!selectedMarket) {
+    return { rewards: undefined, windowSeconds: undefined, windowLabel: undefined, isLoading: false, isError: false };
+  }
 
   return {
     rewards: data?.total,

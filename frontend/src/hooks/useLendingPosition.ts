@@ -22,6 +22,52 @@ const BPS_DENOMINATOR = 10_000n;
  */
 export function useLendingPosition(market?: LendingMarket) {
   const selectedMarket = market ?? lendingMarkets[0];
+
+  const { address: account } = useAccount();
+  const { decimals: collDecimals, symbol: collSymbol } = useToken(selectedMarket?.collateralToken);
+  const { decimals: debtDecimals, symbol: debtSymbol } = useToken(selectedMarket?.debtToken);
+
+  const { data: position, isLoading: positionLoading } = useReadContract({
+    address: selectedMarket?.lendingPool,
+    abi: lendingPoolAbi,
+    functionName: "positions",
+    args: account && selectedMarket ? [account] : undefined,
+    query: {
+      enabled: Boolean(isLendingConfigured && selectedMarket?.lendingPool && account),
+      refetchInterval: 15_000,
+      staleTime: 5_000,
+    },
+  });
+
+  const { data: staticData, isLoading: staticLoading } = useReadContracts({
+    contracts: [
+      { address: selectedMarket?.lendingPool, abi: lendingPoolAbi, functionName: "liquidationThresholdBps" },
+      { address: selectedMarket?.lendingPool, abi: lendingPoolAbi, functionName: "collateralFeedId" },
+      { address: selectedMarket?.lendingPool, abi: lendingPoolAbi, functionName: "maxUtilizationBps" },
+    ],
+    query: {
+      enabled: Boolean(isLendingConfigured && selectedMarket?.lendingPool),
+      refetchInterval: 15_000,
+      staleTime: 5_000,
+    },
+  });
+
+  const liquidationThresholdBps = staticData?.[0]?.result as bigint | undefined;
+  const collateralFeedId = staticData?.[1]?.result as `0x${string}` | undefined;
+  const maxUtilizationBps = staticData?.[2]?.result as bigint | undefined;
+
+  const { data: round, isLoading: priceLoading } = useReadContract({
+    address: selectedMarket?.lendingOracleConsumer,
+    abi: lendingOracleConsumerAbi,
+    functionName: "latestRound",
+    args: collateralFeedId && selectedMarket ? [collateralFeedId] : undefined,
+    query: {
+      enabled: Boolean(isLendingConfigured && selectedMarket?.lendingOracleConsumer && collateralFeedId),
+      refetchInterval: 15_000,
+      staleTime: 5_000,
+    },
+  });
+
   if (!selectedMarket) {
     return {
       collateralAmount: 0n,
@@ -43,51 +89,6 @@ export function useLendingPosition(market?: LendingMarket) {
       isLoading: false,
     };
   }
-
-  const { address: account } = useAccount();
-  const { decimals: collDecimals, symbol: collSymbol } = useToken(selectedMarket.collateralToken);
-  const { decimals: debtDecimals, symbol: debtSymbol } = useToken(selectedMarket.debtToken);
-
-  const { data: position, isLoading: positionLoading } = useReadContract({
-    address: selectedMarket.lendingPool,
-    abi: lendingPoolAbi,
-    functionName: "positions",
-    args: account ? [account] : undefined,
-    query: {
-      enabled: Boolean(isLendingConfigured && selectedMarket.lendingPool && account),
-      refetchInterval: 15_000,
-      staleTime: 5_000,
-    },
-  });
-
-  const { data: staticData, isLoading: staticLoading } = useReadContracts({
-    contracts: [
-      { address: selectedMarket.lendingPool, abi: lendingPoolAbi, functionName: "liquidationThresholdBps" },
-      { address: selectedMarket.lendingPool, abi: lendingPoolAbi, functionName: "collateralFeedId" },
-      { address: selectedMarket.lendingPool, abi: lendingPoolAbi, functionName: "maxUtilizationBps" },
-    ],
-    query: {
-      enabled: Boolean(isLendingConfigured && selectedMarket.lendingPool),
-      refetchInterval: 15_000,
-      staleTime: 5_000,
-    },
-  });
-
-  const liquidationThresholdBps = staticData?.[0]?.result as bigint | undefined;
-  const collateralFeedId = staticData?.[1]?.result as `0x${string}` | undefined;
-  const maxUtilizationBps = staticData?.[2]?.result as bigint | undefined;
-
-  const { data: round, isLoading: priceLoading } = useReadContract({
-    address: selectedMarket.lendingOracleConsumer,
-    abi: lendingOracleConsumerAbi,
-    functionName: "latestRound",
-    args: collateralFeedId ? [collateralFeedId] : undefined,
-    query: {
-      enabled: Boolean(isLendingConfigured && selectedMarket.lendingOracleConsumer && collateralFeedId),
-      refetchInterval: 15_000,
-      staleTime: 5_000,
-    },
-  });
 
   const [collateralAmount, debtAmount] = position ?? [0n, 0n];
   const [price, priceDecimals, updatedAt] = round ?? [0n, 0, 0n];

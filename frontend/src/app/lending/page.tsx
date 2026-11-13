@@ -6,7 +6,7 @@ import { erc20Abi, formatUnits, isAddress } from "viem";
 import type { Address } from "viem";
 import { useAccount, useReadContract, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import { lendingPoolAbi, liquidationConsumerAbi } from "@/generated/contracts";
-import { addresses, isLendingConfigured } from "@/lib/addresses";
+import { lendingMarkets, isLendingConfigured, type LendingMarket } from "@/lib/addresses";
 import { useToken } from "@/hooks/useToken";
 import { useLendingPosition } from "@/hooks/useLendingPosition";
 import { useLenderRewards } from "@/hooks/useLenderRewards";
@@ -132,89 +132,92 @@ function ActionPanel({
 
 export default function LendingPage() {
   const { address: account } = useAccount();
+  const [selectedMarket, setSelectedMarket] = useState<LendingMarket>(lendingMarkets[0]);
 
-  const { decimals: collDecimals, symbol: collSymbol } = useToken(addresses.collateralToken);
-  const { decimals: debtDecimals, symbol: debtSymbol } = useToken(addresses.debtToken);
-  const { hasPrice, healthFactor, ltvBps, liquidationThresholdBps, price, priceDecimals, maxUtilizationBps } = useLendingPosition();
-  const { rewards: feeRewards, windowSeconds: rewardSeconds, windowLabel: rewardWindow, isError: rewardsError } = useLenderRewards();
-  const { borrowers: atRiskBorrowers, isLoading: borrowersLoading } = useLendingBorrowers();
-  const registerBorrowerFromDeposit = useRegisterBorrowerFromDeposit();
+  const { decimals: collDecimals, symbol: collSymbol } = useToken(selectedMarket.collateralToken);
+  const { decimals: debtDecimals, symbol: debtSymbol } = useToken(selectedMarket.debtToken);
+  const { hasPrice, healthFactor, ltvBps, liquidationThresholdBps, price, priceDecimals, maxUtilizationBps } =
+    useLendingPosition(selectedMarket);
+  const { rewards: feeRewards, windowSeconds: rewardSeconds, windowLabel: rewardWindow, isError: rewardsError } =
+    useLenderRewards(selectedMarket);
+  const { borrowers: atRiskBorrowers, isLoading: borrowersLoading } = useLendingBorrowers(selectedMarket);
+  const registerBorrowerFromDeposit = useRegisterBorrowerFromDeposit(selectedMarket);
 
   const { data: position, refetch: refetchPosition } = useReadContract({
-    address: addresses.lendingPool,
+    address: selectedMarket.lendingPool,
     abi: lendingPoolAbi,
     functionName: "positions",
     args: account ? [account] : undefined,
-    query: { enabled: Boolean(addresses.lendingPool && account) },
+    query: { enabled: Boolean(selectedMarket.lendingPool && account) },
   });
 
   const { data: collBalance, refetch: refetchCollBalance } = useReadContract({
-    address: addresses.collateralToken,
+    address: selectedMarket.collateralToken,
     abi: erc20Abi,
     functionName: "balanceOf",
     args: account ? [account] : undefined,
-    query: { enabled: Boolean(addresses.collateralToken && account) },
+    query: { enabled: Boolean(selectedMarket.collateralToken && account) },
   });
 
   const { data: debtBalance, refetch: refetchDebtBalance } = useReadContract({
-    address: addresses.debtToken,
+    address: selectedMarket.debtToken,
     abi: erc20Abi,
     functionName: "balanceOf",
     args: account ? [account] : undefined,
-    query: { enabled: Boolean(addresses.debtToken && account) },
+    query: { enabled: Boolean(selectedMarket.debtToken && account) },
   });
 
   const { data: collAllowance, refetch: refetchCollAllowance } = useReadContract({
-    address: addresses.collateralToken,
+    address: selectedMarket.collateralToken,
     abi: erc20Abi,
     functionName: "allowance",
-    args: account && addresses.lendingPool ? [account, addresses.lendingPool] : undefined,
-    query: { enabled: Boolean(addresses.collateralToken && addresses.lendingPool && account) },
+    args: account && selectedMarket.lendingPool ? [account, selectedMarket.lendingPool] : undefined,
+    query: { enabled: Boolean(selectedMarket.collateralToken && selectedMarket.lendingPool && account) },
   });
 
   const { data: debtAllowance, refetch: refetchDebtAllowance } = useReadContract({
-    address: addresses.debtToken,
+    address: selectedMarket.debtToken,
     abi: erc20Abi,
     functionName: "allowance",
-    args: account && addresses.lendingPool ? [account, addresses.lendingPool] : undefined,
-    query: { enabled: Boolean(addresses.debtToken && addresses.lendingPool && account) },
+    args: account && selectedMarket.lendingPool ? [account, selectedMarket.lendingPool] : undefined,
+    query: { enabled: Boolean(selectedMarket.debtToken && selectedMarket.lendingPool && account) },
   });
 
   const { data: lenderShares, refetch: refetchLenderShares } = useReadContract({
-    address: addresses.lendingPool,
+    address: selectedMarket.lendingPool,
     abi: lendingPoolAbi,
     functionName: "lenderShares",
     args: account ? [account] : undefined,
-    query: { enabled: Boolean(addresses.lendingPool && account) },
+    query: { enabled: Boolean(selectedMarket.lendingPool && account) },
   });
 
   const { data: lenderBalance, refetch: refetchLenderBalance } = useReadContract({
-    address: addresses.lendingPool,
+    address: selectedMarket.lendingPool,
     abi: lendingPoolAbi,
     functionName: "lenderBalance",
     args: account ? [account] : undefined,
-    query: { enabled: Boolean(addresses.lendingPool && account) },
+    query: { enabled: Boolean(selectedMarket.lendingPool && account) },
   });
 
   const { data: poolTotalSupply, refetch: refetchPoolTotalSupply } = useReadContract({
-    address: addresses.lendingPool,
+    address: selectedMarket.lendingPool,
     abi: lendingPoolAbi,
     functionName: "totalSupply",
-    query: { enabled: Boolean(addresses.lendingPool) },
+    query: { enabled: Boolean(selectedMarket.lendingPool) },
   });
 
   const { data: poolTotalBorrows, refetch: refetchPoolTotalBorrows } = useReadContract({
-    address: addresses.lendingPool,
+    address: selectedMarket.lendingPool,
     abi: lendingPoolAbi,
     functionName: "totalBorrows",
-    query: { enabled: Boolean(addresses.lendingPool) },
+    query: { enabled: Boolean(selectedMarket.lendingPool) },
   });
 
   const { data: borrowRateBps } = useReadContract({
-    address: addresses.lendingPool,
+    address: selectedMarket.lendingPool,
     abi: lendingPoolAbi,
     functionName: "borrowRateBps",
-    query: { enabled: Boolean(addresses.lendingPool) },
+    query: { enabled: Boolean(selectedMarket.lendingPool) },
   });
 
   const { writeContract, data: hash, isPending, error } = useWriteContract();
@@ -240,19 +243,19 @@ export default function LendingPage() {
   const liquidateTargetAddress = isAddress(liquidateTarget) ? (liquidateTarget as Address) : undefined;
 
   const { data: targetPosition, refetch: refetchTargetPosition } = useReadContract({
-    address: addresses.lendingPool,
+    address: selectedMarket.lendingPool,
     abi: lendingPoolAbi,
     functionName: "positions",
     args: liquidateTargetAddress ? [liquidateTargetAddress] : undefined,
-    query: { enabled: Boolean(addresses.lendingPool && liquidateTargetAddress) },
+    query: { enabled: Boolean(selectedMarket.lendingPool && liquidateTargetAddress) },
   });
 
   const { data: targetEligible, refetch: refetchTargetEligible } = useReadContract({
-    address: addresses.liquidationConsumer,
+    address: selectedMarket.liquidationConsumer,
     abi: liquidationConsumerAbi,
     functionName: "isEligible",
     args: liquidateTargetAddress ? [liquidateTargetAddress] : undefined,
-    query: { enabled: Boolean(addresses.liquidationConsumer && liquidateTargetAddress) },
+    query: { enabled: Boolean(selectedMarket.liquidationConsumer && liquidateTargetAddress) },
   });
 
   useEffect(() => {
@@ -364,27 +367,27 @@ export default function LendingPage() {
   }
 
   function approveCollateral() {
-    if (!addresses.lendingPool || !addresses.collateralToken || collDecimals === undefined) return;
+    if (!selectedMarket.lendingPool || !selectedMarket.collateralToken || collDecimals === undefined) return;
     if (depositParsed === undefined) {
       toast("Enter a valid amount to approve", "warning");
       return;
     }
     send("approveColl", {
-      address: addresses.collateralToken,
+      address: selectedMarket.collateralToken,
       abi: erc20Abi,
       functionName: "approve",
-      args: [addresses.lendingPool, depositParsed],
+      args: [selectedMarket.lendingPool, depositParsed],
     });
   }
 
   function depositCollateral() {
-    if (!addresses.lendingPool || collDecimals === undefined) return;
+    if (!selectedMarket.lendingPool || collDecimals === undefined) return;
     if (depositParsed === undefined) {
       toast("Enter a valid amount to deposit", "warning");
       return;
     }
     send("deposit", {
-      address: addresses.lendingPool,
+      address: selectedMarket.lendingPool,
       abi: lendingPoolAbi,
       functionName: "depositCollateral",
       args: [depositParsed],
@@ -392,14 +395,14 @@ export default function LendingPage() {
   }
 
   function withdrawCollateral() {
-    if (!addresses.lendingPool || collDecimals === undefined) return;
+    if (!selectedMarket.lendingPool || collDecimals === undefined) return;
     const amount = tryParseUnits(withdrawAmount, collDecimals);
     if (amount === undefined) {
       toast("Enter a valid amount to withdraw", "warning");
       return;
     }
     send("withdraw", {
-      address: addresses.lendingPool,
+      address: selectedMarket.lendingPool,
       abi: lendingPoolAbi,
       functionName: "withdrawCollateral",
       args: [amount],
@@ -407,27 +410,27 @@ export default function LendingPage() {
   }
 
   function approveDebtForRepay() {
-    if (!addresses.lendingPool || !addresses.debtToken || debtDecimals === undefined) return;
+    if (!selectedMarket.lendingPool || !selectedMarket.debtToken || debtDecimals === undefined) return;
     if (repayParsed === undefined) {
       toast("Enter a valid amount to approve", "warning");
       return;
     }
     send("approveRepay", {
-      address: addresses.debtToken,
+      address: selectedMarket.debtToken,
       abi: erc20Abi,
       functionName: "approve",
-      args: [addresses.lendingPool, repayParsed],
+      args: [selectedMarket.lendingPool, repayParsed],
     });
   }
 
   function repay() {
-    if (!addresses.lendingPool || debtDecimals === undefined) return;
+    if (!selectedMarket.lendingPool || debtDecimals === undefined) return;
     if (repayParsed === undefined) {
       toast("Enter a valid amount to repay", "warning");
       return;
     }
     send("repay", {
-      address: addresses.lendingPool,
+      address: selectedMarket.lendingPool,
       abi: lendingPoolAbi,
       functionName: "repay",
       args: [repayParsed],
@@ -435,14 +438,14 @@ export default function LendingPage() {
   }
 
   function borrow() {
-    if (!addresses.lendingPool || debtDecimals === undefined) return;
+    if (!selectedMarket.lendingPool || debtDecimals === undefined) return;
     const amount = tryParseUnits(borrowAmount, debtDecimals);
     if (amount === undefined) {
       toast("Enter a valid amount to borrow", "warning");
       return;
     }
     send("borrow", {
-      address: addresses.lendingPool,
+      address: selectedMarket.lendingPool,
       abi: lendingPoolAbi,
       functionName: "borrow",
       args: [amount],
@@ -450,24 +453,24 @@ export default function LendingPage() {
   }
 
   function approveDebtForLiquidate() {
-    if (!addresses.lendingPool || !addresses.debtToken || targetDebtAmount === 0n) return;
+    if (!selectedMarket.lendingPool || !selectedMarket.debtToken || targetDebtAmount === 0n) return;
     // The liquidation pulls the *current* debt at execution time, which is always
     // >= the amount we read from positions() because interest accrues every second.
     // Approve a small buffer so the allowance isn't immediately stale by the time
     // the user clicks Liquidate — otherwise the UI asks for approval again.
     const buffered = targetDebtAmount + targetDebtAmount / 100n + 1n;
     send("approveLiq", {
-      address: addresses.debtToken,
+      address: selectedMarket.debtToken,
       abi: erc20Abi,
       functionName: "approve",
-      args: [addresses.lendingPool, buffered],
+      args: [selectedMarket.lendingPool, buffered],
     });
   }
 
   function liquidate() {
-    if (!addresses.lendingPool || !liquidateTargetAddress) return;
+    if (!selectedMarket.lendingPool || !liquidateTargetAddress) return;
     send("liquidate", {
-      address: addresses.lendingPool,
+      address: selectedMarket.lendingPool,
       abi: lendingPoolAbi,
       functionName: "liquidate",
       args: [liquidateTargetAddress],
@@ -475,27 +478,27 @@ export default function LendingPage() {
   }
 
   function approveDebtForSupply() {
-    if (!addresses.lendingPool || !addresses.debtToken || debtDecimals === undefined) return;
+    if (!selectedMarket.lendingPool || !selectedMarket.debtToken || debtDecimals === undefined) return;
     if (supplyParsed === undefined) {
       toast("Enter a valid amount to approve", "warning");
       return;
     }
     send("approveSupply", {
-      address: addresses.debtToken,
+      address: selectedMarket.debtToken,
       abi: erc20Abi,
       functionName: "approve",
-      args: [addresses.lendingPool, supplyParsed],
+      args: [selectedMarket.lendingPool, supplyParsed],
     });
   }
 
   function supplyLiquidity() {
-    if (!addresses.lendingPool || debtDecimals === undefined) return;
+    if (!selectedMarket.lendingPool || debtDecimals === undefined) return;
     if (supplyParsed === undefined) {
       toast("Enter a valid amount to supply", "warning");
       return;
     }
     send("supply", {
-      address: addresses.lendingPool,
+      address: selectedMarket.lendingPool,
       abi: lendingPoolAbi,
       functionName: "depositLiquidity",
       args: [supplyParsed],
@@ -503,7 +506,7 @@ export default function LendingPage() {
   }
 
   function withdrawSupply() {
-    if (!addresses.lendingPool || debtDecimals === undefined) return;
+    if (!selectedMarket.lendingPool || debtDecimals === undefined) return;
     const requested = tryParseUnits(withdrawSupplyAmount, debtDecimals);
     if (requested === undefined) {
       toast("Enter a valid amount to withdraw", "warning");
@@ -515,7 +518,7 @@ export default function LendingPage() {
     // dust share is left behind from rounding the proportional formula below.
     const shares = userBalance > 0n && requested >= userBalance ? userShares : (requested * userShares) / (userBalance || 1n);
     send("withdrawSupply", {
-      address: addresses.lendingPool,
+      address: selectedMarket.lendingPool,
       abi: lendingPoolAbi,
       functionName: "withdrawLiquidity",
       args: [shares],
@@ -537,25 +540,45 @@ export default function LendingPage() {
         </Link>
       </div>
 
+      <div className="flex items-center gap-3 mb-6">
+        <label htmlFor="market-select" className="text-sm text-ink-400">
+          Market
+        </label>
+        <select
+          id="market-select"
+          className="bg-ink-800 border border-ink-700 rounded-lg px-3 py-2 text-ink-200 focus:outline-none focus:border-trust-500"
+          value={selectedMarket.id}
+          onChange={(e) => {
+            const market = lendingMarkets.find((m) => m.id === e.target.value);
+            if (market) setSelectedMarket(market);
+          }}
+        >
+          {lendingMarkets.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
       {hasPrice ? (
         <div className="p-4 rounded-lg bg-trust-500/10 border border-trust-500/30 mb-6">
           <p className="text-sm text-trust-400 font-medium mb-1">Live price feed active</p>
           <p className="text-sm text-ink-300">
-            The <code className="font-mono text-xs">liquidation-protection</code> DON workflow is registered and
-            reporting to <code className="font-mono text-xs">LendingOracleConsumer</code> every 5 minutes, so Borrow
-            now works. Liquidate only succeeds once{" "}
-            <code className="font-mono text-xs">LiquidationConsumer</code> has attested that specific borrower
-            eligible — most positions won&apos;t be.
+            The <code className="font-mono text-xs">lending-oracle</code> DON workflow is reporting to{" "}
+            <code className="font-mono text-xs">LendingOracleConsumer</code>, so Borrow now works. Liquidate only
+            succeeds once <code className="font-mono text-xs">LiquidationConsumer</code> has attested that specific
+            borrower eligible — most positions won&apos;t be.
           </p>
         </div>
       ) : (
         <div className="p-4 rounded-lg bg-warning-500/10 border border-warning-500/30 mb-6">
           <p className="text-sm text-warning-400 font-medium mb-1">No live price feed yet</p>
           <p className="text-sm text-ink-300">
-            The <code className="font-mono text-xs">liquidation-protection</code> DON workflow hasn&apos;t reported a
-            price to <code className="font-mono text-xs">LendingOracleConsumer</code> yet, so Borrow and the Health
-            Factor below aren&apos;t live — the gauge shows a dash rather than a fabricated number until the first
-            report lands. Deposits, withdrawals, and supplying liquidity are unaffected.
+            The <code className="font-mono text-xs">lending-oracle</code> DON workflow hasn&apos;t reported a price to{" "}
+            <code className="font-mono text-xs">LendingOracleConsumer</code> yet, so Borrow and the Health Factor below
+            aren&apos;t live — the gauge shows a dash rather than a fabricated number until the first report lands.
+            Deposits, withdrawals, and supplying liquidity are unaffected.
           </p>
         </div>
       )}
@@ -701,8 +724,8 @@ export default function LendingPage() {
         </div>
         {debtAmount > 0n && !hasPrice && (
           <p className="text-xs text-warning-400 mt-4">
-            Health Factor needs a live price feed from the liquidation-protection DON workflow — none has ever
-            reported here, so it shows as a dash rather than a fabricated number.
+            Health Factor needs a live price feed from the lending-oracle DON workflow — none has ever reported here,
+            so it shows as a dash rather than a fabricated number.
           </p>
         )}
       </div>
