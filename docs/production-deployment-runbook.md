@@ -14,6 +14,31 @@ deployment, fresh addresses, fresh wiring.
 
 ---
 
+## Lending market design decisions (recorded 2026-11-13)
+
+These choices are locked for the first production lending markets. Reference the
+fork-test deployments below when returning to mainnet deployment.
+
+- **Debt token:** USDC (`0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48`).
+  - Rationale: regulated, transparent reserves, deep DeFi liquidity, reliable
+    Chainlink feeds. USDT was considered but deferred due to reserve/regulatory
+    risk.
+- **Collateral-only yield token:** sUSDe (`0x9D39A5DE30e57443BfF2A8317A24eA28fD4C351f`).
+  - It accrues yield vs. USDe, so it must never be configured as debt.
+- **xStocks strategy:** one `LendingPool` per ticker (SPYx, AAPLx, TSLAx, etc.),
+  each with its own ERC-20 address and Chainlink feed label (e.g. `SPYx/USD`).
+  There is no universal "XSTOCK" token or feed.
+- **Initial parameters:**
+
+  | Market | Collateral | Debt | Feed label | LTV | Max utilization | `MAX_PRICE_AGE` |
+  |---|---|---|---|---|---|---|
+  | SPYx | `0x90A2a4c76b5D8c0bc892A69EA28Aa775a8f2dD48` | USDC | `SPYx/USD` | 56% (5500 bps) | 90% | 900 s mainnet, 0 fork |
+  | sUSDe | `0x9D39A5DE30e57443BfF2A8317A24eA28fD4C351f` | USDC | `sUSDe/USD` | 69% (6900 bps) | 90% | 900 s mainnet, 0 fork |
+
+- **Implementation note:** `LendingPool.collateralValueInDebtUnits` now converts
+  between collateral and debt `decimals()`, so 18-decimal collateral against
+  6-decimal USDC prices correctly.
+
 ## Phase 0 — Go/No-Go gates (blockers)
 
 - [ ] **KYC provider integration built.** The compliance webhook flow requires the
@@ -30,9 +55,10 @@ deployment, fresh addresses, fresh wiring.
 - [ ] **Owner/arbiter key policy decided.** `OWNER_ADDRESS` (owns `EscrowFactory`
       fees + `ArbitratorRegistry`) and `DEFAULT_ARBITER_ADDRESS` should be
       multisigs (e.g. Safe) or at least hardware-held keys — not the testnet deployer.
-- [ ] **Collateral/debt token pair decided.** Real stablecoin + real RWA/liquid
-      collateral, **same decimals** (`collateralValueInDebtUnits` assumes it).
-      Lending deploys only if both are configured.
+- [x] **Collateral/debt token pair decided.** USDC is the debt token. sUSDe and
+      individual xStocks tickers are collateral-only. `collateralValueInDebtUnits`
+      now handles differing decimals, so collateral and debt no longer need the
+      same `decimals()`.
 - [ ] **Real data sources contracted.** `verificationUrl` (escrow confirmation),
       `verificationUrlTemplate` (KYC verdicts), `priceUrl` (oracle) and the
       independent liquidation price source should be paid/authenticated tier for
@@ -82,7 +108,10 @@ deployment, fresh addresses, fresh wiring.
       COLLATERAL_FEED_LABEL="<feed label>" \
       LIQUIDATION_THRESHOLD_BPS=8000 BORROW_RATE_BPS=500 \
       MAX_PRICE_AGE=900 MAX_VERDICT_AGE=900 MAX_PRICE_DEVIATION_BPS=5000 \
+      MAX_UTILIZATION_BPS=9000 \
       forge script script/Deploy.s.sol --rpc-url <mainnet-rpc>
+      # For the decided markets use LIQUIDATION_THRESHOLD_BPS=5500 (SPYx) or
+      # 6900 (sUSDe), and COLLATERAL_FEED_LABEL "SPYx/USD" / "sUSDe/USD".
       ```
       Same for `DeployLending.s.sol`. **Gas-schedule check:** Sepolia repriced code
       deposit (~1630 gas/byte) making forge's estimates ~6.8× low. Before
@@ -237,6 +266,24 @@ Contracts are immutable (no upgrade path) — incident response is:
       `cre workflow update`, reactivate (the full cycle is ~1 hour by this runbook).
 - [ ] `EscrowFactory` owner actions (fee/feeRecipient) are the only live admin
       levers; multisig owners make them slow but safe.
+
+---
+
+## Fork-test reference deployments (Anvil mainnet fork, 2026-11-13)
+
+Use these only as a reference for the production dry-run; do not reuse fork
+addresses on mainnet.
+
+| Market | LendingPool | LendingOracleConsumer | LiquidationConsumer | Collateral |
+|---|---|---|---|---|
+| SPYx/USDC | `0x7D26890d0Ab943aA0fdAE86E729fD3173770015a` | `0x42eD0e444d5cCEE1ff55e4DbD945d852286e5ABB` | `0x7eD3c5f3712b1EF457c83D02fD52D3B16E6234A2` | real SPYx |
+| sUSDe/USDC (mock) | `0x11125148d895E785E80AecAA61850b8B2114dAa0` | `0x6359978c0dF49aBf6A163E3F526c29b2602645fb` | `0x911EEE6AAA3626e60Ef59329CBFEC04E8b5221D1` | mock `0x25BECEE71A9bB70379f12C8f39987a8e19425d8f` |
+
+Verified price conversions:
+- `SPYx` `1e18` → `750_000_000` USDC (6 decimals)
+- `msUSDe` `1e18` → `1_050_000` USDC (6 decimals)
+
+Test forwarder (Anvil account 0, not real Keystone): `0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266`.
 
 ---
 

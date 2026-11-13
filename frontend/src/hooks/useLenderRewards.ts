@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { parseAbiItem } from "viem";
-import { addresses } from "@/lib/addresses";
+import { lendingMarkets, type LendingMarket } from "@/lib/addresses";
 import { logsClient, LOG_WINDOWS_BLOCKS, SECONDS_PER_BLOCK } from "@/lib/logsClient";
 
 const TRANSFER = parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)");
@@ -31,10 +31,18 @@ function describeWindow(blocks: bigint): { seconds: number; label: string } {
  * widest window first and falls back to narrower ones, and reports the window
  * it actually used. A free public node serves about a day and a half; point
  * NEXT_PUBLIC_LOGS_RPC_URL at a node with deeper log history for a full week.
+ *
+ * @param market The lending market to read. Defaults to the first configured
+ * market for backward compatibility.
  */
-export function useLenderRewards() {
-  const pool = addresses.lendingPool;
-  const token = addresses.debtToken;
+export function useLenderRewards(market?: LendingMarket) {
+  const selectedMarket = market ?? lendingMarkets[0];
+  if (!selectedMarket) {
+    return { rewards: undefined, windowSeconds: undefined, windowLabel: undefined, isLoading: false, isError: false };
+  }
+
+  const pool = selectedMarket.lendingPool;
+  const token = selectedMarket.debtToken;
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["lenderRewards", pool, token],

@@ -46,11 +46,10 @@ import {LiquidationConsumer} from "./LiquidationConsumer.sol";
 /// add value, never let anyone claim more than they're owed), not defended
 /// against, consistent with this pool's "minimal substrate" scope.
 ///
-/// `collateralValueInDebtUnits` assumes `collateralToken` and `debtToken` share
-/// the same `decimals()` — under that assumption a raw price-scaled
-/// multiply/divide gives a correct debtToken-unit value with no further
-/// token-decimal conversion. A market pairing tokens of different decimals needs
-/// that conversion added before this pool is correct for it.
+/// `collateralValueInDebtUnits` converts the collateral value into
+/// `debtToken` base units, accounting for differing `decimals()` between the
+/// collateral and debt tokens. This allows markets such as SPYx (18 decimals)
+/// / USDC (6 decimals) to price collateral correctly.
 contract LendingPool {
     struct Position {
         uint256 collateralAmount;
@@ -77,6 +76,11 @@ contract LendingPool {
     /// `updatedAt != 0` only), matching this contract's other 0-means-off
     /// parameters.
     uint256 public immutable maxPriceAge;
+    /// @notice Maximum share of the pool that may be borrowed at once.
+    /// Expressed in bps; 0 disables the cap (preserves pre-cap behavior).
+    /// A value of 9000, for example, guarantees at least 10% of deposits
+    /// remain idle and immediately withdrawable at all times.
+    uint256 public immutable maxUtilizationBps;
 
     mapping(address => Position) private _positions;
     mapping(address => uint256) public lenderShares;
@@ -102,6 +106,7 @@ contract LendingPool {
     error StalePrice(bytes32 feedId);
     error TransferFailed();
     error InsufficientLiquidity(uint256 requested, uint256 available);
+    error UtilizationExceeded(uint256 utilizationAfterBps, uint256 maxUtilizationBps);
     error InsufficientShares(address lender, uint256 requested, uint256 available);
     error ZeroShares();
 
@@ -113,7 +118,8 @@ contract LendingPool {
         bytes32 _collateralFeedId,
         uint256 _liquidationThresholdBps,
         uint256 _borrowRateBps,
-        uint256 _maxPriceAge
+        uint256 _maxPriceAge,
+        uint256 _maxUtilizationBps
     ) {
         if (
             address(_collateralToken) == address(0) || address(_debtToken) == address(0)
@@ -128,6 +134,7 @@ contract LendingPool {
         liquidationThresholdBps = _liquidationThresholdBps;
         borrowRateBps = _borrowRateBps;
         maxPriceAge = _maxPriceAge;
+        maxUtilizationBps = _maxUtilizationBps;
         lastAccrualTimestamp = block.timestamp;
     }
 
@@ -149,6 +156,15 @@ contract LendingPool {
         position.principalDebt = newDebt;
         totalBorrows += amount;
         if (_isUndercollateralizedAmounts(position.collateralAmount, newDebt)) revert WouldBeUndercollateralized(msg.sender);
+        if (maxUtilizationBps != 0) {
+            // Compute the post-transfer total supply: the token balance still
+            // includes `amount`, but totalBorrows has already been incremented.
+            uint256 supply = debtToken.balanceOf(address(this)) + totalBorrows - amount;
+            uint256 utilizationAfter = (totalBorrows * BPS_DENOMINATOR) / supply;
+            if (utilizationAfter > maxUtilizationBps) {
+                revert UtilizationExceeded(utilizationAfter, maxUtilizationBps);
+            }
+        }
         uint256 available = debtToken.balanceOf(address(this));
         if (amount > available) revert InsufficientLiquidity(amount, available);
         _safeTransfer(debtToken, msg.sender, amount);
@@ -306,12 +322,24 @@ contract LendingPool {
     /// price LendingOracleConsumer received. Fails closed rather than pricing
     /// collateral on nothing: reverts StalePrice if no price has ever been
     /// reported, and again once the last report is older than `maxPriceAge`
-    /// (0 disables the age check — "has ever reported" only).
+    /// (0 disables the age check — "has ever reported" only). Converts between
+    /// collateralToken and debtToken decimals so the result is always in
+    /// debtToken base units.
     function collateralValueInDebtUnits(uint256 collateralAmount) public view returns (uint256) {
         (uint256 price, uint8 priceDecimals, uint256 updatedAt) = oracleConsumer.latestRound(collateralFeedId);
         if (updatedAt == 0) revert StalePrice(collateralFeedId);
         if (maxPriceAge != 0 && block.timestamp - updatedAt > maxPriceAge) revert StalePrice(collateralFeedId);
-        return (collateralAmount * price) / (10 ** priceDecimals);
+
+        uint256 valueInUsd = (collateralAmount * price) / (10 ** priceDecimals);
+        uint256 collateralDecimals = collateralToken.decimals();
+        uint256 debtDecimals = debtToken.decimals();
+
+        if (collateralDecimals > debtDecimals) {
+            return valueInUsd / (10 ** (collateralDecimals - debtDecimals));
+        } else if (collateralDecimals < debtDecimals) {
+            return valueInUsd * (10 ** (debtDecimals - collateralDecimals));
+        }
+        return valueInUsd;
     }
 
     // ─── Interest accrual ──────────────────────────────────

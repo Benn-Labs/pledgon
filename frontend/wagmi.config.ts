@@ -18,6 +18,7 @@ export default defineConfig({
         "LendingPool.sol/**",
         "LendingOracleConsumer.sol/**",
         "LiquidationConsumer.sol/**",
+        "FlashArbV3.sol/**",
       ],
       // No `deployments` here — addresses differ per network and aren't known
       // at codegen time. Wired at runtime from NEXT_PUBLIC_* env vars instead

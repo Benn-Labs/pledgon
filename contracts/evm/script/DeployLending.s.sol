@@ -25,7 +25,8 @@ import {LendingPool} from "../src/lending/LendingPool.sol";
 /// Required env vars:
 ///   FORWARDER_ADDRESS
 ///   COLLATERAL_TOKEN_ADDRESS  from deployments/lending-tokens-<chainId>.json
-///   DEBT_TOKEN_ADDRESS        must share decimals() with the collateral token
+///   DEBT_TOKEN_ADDRESS        no longer required to share decimals() with the
+///                               collateral token — LendingPool converts between them.
 ///
 /// Optional:
 ///   COLLATERAL_FEED_LABEL      default "RWA/USD"
@@ -33,6 +34,8 @@ import {LendingPool} from "../src/lending/LendingPool.sol";
 ///   BORROW_RATE_BPS            default 500 (5%/year, fixed simple interest)
 ///   MAX_PRICE_AGE              default 900 (15 min; 0 disables staleness reverts)
 ///   MAX_VERDICT_AGE            default 900 (15 min; 0 disables verdict expiry)
+///   MAX_UTILIZATION_BPS        default 0 (disabled); set to e.g. 9000 in production
+///                               to keep at least 10% of deposits idle and withdrawable
 ///   MAX_PRICE_DEVIATION_BPS    default 5000 (50% single-tick sanity bound; 0 disables;
 ///                              skipped once the stored price is older than MAX_PRICE_AGE)
 ///
@@ -48,6 +51,7 @@ contract DeployLending is Script {
         uint256 borrowRateBps = vm.envOr("BORROW_RATE_BPS", uint256(500));
         uint256 maxPriceAge = vm.envOr("MAX_PRICE_AGE", uint256(15 minutes));
         uint256 maxVerdictAge = vm.envOr("MAX_VERDICT_AGE", uint256(15 minutes));
+        uint256 maxUtilizationBps = vm.envOr("MAX_UTILIZATION_BPS", uint256(0));
         uint256 maxDeviationBps = vm.envOr("MAX_PRICE_DEVIATION_BPS", uint256(5000));
         // Workflow bindings (WorkflowBoundReceiver) — bytes32 0 = unbound
         // (simulation only; see Deploy.s.sol's comment). Set once the
@@ -77,7 +81,8 @@ contract DeployLending is Script {
             oracleConsumer.feedIdFor(feedLabel),
             thresholdBps,
             borrowRateBps,
-            maxPriceAge
+            maxPriceAge,
+            maxUtilizationBps
         );
         vm.stopBroadcast();
 

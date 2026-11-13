@@ -1,6 +1,8 @@
+
+
 import { useAccount, useReadContract, useReadContracts } from "wagmi";
 import { lendingPoolAbi, lendingOracleConsumerAbi } from "@/generated/contracts";
-import { addresses, isLendingConfigured } from "@/lib/addresses";
+import { isLendingConfigured, lendingMarkets, type LendingMarket } from "@/lib/addresses";
 import { useToken } from "@/hooks/useToken";
 
 const BPS_DENOMINATOR = 10_000n;
@@ -14,19 +16,45 @@ const BPS_DENOMINATOR = 10_000n;
  * instant a price ever lands, with no further code change, while showing an
  * honest "needs a live price feed" state until then instead of either
  * crashing or faking a number.
+ *
+ * @param market The lending market to read. Defaults to the first configured
+ * market for backward compatibility.
  */
-export function useLendingPosition() {
+export function useLendingPosition(market?: LendingMarket) {
+  const selectedMarket = market ?? lendingMarkets[0];
+  if (!selectedMarket) {
+    return {
+      collateralAmount: 0n,
+      debtAmount: 0n,
+      collDecimals: undefined,
+      collSymbol: undefined,
+      debtDecimals: undefined,
+      debtSymbol: undefined,
+      hasPosition: false,
+      liquidationThresholdBps: undefined,
+      maxUtilizationBps: undefined,
+      hasPrice: false,
+      price: 0n,
+      priceDecimals: 0,
+      priceUpdatedAt: 0n,
+      healthFactor: undefined,
+      ltvBps: undefined,
+      liquidationPrice: undefined,
+      isLoading: false,
+    };
+  }
+
   const { address: account } = useAccount();
-  const { decimals: collDecimals, symbol: collSymbol } = useToken(addresses.collateralToken);
-  const { decimals: debtDecimals, symbol: debtSymbol } = useToken(addresses.debtToken);
+  const { decimals: collDecimals, symbol: collSymbol } = useToken(selectedMarket.collateralToken);
+  const { decimals: debtDecimals, symbol: debtSymbol } = useToken(selectedMarket.debtToken);
 
   const { data: position, isLoading: positionLoading } = useReadContract({
-    address: addresses.lendingPool,
+    address: selectedMarket.lendingPool,
     abi: lendingPoolAbi,
     functionName: "positions",
     args: account ? [account] : undefined,
     query: {
-      enabled: Boolean(isLendingConfigured && addresses.lendingPool && account),
+      enabled: Boolean(isLendingConfigured && selectedMarket.lendingPool && account),
       refetchInterval: 15_000,
       staleTime: 5_000,
     },
@@ -34,11 +62,12 @@ export function useLendingPosition() {
 
   const { data: staticData, isLoading: staticLoading } = useReadContracts({
     contracts: [
-      { address: addresses.lendingPool, abi: lendingPoolAbi, functionName: "liquidationThresholdBps" },
-      { address: addresses.lendingPool, abi: lendingPoolAbi, functionName: "collateralFeedId" },
+      { address: selectedMarket.lendingPool, abi: lendingPoolAbi, functionName: "liquidationThresholdBps" },
+      { address: selectedMarket.lendingPool, abi: lendingPoolAbi, functionName: "collateralFeedId" },
+      { address: selectedMarket.lendingPool, abi: lendingPoolAbi, functionName: "maxUtilizationBps" },
     ],
     query: {
-      enabled: Boolean(isLendingConfigured && addresses.lendingPool),
+      enabled: Boolean(isLendingConfigured && selectedMarket.lendingPool),
       refetchInterval: 15_000,
       staleTime: 5_000,
     },
@@ -46,14 +75,15 @@ export function useLendingPosition() {
 
   const liquidationThresholdBps = staticData?.[0]?.result as bigint | undefined;
   const collateralFeedId = staticData?.[1]?.result as `0x${string}` | undefined;
+  const maxUtilizationBps = staticData?.[2]?.result as bigint | undefined;
 
   const { data: round, isLoading: priceLoading } = useReadContract({
-    address: addresses.lendingOracleConsumer,
+    address: selectedMarket.lendingOracleConsumer,
     abi: lendingOracleConsumerAbi,
     functionName: "latestRound",
     args: collateralFeedId ? [collateralFeedId] : undefined,
     query: {
-      enabled: Boolean(isLendingConfigured && addresses.lendingOracleConsumer && collateralFeedId),
+      enabled: Boolean(isLendingConfigured && selectedMarket.lendingOracleConsumer && collateralFeedId),
       refetchInterval: 15_000,
       staleTime: 5_000,
     },
@@ -69,8 +99,8 @@ export function useLendingPosition() {
 
   if (hasPrice && liquidationThresholdBps !== undefined) {
     // collateralValue is in debt-token units — same computation as
-    // LendingPool.collateralValueInDebtUnits(), which assumes collateral and
-    // debt tokens share decimals (see that function's own doc comment).
+    // LendingPool.collateralValueInDebtUnits(), which now handles differing
+    // collateral and debt token decimals.
     const collateralValue = (collateralAmount * price) / 10n ** BigInt(priceDecimals);
 
     if (debtAmount > 0n) {
@@ -95,6 +125,7 @@ export function useLendingPosition() {
     debtSymbol,
     hasPosition: collateralAmount > 0n || debtAmount > 0n,
     liquidationThresholdBps,
+    maxUtilizationBps,
     hasPrice,
     price,
     priceDecimals,

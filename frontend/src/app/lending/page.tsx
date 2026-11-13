@@ -17,6 +17,47 @@ import { toast, toastTxError } from "@/lib/toast";
 import { LendingIcon } from "@/components/ui/icons";
 import { HealthFactorGauge } from "@/components/ui/HealthFactorGauge";
 
+function UtilizationBar({
+  totalSupply,
+  totalBorrows,
+  capBps,
+}: {
+  totalSupply?: bigint;
+  totalBorrows?: bigint;
+  capBps?: bigint;
+}) {
+  if (totalSupply === undefined || totalBorrows === undefined || totalSupply === 0n) {
+    return <div className="text-sm text-ink-400">—</div>;
+  }
+  const utilization = Number(totalBorrows) / Number(totalSupply);
+  const cap = capBps !== undefined && capBps > 0n ? Number(capBps) / 10_000 : 1;
+  const pctOfCap = capBps !== undefined && capBps > 0n ? utilization / cap : utilization;
+
+  let barColor = "bg-trust-500";
+  if (pctOfCap > 0.95) barColor = "bg-danger-500";
+  else if (pctOfCap > 0.8) barColor = "bg-warning-500";
+
+  return (
+    <div>
+      <div className="flex justify-between text-xs mb-1">
+        <span className="text-ink-400">{(utilization * 100).toFixed(2)}% utilized</span>
+        {capBps !== undefined && capBps > 0n && (
+          <span className="text-ink-500">Cap {Number(capBps) / 100}%</span>
+        )}
+      </div>
+      <div className="h-2 w-full bg-ink-800 rounded-full overflow-hidden">
+        <div
+          className={`h-full ${barColor} transition-all duration-300`}
+          style={{ width: `${Math.min(utilization * 100, 100)}%` }}
+        />
+      </div>
+      {pctOfCap > 0.95 && (
+        <p className="text-xs text-danger-400 mt-1">Utilization is near the cap — new borrows may be limited.</p>
+      )}
+    </div>
+  );
+}
+
 function ActionPanel({
   title,
   tokenSymbol,
@@ -94,7 +135,7 @@ export default function LendingPage() {
 
   const { decimals: collDecimals, symbol: collSymbol } = useToken(addresses.collateralToken);
   const { decimals: debtDecimals, symbol: debtSymbol } = useToken(addresses.debtToken);
-  const { hasPrice, healthFactor, ltvBps, liquidationThresholdBps, price, priceDecimals } = useLendingPosition();
+  const { hasPrice, healthFactor, ltvBps, liquidationThresholdBps, price, priceDecimals, maxUtilizationBps } = useLendingPosition();
   const { rewards: feeRewards, windowSeconds: rewardSeconds, windowLabel: rewardWindow, isError: rewardsError } = useLenderRewards();
   const { borrowers: atRiskBorrowers, isLoading: borrowersLoading } = useLendingBorrowers();
   const registerBorrowerFromDeposit = useRegisterBorrowerFromDeposit();
@@ -293,6 +334,19 @@ export default function LendingPage() {
   // Repay pulls min(amount, currentDebt), so the wallet only has to cover the
   // debt. The cap therefore only applies when the wallet holds less than that.
   const repayLimit = debtBalance !== undefined && debtAmount > debtBalance ? debtBalance : undefined;
+  // Borrow is limited by whichever is smaller: idle liquidity in the pool or
+  // the utilization cap. Show that as the input limit so users get feedback
+  // before the wallet reverts UtilizationExceeded / InsufficientLiquidity.
+  const borrowInputLimit =
+    poolTotalSupply !== undefined && poolTotalBorrows !== undefined
+      ? (() => {
+          const idle = poolTotalSupply - poolTotalBorrows;
+          if (maxUtilizationBps === undefined || maxUtilizationBps === 0n) return idle;
+          const capBorrows = (poolTotalSupply * maxUtilizationBps) / 10_000n;
+          const underCap = capBorrows > poolTotalBorrows ? capBorrows - poolTotalBorrows : 0n;
+          return underCap < idle ? underCap : idle;
+        })()
+      : undefined;
   // Debt grows every second, so "Max" asks for slightly more than the displayed
   // debt (0.1% buffer); the pool clamps the pull to the exact debt at execution.
   function repayMax() {
@@ -512,7 +566,7 @@ export default function LendingPage() {
           Supplied {debtSymbol} earns a fixed rate, paid by borrowers as their debt accrues — your share of the pool
           grows in place, nothing to claim separately.
         </p>
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-5 gap-4 mb-6">
           <div className="p-4 rounded-lg bg-ink-950/60 border border-ink-800 shadow-[inset_0_1px_2px_rgba(0,0,0,0.3)]">
             <div className="text-xs text-ink-400 mb-1">Total Supplied</div>
             <div className="font-mono text-lg text-ink-100">
@@ -542,6 +596,10 @@ export default function LendingPage() {
                 ? formatToken(lenderBalance, debtDecimals, debtSymbol, 2)
                 : "…"}
             </div>
+          </div>
+          <div className="p-4 rounded-lg bg-ink-950/60 border border-ink-800 shadow-[inset_0_1px_2px_rgba(0,0,0,0.3)]">
+            <div className="text-xs text-ink-400 mb-2">Pool Utilization</div>
+            <UtilizationBar totalSupply={poolTotalSupply} totalBorrows={poolTotalBorrows} capBps={maxUtilizationBps} />
           </div>
         </div>
         {!rewardsError && feeRewards !== undefined && rewardSeconds !== undefined && debtDecimals !== undefined && (
@@ -739,13 +797,16 @@ export default function LendingPage() {
         <ActionPanel
           title="Borrow"
           tokenSymbol={debtSymbol}
-          balance={debtBalance}
+          balance={borrowInputLimit}
+          balanceLabel="Available to borrow"
           decimals={debtDecimals}
           amount={borrowAmount}
           setAmount={setBorrowAmount}
           submitLabel="Borrow"
           isPending={busy}
           activeHere={activeHere("borrow")}
+          limit={borrowInputLimit}
+          limitMessage="Exceeds available liquidity / utilization cap"
           onSubmit={borrow}
         />
       </div>

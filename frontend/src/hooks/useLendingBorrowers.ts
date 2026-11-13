@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { Address } from "viem";
 import { useChainId, useReadContracts } from "wagmi";
 import { lendingPoolAbi, liquidationConsumerAbi } from "@/generated/contracts";
-import { addresses } from "@/lib/addresses";
+import { lendingMarkets, type LendingMarket } from "@/lib/addresses";
 import { supabase, isSupabaseConfigured } from "@/lib/supabaseClient";
 
 export type BorrowerRisk = {
@@ -20,14 +20,18 @@ export type BorrowerRisk = {
  * positions()/isEligible() live on-chain in one batched multicall before
  * returning anything, so a stale or wrong row there can at worst waste one
  * read, never mislead a liquidator into acting on bad data.
+ *
+ * @param market The lending market to read. Defaults to the first configured
+ * market for backward compatibility.
  */
-export function useLendingBorrowers() {
+export function useLendingBorrowers(market?: LendingMarket) {
+  const selectedMarket = market ?? lendingMarkets[0];
   const chainId = useChainId();
   const [candidates, setCandidates] = useState<Address[]>([]);
   const [candidatesLoading, setCandidatesLoading] = useState(false);
 
   useEffect(() => {
-    if (!isSupabaseConfigured || !supabase || !addresses.lendingPool) {
+    if (!isSupabaseConfigured || !supabase || !selectedMarket?.lendingPool) {
       setCandidates([]);
       return;
     }
@@ -37,7 +41,7 @@ export function useLendingBorrowers() {
       .from("lending_borrowers")
       .select("borrower_address")
       .eq("chain_id", chainId)
-      .eq("lending_pool_address", addresses.lendingPool.toLowerCase())
+      .eq("lending_pool_address", selectedMarket.lendingPool.toLowerCase())
       .then(({ data: rows }) => {
         if (cancelled) return;
         setCandidates((rows ?? []).map((r) => r.borrower_address as Address));
@@ -46,14 +50,23 @@ export function useLendingBorrowers() {
     return () => {
       cancelled = true;
     };
-  }, [chainId]);
+  }, [chainId, selectedMarket?.lendingPool]);
 
   const { data: results, isLoading: onChainLoading } = useReadContracts({
     contracts: candidates.flatMap((addr) => [
-      { address: addresses.lendingPool, abi: lendingPoolAbi, functionName: "positions" as const, args: [addr] },
-      { address: addresses.liquidationConsumer, abi: liquidationConsumerAbi, functionName: "isEligible" as const, args: [addr] },
+      { address: selectedMarket?.lendingPool, abi: lendingPoolAbi, functionName: "positions" as const, args: [addr] },
+      {
+        address: selectedMarket?.liquidationConsumer,
+        abi: liquidationConsumerAbi,
+        functionName: "isEligible" as const,
+        args: [addr],
+      },
     ]),
-    query: { enabled: candidates.length > 0 && Boolean(addresses.lendingPool && addresses.liquidationConsumer) },
+    query: {
+      enabled:
+        candidates.length > 0 &&
+        Boolean(selectedMarket?.lendingPool && selectedMarket?.liquidationConsumer),
+    },
   });
 
   const borrowers: BorrowerRisk[] = candidates
@@ -84,18 +97,22 @@ export function useLendingBorrowers() {
  * offer. Backfilling those is cmd/discover-borrowers' job (see its own
  * comment): it reads the same CollateralDeposited history directly, with the
  * operator's elevated trust, no per-address verification needed.
+ *
+ * @param market The lending market to register deposits for. Defaults to the
+ * first configured market for backward compatibility.
  */
-export function useRegisterBorrowerFromDeposit() {
+export function useRegisterBorrowerFromDeposit(market?: LendingMarket) {
+  const selectedMarket = market ?? lendingMarkets[0];
   const chainId = useChainId();
 
   return useCallback(
     (txHash: `0x${string}`) => {
-      const pool = addresses.lendingPool;
+      const pool = selectedMarket?.lendingPool;
       if (!pool || !isSupabaseConfigured || !supabase) return;
       supabase.functions.invoke("write-lending-borrower", {
         body: { txHash, chainId, lendingPoolAddress: pool },
       });
     },
-    [chainId],
+    [chainId, selectedMarket?.lendingPool],
   );
 }

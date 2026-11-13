@@ -47,10 +47,13 @@ contract LendingPoolTest is Test {
     }
 
     function _newPool(uint256 borrowRateBps) internal returns (LendingPool) {
-        return _newPoolWithAge(borrowRateBps, 0);
+        return _newPoolWithAge(borrowRateBps, 0, 0);
     }
 
-    function _newPoolWithAge(uint256 borrowRateBps, uint256 maxPriceAge) internal returns (LendingPool) {
+    function _newPoolWithAge(uint256 borrowRateBps, uint256 maxPriceAge, uint256 maxUtilizationBps)
+        internal
+        returns (LendingPool)
+    {
         return new LendingPool(
             IERC20(address(collateralToken)),
             IERC20(address(debtToken)),
@@ -59,7 +62,8 @@ contract LendingPoolTest is Test {
             feedId,
             LIQUIDATION_THRESHOLD_BPS,
             borrowRateBps,
-            maxPriceAge
+            maxPriceAge,
+            maxUtilizationBps
         );
     }
 
@@ -96,6 +100,7 @@ contract LendingPoolTest is Test {
             feedId,
             LIQUIDATION_THRESHOLD_BPS,
             0,
+            0,
             0
         );
     }
@@ -110,6 +115,7 @@ contract LendingPoolTest is Test {
             feedId,
             LIQUIDATION_THRESHOLD_BPS,
             0,
+            0,
             0
         );
     }
@@ -120,6 +126,28 @@ contract LendingPoolTest is Test {
         _setPrice(PRICE, block.timestamp);
         // 10 whole collateral tokens * $1000 = $10,000, in 18-decimal debtToken units.
         assertEq(pool.collateralValueInDebtUnits(10e18), 10_000e18);
+    }
+
+    function test_CollateralValueInDebtUnits_ConvertsDifferentDecimals() public {
+        // SPYx (18 decimals) / USDC (6 decimals) scenario.
+        MockERC20 sixDecimalDebt = new MockERC20(6);
+        LendingPool mixedPool = new LendingPool(
+            IERC20(address(collateralToken)),
+            IERC20(address(sixDecimalDebt)),
+            oracleConsumer,
+            liquidationConsumer,
+            feedId,
+            LIQUIDATION_THRESHOLD_BPS,
+            0,
+            0,
+            0
+        );
+
+        _setPrice(PRICE, block.timestamp);
+        // 1 whole collateral token * $1000 = $1000, expressed in 6-decimal debt units.
+        assertEq(mixedPool.collateralValueInDebtUnits(1e18), 1_000e6);
+        // 10 whole collateral tokens * $1000 = $10,000.
+        assertEq(mixedPool.collateralValueInDebtUnits(10e18), 10_000e6);
     }
 
     function test_CollateralValueInDebtUnits_RevertsWithNoPriceEver() public {
@@ -196,6 +224,66 @@ contract LendingPoolTest is Test {
         vm.expectRevert(abi.encodeWithSelector(LendingPool.InsufficientLiquidity.selector, 500e18, 100e18));
         vm.prank(borrower);
         thinPool.borrow(500e18);
+    }
+
+    function test_Borrow_RespectsUtilizationCap() public {
+        LendingPool cappedPool = _newPoolWithAge(0, 0, 7000); // 70% max utilization
+        _depositLiquidityTo(cappedPool, lender, 10_000e18);
+
+        _setPrice(PRICE, block.timestamp);
+        _depositCollateralTo(cappedPool, borrower, 20e18); // $20,000 collateral, plenty of room
+
+        // Borrow exactly 70% of supply = 7,000e18 should succeed.
+        vm.prank(borrower);
+        cappedPool.borrow(7_000e18);
+        assertEq(cappedPool.totalBorrows(), 7_000e18);
+
+        // One more wei would push utilization above 70%.
+        vm.expectRevert(abi.encodeWithSelector(LendingPool.UtilizationExceeded.selector, 7001, 7000));
+        vm.prank(borrower);
+        cappedPool.borrow(1e18);
+    }
+
+    function test_Borrow_UtilizationCapZeroMeansDisabled() public {
+        LendingPool uncappedPool = _newPool(0); // cap = 0
+        _depositLiquidityTo(uncappedPool, lender, 10_000e18);
+
+        _setPrice(PRICE, block.timestamp);
+        _depositCollateralTo(uncappedPool, borrower, 20e18);
+
+        // Borrow 100% of supplied liquidity; should succeed because cap is off.
+        vm.prank(borrower);
+        uncappedPool.borrow(10_000e18);
+        assertEq(uncappedPool.totalBorrows(), 10_000e18);
+    }
+
+    function test_WithdrawLiquidity_CanWithdrawIdleBufferUnderUtilizationCap() public {
+        LendingPool cappedPool = _newPoolWithAge(0, 0, 7000);
+        _depositLiquidityTo(cappedPool, lender, 10_000e18);
+
+        _setPrice(PRICE, block.timestamp);
+        _depositCollateralTo(cappedPool, borrower, 20e18);
+
+        // Borrow up to the 70% cap.
+        vm.prank(borrower);
+        cappedPool.borrow(7_000e18);
+
+        // Supplier can withdraw the remaining 3,000e18 idle buffer.
+        uint256 shares = cappedPool.lenderShares(lender);
+        uint256 totalSupply = cappedPool.totalSupply();
+        uint256 withdrawAmount = (shares * totalSupply) / cappedPool.totalShares();
+        assertEq(withdrawAmount, 10_000e18);
+
+        // But withdrawing the full 10,000e18 would require pulling borrowed funds.
+        uint256 withdrawableShares = (3_000e18 * shares) / totalSupply;
+        vm.prank(lender);
+        cappedPool.withdrawLiquidity(withdrawableShares);
+
+        // Any further withdraw reverts on insufficient idle liquidity.
+        uint256 remainingShares = cappedPool.lenderShares(lender);
+        vm.expectRevert(abi.encodeWithSelector(LendingPool.InsufficientLiquidity.selector, 7_000e18, 0));
+        vm.prank(lender);
+        cappedPool.withdrawLiquidity(remainingShares);
     }
 
     // ─── repay ────────────────────────────────────────────────
@@ -701,7 +789,7 @@ contract LendingPoolTest is Test {
     }
 
     function test_Pool_RevertsOnStalePrice() public {
-        LendingPool agedPool = _newPoolWithAge(0, 15 minutes);
+        LendingPool agedPool = _newPoolWithAge(0, 15 minutes, 0);
 
         _setPrice(PRICE, block.timestamp);
         assertEq(agedPool.collateralValueInDebtUnits(10e18), 10_000e18);
@@ -720,6 +808,7 @@ contract LendingPoolTest is Test {
             consumer,
             feedId,
             LIQUIDATION_THRESHOLD_BPS,
+            0,
             0,
             0
         );
