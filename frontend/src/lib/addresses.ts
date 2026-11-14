@@ -14,48 +14,70 @@ function optionalAddress(env: string | undefined): Address | undefined {
   return env && env.startsWith("0x") ? (env as Address) : undefined;
 }
 
-function marketFromEnv(prefix: string): LendingMarket | undefined {
-  const lendingPool = optionalAddress(process.env[`NEXT_PUBLIC_${prefix}_LENDING_POOL_ADDRESS`]);
-  const lendingOracleConsumer = optionalAddress(process.env[`NEXT_PUBLIC_${prefix}_LENDING_ORACLE_CONSUMER_ADDRESS`]);
-  const liquidationConsumer = optionalAddress(process.env[`NEXT_PUBLIC_${prefix}_LIQUIDATION_CONSUMER_ADDRESS`]);
-  const collateralToken = optionalAddress(process.env[`NEXT_PUBLIC_${prefix}_COLLATERAL_TOKEN_ADDRESS`]);
-  const debtToken = optionalAddress(process.env[`NEXT_PUBLIC_${prefix}_DEBT_TOKEN_ADDRESS`]);
+function buildMarket(
+  id: string,
+  name: string | undefined,
+  lendingPool: string | undefined,
+  lendingOracleConsumer: string | undefined,
+  liquidationConsumer: string | undefined,
+  collateralToken: string | undefined,
+  debtToken: string | undefined
+): LendingMarket | undefined {
+  const pool = optionalAddress(lendingPool);
+  const oracle = optionalAddress(lendingOracleConsumer);
+  const liquidation = optionalAddress(liquidationConsumer);
+  const collateral = optionalAddress(collateralToken);
+  const debt = optionalAddress(debtToken);
 
-  if (!lendingPool || !lendingOracleConsumer || !liquidationConsumer || !collateralToken || !debtToken) {
+  if (!pool || !oracle || !liquidation || !collateral || !debt) {
     return undefined;
   }
 
   return {
-    id: prefix.toLowerCase(),
-    name: process.env[`NEXT_PUBLIC_${prefix}_MARKET_NAME`] || `${prefix} Market`,
-    lendingPool,
-    lendingOracleConsumer,
-    liquidationConsumer,
-    collateralToken,
-    debtToken,
+    id,
+    name: name || `${id.toUpperCase()} Market`,
+    lendingPool: pool,
+    lendingOracleConsumer: oracle,
+    liquidationConsumer: liquidation,
+    collateralToken: collateral,
+    debtToken: debt,
   };
 }
 
 function primaryMarketFromLegacyEnv(): LendingMarket | undefined {
-  const lendingPool = optionalAddress(process.env.NEXT_PUBLIC_LENDING_POOL_ADDRESS);
-  const lendingOracleConsumer = optionalAddress(process.env.NEXT_PUBLIC_LENDING_ORACLE_CONSUMER_ADDRESS);
-  const liquidationConsumer = optionalAddress(process.env.NEXT_PUBLIC_LIQUIDATION_CONSUMER_ADDRESS);
-  const collateralToken = optionalAddress(process.env.NEXT_PUBLIC_COLLATERAL_TOKEN_ADDRESS);
-  const debtToken = optionalAddress(process.env.NEXT_PUBLIC_DEBT_TOKEN_ADDRESS);
+  return buildMarket(
+    "rwa",
+    process.env.NEXT_PUBLIC_RWA_MARKET_NAME,
+    process.env.NEXT_PUBLIC_LENDING_POOL_ADDRESS,
+    process.env.NEXT_PUBLIC_LENDING_ORACLE_CONSUMER_ADDRESS,
+    process.env.NEXT_PUBLIC_LIQUIDATION_CONSUMER_ADDRESS,
+    process.env.NEXT_PUBLIC_COLLATERAL_TOKEN_ADDRESS,
+    process.env.NEXT_PUBLIC_DEBT_TOKEN_ADDRESS
+  );
+}
 
-  if (!lendingPool || !lendingOracleConsumer || !liquidationConsumer || !collateralToken || !debtToken) {
-    return undefined;
-  }
+function xstocksMarketFromEnv(): LendingMarket | undefined {
+  return buildMarket(
+    "xstocks",
+    process.env.NEXT_PUBLIC_XSTOCKS_MARKET_NAME,
+    process.env.NEXT_PUBLIC_XSTOCKS_LENDING_POOL_ADDRESS,
+    process.env.NEXT_PUBLIC_XSTOCKS_LENDING_ORACLE_CONSUMER_ADDRESS,
+    process.env.NEXT_PUBLIC_XSTOCKS_LIQUIDATION_CONSUMER_ADDRESS,
+    process.env.NEXT_PUBLIC_XSTOCKS_COLLATERAL_TOKEN_ADDRESS,
+    process.env.NEXT_PUBLIC_XSTOCKS_DEBT_TOKEN_ADDRESS
+  );
+}
 
-  return {
-    id: "rwa",
-    name: process.env.NEXT_PUBLIC_RWA_MARKET_NAME || "RWA / mUSD",
-    lendingPool,
-    lendingOracleConsumer,
-    liquidationConsumer,
-    collateralToken,
-    debtToken,
-  };
+function susdeMarketFromEnv(): LendingMarket | undefined {
+  return buildMarket(
+    "susde",
+    process.env.NEXT_PUBLIC_SUSDE_MARKET_NAME,
+    process.env.NEXT_PUBLIC_SUSDE_LENDING_POOL_ADDRESS,
+    process.env.NEXT_PUBLIC_SUSDE_LENDING_ORACLE_CONSUMER_ADDRESS,
+    process.env.NEXT_PUBLIC_SUSDE_LIQUIDATION_CONSUMER_ADDRESS,
+    process.env.NEXT_PUBLIC_SUSDE_COLLATERAL_TOKEN_ADDRESS,
+    process.env.NEXT_PUBLIC_SUSDE_DEBT_TOKEN_ADDRESS
+  );
 }
 
 /**
@@ -75,8 +97,8 @@ function primaryMarketFromLegacyEnv(): LendingMarket | undefined {
  */
 export const lendingMarkets: LendingMarket[] = [
   primaryMarketFromLegacyEnv(),
-  marketFromEnv("XSTOCKS"),
-  marketFromEnv("SUSDE"),
+  xstocksMarketFromEnv(),
+  susdeMarketFromEnv(),
 ].filter((m): m is LendingMarket => m !== undefined);
 
 /**

@@ -25,24 +25,21 @@ import { toast, toastTxError } from "@/lib/toast";
 import { LendingIcon } from "@/components/ui/icons";
 import { HealthFactorGauge } from "@/components/ui/HealthFactorGauge";
 
-function requiredEnvNames(prefix: string): string[] {
-  return [
-    `NEXT_PUBLIC_${prefix}_LENDING_POOL_ADDRESS`,
-    `NEXT_PUBLIC_${prefix}_LENDING_ORACLE_CONSUMER_ADDRESS`,
-    `NEXT_PUBLIC_${prefix}_LIQUIDATION_CONSUMER_ADDRESS`,
-    `NEXT_PUBLIC_${prefix}_COLLATERAL_TOKEN_ADDRESS`,
-    `NEXT_PUBLIC_${prefix}_DEBT_TOKEN_ADDRESS`,
-    `NEXT_PUBLIC_${prefix}_MARKET_NAME`,
-  ];
-}
-
 function EnvDiagnostic() {
-  const checks: { name: string; present: boolean }[] = [];
-  ["XSTOCKS", "SUSDE"].forEach((prefix) => {
-    requiredEnvNames(prefix).forEach((name) => {
-      checks.push({ name, present: Boolean(process.env[name]) });
-    });
-  });
+  const checks = [
+    { name: "NEXT_PUBLIC_XSTOCKS_LENDING_POOL_ADDRESS", present: Boolean(process.env.NEXT_PUBLIC_XSTOCKS_LENDING_POOL_ADDRESS) },
+    { name: "NEXT_PUBLIC_XSTOCKS_LENDING_ORACLE_CONSUMER_ADDRESS", present: Boolean(process.env.NEXT_PUBLIC_XSTOCKS_LENDING_ORACLE_CONSUMER_ADDRESS) },
+    { name: "NEXT_PUBLIC_XSTOCKS_LIQUIDATION_CONSUMER_ADDRESS", present: Boolean(process.env.NEXT_PUBLIC_XSTOCKS_LIQUIDATION_CONSUMER_ADDRESS) },
+    { name: "NEXT_PUBLIC_XSTOCKS_COLLATERAL_TOKEN_ADDRESS", present: Boolean(process.env.NEXT_PUBLIC_XSTOCKS_COLLATERAL_TOKEN_ADDRESS) },
+    { name: "NEXT_PUBLIC_XSTOCKS_DEBT_TOKEN_ADDRESS", present: Boolean(process.env.NEXT_PUBLIC_XSTOCKS_DEBT_TOKEN_ADDRESS) },
+    { name: "NEXT_PUBLIC_XSTOCKS_MARKET_NAME", present: Boolean(process.env.NEXT_PUBLIC_XSTOCKS_MARKET_NAME) },
+    { name: "NEXT_PUBLIC_SUSDE_LENDING_POOL_ADDRESS", present: Boolean(process.env.NEXT_PUBLIC_SUSDE_LENDING_POOL_ADDRESS) },
+    { name: "NEXT_PUBLIC_SUSDE_LENDING_ORACLE_CONSUMER_ADDRESS", present: Boolean(process.env.NEXT_PUBLIC_SUSDE_LENDING_ORACLE_CONSUMER_ADDRESS) },
+    { name: "NEXT_PUBLIC_SUSDE_LIQUIDATION_CONSUMER_ADDRESS", present: Boolean(process.env.NEXT_PUBLIC_SUSDE_LIQUIDATION_CONSUMER_ADDRESS) },
+    { name: "NEXT_PUBLIC_SUSDE_COLLATERAL_TOKEN_ADDRESS", present: Boolean(process.env.NEXT_PUBLIC_SUSDE_COLLATERAL_TOKEN_ADDRESS) },
+    { name: "NEXT_PUBLIC_SUSDE_DEBT_TOKEN_ADDRESS", present: Boolean(process.env.NEXT_PUBLIC_SUSDE_DEBT_TOKEN_ADDRESS) },
+    { name: "NEXT_PUBLIC_SUSDE_MARKET_NAME", present: Boolean(process.env.NEXT_PUBLIC_SUSDE_MARKET_NAME) },
+  ];
 
   return (
     <div className="mt-6 text-left inline-block">
