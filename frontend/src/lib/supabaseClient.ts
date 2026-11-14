@@ -8,8 +8,8 @@ import { createClient } from "@supabase/supabase-js";
  * through signature-verified Edge Functions (see signedMetadata.ts), never
  * a direct table write from the client.
  */
-const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+export const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+export const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 export const isSupabaseConfigured = Boolean(url && anonKey);
 

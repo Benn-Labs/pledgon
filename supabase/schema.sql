@@ -129,6 +129,33 @@ drop policy if exists "public read escrow_milestone_documents" on escrow_milesto
 create policy "public read escrow_milestone_documents" on escrow_milestone_documents
   for select using (true);
 
+-- Arbitrage bot registry. Each row records a FlashArbV3 deployment that a
+-- user has registered with PLEDGON. Ownership is verified on-chain by the
+-- write-arbitrage-bot Edge Function before insertion; only the on-chain owner
+-- can register or update their bot's metadata. This table is discovery-only —
+-- funds, profits, and execution always remain under the owner's private key.
+create table if not exists arbitrage_bots (
+  id bigint generated always as identity primary key,
+  chain_id integer not null,
+  bot_address text not null,
+  owner_address text not null,
+  deployed_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (chain_id, bot_address)
+);
+
+create index if not exists idx_arbitrage_bots_lookup
+  on arbitrage_bots (chain_id, bot_address);
+
+create index if not exists idx_arbitrage_bots_owner
+  on arbitrage_bots (chain_id, owner_address);
+
+alter table arbitrage_bots enable row level security;
+
+drop policy if exists "public read arbitrage_bots" on arbitrage_bots;
+create policy "public read arbitrage_bots" on arbitrage_bots
+  for select using (true);
+
 -- Deliberately no insert/update/delete policies for anon or authenticated —
 -- see the file-level comment. The service_role key (used only inside the
 -- Edge Functions, never shipped to the client) bypasses RLS entirely.

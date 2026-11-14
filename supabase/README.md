@@ -29,6 +29,7 @@ lose thumbnails, descriptions, and labels.
    ```bash
    supabase functions deploy write-listing-metadata
    supabase functions deploy write-escrow-metadata
+   supabase functions deploy write-lending-borrower
    supabase functions deploy write-milestone-document
    ```
 6. Give the frontend the project URL and **anon** key (Project Settings → API)

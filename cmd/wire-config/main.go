@@ -1,5 +1,5 @@
-// Command wire-config copies addresses from a Deploy.s.sol deployment record
-// (contracts/evm/deployments/<chainId>.json) into the matching fields of each
+// Command wire-config copies addresses from deployment records
+// (contracts/evm/deployments/<chainId>.json and arbitrage-<chainId>.json) into the matching fields of each
 // workflow's config.<target>.json. It is deliberately narrow: it only touches
 // the specific fields listed in `wirings` below, leaves every other config
 // value (URLs, secret IDs, thresholds, and per-workflow inputs like
@@ -24,9 +24,11 @@ import (
 
 // wiring maps one deployment record field to one workflow config field.
 type wiring struct {
-	workflow      string
-	configField   string
-	deploymentKey string
+	workflow       string
+	configField    string
+	deploymentKey  string
+	deploymentFile string // defaults to "<chainId>.json"
+	optional       bool   // if true, a missing deployment file is skipped with a warning
 }
 
 var wirings = []wiring{
@@ -37,10 +39,11 @@ var wirings = []wiring{
 	{workflow: "lending-oracle", configField: "consumerAddress", deploymentKey: "lendingOracleConsumer"},
 	{workflow: "trade-expiry", configField: "escrowFactoryAddress", deploymentKey: "escrowFactory"},
 	{workflow: "trade-expiry", configField: "keeperAddress", deploymentKey: "tradeExpiryKeeper"},
+	{workflow: "arbitrage", configField: "flashArbV3Address", deploymentKey: "flashArbV3", deploymentFile: "arbitrage-<chainId>.json", optional: true},
 }
 
 func main() {
-	chainID := flag.String("chain-id", "", "chain ID matching contracts/evm/deployments/<chainId>.json (required)")
+	chainID := flag.String("chain-id", "", "chain ID matching contracts/evm/deployments/<chainId>.json and arbitrage-<chainId>.json (required)")
 	target := flag.String("target", "staging", "config target: staging or production")
 	flag.Parse()
 
@@ -56,18 +59,47 @@ func main() {
 }
 
 func run(root, chainID, target string) error {
-	deploymentsPath := filepath.Join(root, "contracts", "evm", "deployments", chainID+".json")
-	raw, err := os.ReadFile(deploymentsPath)
-	if err != nil {
-		return fmt.Errorf("read %s: %w", deploymentsPath, err)
-	}
+	// Load all deployment records we may need, by filename.
+	deploymentsDir := filepath.Join(root, "contracts", "evm", "deployments")
+	deploymentFiles := map[string]map[string]string{}
+	for _, w := range wirings {
+		filename := w.deploymentFile
+		if filename == "" {
+			filename = chainID + ".json"
+		} else {
+			filename = strings.ReplaceAll(filename, "<chainId>", chainID)
+		}
+		if _, ok := deploymentFiles[filename]; ok {
+			continue
+		}
 
-	var deployments map[string]string
-	if err := json.Unmarshal(raw, &deployments); err != nil {
-		return fmt.Errorf("parse %s: %w", deploymentsPath, err)
+		deploymentsPath := filepath.Join(deploymentsDir, filename)
+		raw, err := os.ReadFile(deploymentsPath)
+		if err != nil {
+			if w.optional && errors.Is(err, os.ErrNotExist) {
+				fmt.Printf("skip optional deployment record %s (not found)\n", deploymentsPath)
+				deploymentFiles[filename] = map[string]string{}
+				continue
+			}
+			return fmt.Errorf("read %s: %w", deploymentsPath, err)
+		}
+		var deployments map[string]string
+		if err := json.Unmarshal(raw, &deployments); err != nil {
+			return fmt.Errorf("parse %s: %w", deploymentsPath, err)
+		}
+		deploymentFiles[filename] = deployments
 	}
 
 	for _, w := range wirings {
+		filename := w.deploymentFile
+		if filename == "" {
+			filename = chainID + ".json"
+		} else {
+			filename = strings.ReplaceAll(filename, "<chainId>", chainID)
+		}
+		deployments := deploymentFiles[filename]
+		deploymentsPath := filepath.Join(deploymentsDir, filename)
+
 		address := deployments[w.deploymentKey]
 		if isZeroAddress(address) {
 			// Deploy.s.sol writes the zero address for anything it skipped

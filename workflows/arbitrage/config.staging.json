@@ -1,0 +1,6 @@
+{
+  "chainSelectorName": "ethereum-testnet-sepolia",
+  "flashArbV3Address": "0x0000000000000000000000000000000000000000",
+  "profitabilityCheckUrl": "https://example.com/arbitrage/quote",
+  "minProfitBps": 10
+}

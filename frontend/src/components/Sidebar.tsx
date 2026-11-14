@@ -5,13 +5,14 @@ import { usePathname } from "next/navigation";
 import { useAccount, useReadContract } from "wagmi";
 import { addresses, isLendingConfigured } from "@/lib/addresses";
 import { escrowFactoryAbi } from "@/generated/contracts";
-import { HomeIcon, MarketplaceIcon, EscrowIcon, LendingIcon, FaucetIcon, SwapIcon, AdminIcon } from "@/components/ui/icons";
+import { HomeIcon, MarketplaceIcon, EscrowIcon, LendingIcon, FaucetIcon, SwapIcon, ArbitrageIcon, AdminIcon } from "@/components/ui/icons";
 
 const NAV = [
   { href: "/", label: "Dashboard", icon: HomeIcon },
   { href: "/marketplace", label: "Marketplace", icon: MarketplaceIcon },
   { href: "/escrow", label: "Escrow", icon: EscrowIcon },
   { href: "/lending", label: "Lending", icon: LendingIcon },
+  { href: "/arbitrage", label: "Arbitrage", icon: ArbitrageIcon },
   { href: "/faucet", label: "Faucet", icon: FaucetIcon },
   { href: "/swap", label: "Swap", icon: SwapIcon },
 ];

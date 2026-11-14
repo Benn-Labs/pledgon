@@ -48,11 +48,15 @@ import {LendingPool} from "../src/lending/LendingPool.sol";
 /// Optional env vars (lending is skipped entirely unless both token addresses
 /// are set):
 ///   COLLATERAL_TOKEN_ADDRESS
-///   DEBT_TOKEN_ADDRESS          must share `decimals()` with the collateral
+///   DEBT_TOKEN_ADDRESS          no longer required to share `decimals()` with the
+///                               collateral token — LendingPool converts between them.
 ///                               token — see LendingPool's own doc comment
 ///   COLLATERAL_FEED_LABEL       default "RWA/USD"; hashed to the feedId
 ///                               LendingOracleConsumer keys its price by
 ///   LIQUIDATION_THRESHOLD_BPS   default 8000 (80% LTV)
+///   MAX_UTILIZATION_BPS         default 0 (disabled); set to e.g. 9000 in
+///                               production to keep at least 10% of deposits
+///                               idle and immediately withdrawable
 ///
 /// Optional env vars for compliance (see ComplianceConsumer.sol / EscrowFactory
 /// .sol for what these mean):
@@ -182,6 +186,7 @@ contract Deploy is Script {
         // consumers' and pool's natspec for what 0 vs non-zero means.
         uint256 maxPriceAge = vm.envOr("MAX_PRICE_AGE", uint256(15 minutes));
         uint256 maxVerdictAge = vm.envOr("MAX_VERDICT_AGE", uint256(15 minutes));
+        uint256 maxUtilizationBps = vm.envOr("MAX_UTILIZATION_BPS", uint256(0));
         uint256 maxDeviationBps = vm.envOr("MAX_PRICE_DEVIATION_BPS", uint256(5000));
         // Workflow bindings — bytes32 0 = unbound (simulation only); see the
         // identical comment on the escrow-side consumers in run().
@@ -203,7 +208,8 @@ contract Deploy is Script {
             oracleConsumer.feedIdFor(feedLabel),
             thresholdBps,
             borrowRateBps,
-            maxPriceAge
+            maxPriceAge,
+            maxUtilizationBps
         );
 
         console.log("LendingOracleConsumer:     ", address(oracleConsumer));
