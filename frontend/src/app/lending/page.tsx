@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { erc20Abi, formatUnits, isAddress } from "viem";
 import type { Address } from "viem";
@@ -132,7 +132,27 @@ function ActionPanel({
 
 export default function LendingPage() {
   const { address: account } = useAccount();
-  const [selectedMarket, setSelectedMarket] = useState<LendingMarket>(lendingMarkets[0]);
+  const [selectedMarketId, setSelectedMarketId] = useState<string>();
+  const selectedMarket = useMemo(
+    () => lendingMarkets.find((m) => m.id === selectedMarketId) ?? lendingMarkets[0],
+    [selectedMarketId]
+  );
+
+  // Guard against the brief client render where lendingMarkets is empty during
+  // hydration/env load. The isLendingConfigured check below handles the empty
+  // case once the constant is stable.
+  if (!selectedMarket) {
+    return (
+      <div className="fade-in max-w-lg mx-auto text-center py-16">
+        <LendingIcon className="w-10 h-10 text-ink-600 mx-auto mb-4" />
+        <h1 className="text-xl font-display text-white mb-2">Lending isn&apos;t deployed on this network</h1>
+        <p className="text-sm text-ink-400">
+          Set the <code className="font-mono text-xs">NEXT_PUBLIC_XSTOCKS_*</code> and{" "}
+          <code className="font-mono text-xs">NEXT_PUBLIC_SUSDE_*</code> env vars, then restart the dev server.
+        </p>
+      </div>
+    );
+  }
 
   const { decimals: collDecimals, symbol: collSymbol } = useToken(selectedMarket.collateralToken);
   const { decimals: debtDecimals, symbol: debtSymbol } = useToken(selectedMarket.debtToken);
@@ -548,10 +568,7 @@ export default function LendingPage() {
           id="market-select"
           className="bg-ink-800 border border-ink-700 rounded-lg px-3 py-2 text-ink-200 focus:outline-none focus:border-trust-500"
           value={selectedMarket.id}
-          onChange={(e) => {
-            const market = lendingMarkets.find((m) => m.id === e.target.value);
-            if (market) setSelectedMarket(market);
-          }}
+          onChange={(e) => setSelectedMarketId(e.target.value)}
         >
           {lendingMarkets.map((m) => (
             <option key={m.id} value={m.id}>
