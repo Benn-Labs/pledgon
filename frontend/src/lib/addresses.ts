@@ -80,12 +80,21 @@ export const lendingMarkets: LendingMarket[] = [
 ].filter((m): m is LendingMarket => m !== undefined);
 
 // Temporary debug: server terminal + browser console should both show these.
+function debugEnv(prefix: string) {
+  return {
+    pool: process.env[`NEXT_PUBLIC_${prefix}_LENDING_POOL_ADDRESS`],
+    oracle: process.env[`NEXT_PUBLIC_${prefix}_LENDING_ORACLE_CONSUMER_ADDRESS`],
+    liquidation: process.env[`NEXT_PUBLIC_${prefix}_LIQUIDATION_CONSUMER_ADDRESS`],
+    collateral: process.env[`NEXT_PUBLIC_${prefix}_COLLATERAL_TOKEN_ADDRESS`],
+    debt: process.env[`NEXT_PUBLIC_${prefix}_DEBT_TOKEN_ADDRESS`],
+    market: marketFromEnv(prefix),
+  };
+}
 // eslint-disable-next-line no-console
 console.log("[lending markets debug]", {
-  xstocksPool: process.env.NEXT_PUBLIC_XSTOCKS_LENDING_POOL_ADDRESS,
-  susdePool: process.env.NEXT_PUBLIC_SUSDE_LENDING_POOL_ADDRESS,
+  xstocks: debugEnv("XSTOCKS"),
+  susde: debugEnv("SUSDE"),
   marketCount: lendingMarkets.length,
-  markets: lendingMarkets.map((m) => ({ id: m.id, name: m.name, pool: m.lendingPool })),
 });
 
 /**
