@@ -132,29 +132,15 @@ function ActionPanel({
 
 export default function LendingPage() {
   const { address: account } = useAccount();
-  const [selectedMarketId, setSelectedMarketId] = useState<string>();
+  // Initialize the selected id synchronously from the first configured market so
+  // the first client render matches the server-rendered HTML during hydration.
+  const [selectedMarketId, setSelectedMarketId] = useState<string>(() => lendingMarkets[0]?.id ?? "");
   const selectedMarket = useMemo(
     () => lendingMarkets.find((m) => m.id === selectedMarketId) ?? lendingMarkets[0],
     [selectedMarketId]
   );
 
-  // Guard against the brief client render where lendingMarkets is empty during
-  // hydration/env load. The isLendingConfigured check below handles the empty
-  // case once the constant is stable.
-  if (!selectedMarket) {
-    return (
-      <div className="fade-in max-w-lg mx-auto text-center py-16">
-        <LendingIcon className="w-10 h-10 text-ink-600 mx-auto mb-4" />
-        <h1 className="text-xl font-display text-white mb-2">Lending isn&apos;t deployed on this network</h1>
-        <p className="text-sm text-ink-400">
-          Set the <code className="font-mono text-xs">NEXT_PUBLIC_XSTOCKS_*</code> and{" "}
-          <code className="font-mono text-xs">NEXT_PUBLIC_SUSDE_*</code> env vars, then restart the dev server.
-        </p>
-      </div>
-    );
-  }
-
-  const { decimals: collDecimals, symbol: collSymbol } = useToken(selectedMarket.collateralToken);
+  const { decimals: collDecimals, symbol: collSymbol } = useToken(selectedMarket?.collateralToken);
   const { decimals: debtDecimals, symbol: debtSymbol } = useToken(selectedMarket.debtToken);
   const { hasPrice, healthFactor, ltvBps, liquidationThresholdBps, price, priceDecimals, maxUtilizationBps } =
     useLendingPosition(selectedMarket);
