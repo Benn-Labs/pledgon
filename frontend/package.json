@@ -2,6 +2,9 @@
   "name": "frontend",
   "version": "0.1.0",
   "private": true,
+  "overrides": {
+    "qr": "0.5.5"
+  },
   "scripts": {
     "dev": "next dev --webpack",
     "build": "next build --webpack",
