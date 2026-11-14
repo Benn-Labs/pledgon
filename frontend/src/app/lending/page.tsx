@@ -130,40 +130,22 @@ function ActionPanel({
   );
 }
 
-export default function LendingPage() {
+function LendingPageContent() {
   const { address: account } = useAccount();
-  // Initialize the selected id synchronously from the first configured market so
-  // the first client render matches the server-rendered HTML during hydration.
-  const [selectedMarketId, setSelectedMarketId] = useState<string>(() => lendingMarkets[0]?.id ?? "");
+  const [selectedMarketId, setSelectedMarketId] = useState<string>(() => lendingMarkets[0].id);
   const selectedMarket = useMemo(
     () => lendingMarkets.find((m) => m.id === selectedMarketId) ?? lendingMarkets[0],
     [selectedMarketId]
   );
 
-  const { decimals: collDecimals, symbol: collSymbol } = useToken(selectedMarket?.collateralToken);
-  const { decimals: debtDecimals, symbol: debtSymbol } = useToken(selectedMarket?.debtToken);
+  const { decimals: collDecimals, symbol: collSymbol } = useToken(selectedMarket.collateralToken);
+  const { decimals: debtDecimals, symbol: debtSymbol } = useToken(selectedMarket.debtToken);
   const { hasPrice, healthFactor, ltvBps, liquidationThresholdBps, price, priceDecimals, maxUtilizationBps } =
     useLendingPosition(selectedMarket);
   const { rewards: feeRewards, windowSeconds: rewardSeconds, windowLabel: rewardWindow, isError: rewardsError } =
     useLenderRewards(selectedMarket);
   const { borrowers: atRiskBorrowers, isLoading: borrowersLoading } = useLendingBorrowers(selectedMarket);
   const registerBorrowerFromDeposit = useRegisterBorrowerFromDeposit(selectedMarket);
-
-  // If no lending markets are configured, stop here with a clear message rather
-  // than trying to read from undefined addresses. This can only happen when the
-  // required env vars are missing; once they are present the guard is a no-op.
-  if (!selectedMarket) {
-    return (
-      <div className="fade-in max-w-lg mx-auto text-center py-16">
-        <LendingIcon className="w-10 h-10 text-ink-600 mx-auto mb-4" />
-        <h1 className="text-xl font-display text-white mb-2">Lending isn&apos;t deployed on this network</h1>
-        <p className="text-sm text-ink-400">
-          Set the <code className="font-mono text-xs">NEXT_PUBLIC_XSTOCKS_*</code> and{" "}
-          <code className="font-mono text-xs">NEXT_PUBLIC_SUSDE_*</code> env vars, then restart the dev server.
-        </p>
-      </div>
-    );
-  }
 
   const { data: position, refetch: refetchPosition } = useReadContract({
     address: selectedMarket.lendingPool,
@@ -320,23 +302,6 @@ export default function LendingPage() {
   useEffect(() => {
     if (error) toastTxError(error);
   }, [error]);
-
-  if (!isLendingConfigured) {
-    return (
-      <div className="fade-in max-w-lg mx-auto text-center py-16">
-        <LendingIcon className="w-10 h-10 text-ink-600 mx-auto mb-4" />
-        <h1 className="text-xl font-display text-white mb-2">Lending isn&apos;t deployed on this network</h1>
-        <p className="text-sm text-ink-400">
-          The contracts exist (<code className="font-mono text-xs">LendingPool</code>,{" "}
-          <code className="font-mono text-xs">LendingOracleConsumer</code>,{" "}
-          <code className="font-mono text-xs">LiquidationConsumer</code>) but haven&apos;t been deployed to Sepolia
-          yet. Run <code className="font-mono text-xs">DeployLendingTokens.s.sol</code> then{" "}
-          <code className="font-mono text-xs">DeployLending.s.sol</code>, then set the{" "}
-          <code className="font-mono text-xs">NEXT_PUBLIC_LENDING_*</code> env vars.
-        </p>
-      </div>
-    );
-  }
 
   const [collateralAmount, debtAmount] = position ?? [0n, 0n];
   const [, targetDebtAmount] = targetPosition ?? [0n, 0n];
@@ -937,4 +902,20 @@ export default function LendingPage() {
       </div>
     </div>
   );
+}
+
+export default function LendingPage() {
+  if (!isLendingConfigured) {
+    return (
+      <div className="fade-in max-w-lg mx-auto text-center py-16">
+        <LendingIcon className="w-10 h-10 text-ink-600 mx-auto mb-4" />
+        <h1 className="text-xl font-display text-white mb-2">Lending isn&apos;t deployed on this network</h1>
+        <p className="text-sm text-ink-400">
+          Set the <code className="font-mono text-xs">NEXT_PUBLIC_XSTOCKS_*</code> and{" "}
+          <code className="font-mono text-xs">NEXT_PUBLIC_SUSDE_*</code> env vars, then restart the dev server.
+        </p>
+      </div>
+    );
+  }
+  return <LendingPageContent />;
 }
