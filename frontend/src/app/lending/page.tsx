@@ -141,13 +141,29 @@ export default function LendingPage() {
   );
 
   const { decimals: collDecimals, symbol: collSymbol } = useToken(selectedMarket?.collateralToken);
-  const { decimals: debtDecimals, symbol: debtSymbol } = useToken(selectedMarket.debtToken);
+  const { decimals: debtDecimals, symbol: debtSymbol } = useToken(selectedMarket?.debtToken);
   const { hasPrice, healthFactor, ltvBps, liquidationThresholdBps, price, priceDecimals, maxUtilizationBps } =
     useLendingPosition(selectedMarket);
   const { rewards: feeRewards, windowSeconds: rewardSeconds, windowLabel: rewardWindow, isError: rewardsError } =
     useLenderRewards(selectedMarket);
   const { borrowers: atRiskBorrowers, isLoading: borrowersLoading } = useLendingBorrowers(selectedMarket);
   const registerBorrowerFromDeposit = useRegisterBorrowerFromDeposit(selectedMarket);
+
+  // If no lending markets are configured, stop here with a clear message rather
+  // than trying to read from undefined addresses. This can only happen when the
+  // required env vars are missing; once they are present the guard is a no-op.
+  if (!selectedMarket) {
+    return (
+      <div className="fade-in max-w-lg mx-auto text-center py-16">
+        <LendingIcon className="w-10 h-10 text-ink-600 mx-auto mb-4" />
+        <h1 className="text-xl font-display text-white mb-2">Lending isn&apos;t deployed on this network</h1>
+        <p className="text-sm text-ink-400">
+          Set the <code className="font-mono text-xs">NEXT_PUBLIC_XSTOCKS_*</code> and{" "}
+          <code className="font-mono text-xs">NEXT_PUBLIC_SUSDE_*</code> env vars, then restart the dev server.
+        </p>
+      </div>
+    );
+  }
 
   const { data: position, refetch: refetchPosition } = useReadContract({
     address: selectedMarket.lendingPool,
