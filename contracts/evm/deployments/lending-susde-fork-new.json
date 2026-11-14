@@ -1,0 +1,7 @@
+{
+  "collateralToken": "0x7feA0C85ADF32C3AE4E3d746CAF31c47582FBb7d",
+  "debtToken": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+  "lendingOracleConsumer": "0x03228966Dd0335dF379b0795eA9D59884c2F5742",
+  "lendingPool": "0xb1E2EB83CfFb41Df240c74ce66b36FBD79841346",
+  "liquidationConsumer": "0x8EdCC3340e082033D78F9C1ef177CA5c10963bcB"
+}
