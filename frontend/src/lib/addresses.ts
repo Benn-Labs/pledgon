@@ -79,6 +79,15 @@ export const lendingMarkets: LendingMarket[] = [
   marketFromEnv("SUSDE"),
 ].filter((m): m is LendingMarket => m !== undefined);
 
+// Temporary debug: server terminal + browser console should both show these.
+// eslint-disable-next-line no-console
+console.log("[lending markets debug]", {
+  xstocksPool: process.env.NEXT_PUBLIC_XSTOCKS_LENDING_POOL_ADDRESS,
+  susdePool: process.env.NEXT_PUBLIC_SUSDE_LENDING_POOL_ADDRESS,
+  marketCount: lendingMarkets.length,
+  markets: lendingMarkets.map((m) => ({ id: m.id, name: m.name, pool: m.lendingPool })),
+});
+
 /**
  * Backward-compatible single-market addresses object. Reflects the first
  * configured lending market (or undefined if none are configured).
