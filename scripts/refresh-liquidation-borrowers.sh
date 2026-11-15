@@ -3,7 +3,7 @@
 # deployments in one step. Run from anywhere in the repo; it cd's to the root.
 #
 #   scripts/refresh-liquidation-borrowers.sh --rpc-url https://... \
-#     [--target staging|production] [--from-block 12063724]
+#     --from-block <pool-deploy-block> [--target staging|production]
 #
 # Why this exists: the CRE workflows only know borrowers baked into their
 # config at deploy time, and the workflow can't self-discover them across
@@ -13,23 +13,28 @@
 # the new borrower list to take effect. This script is that manual path,
 # collapsed to one command; the deploy steps prompt before touching the
 # registry.
+#
+# --from-block is required: it must be the CURRENT pool's deployment block
+# (the pool in contracts/evm/deployments/<chainId>.json). There is no safe
+# default — scanning from a stale block either misses borrowers (they stay
+# unmonitored) or walks millions of empty blocks at 10 blocks/request.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 RPC_URL=""
 TARGET="staging"
-FROM_BLOCK="12063724"
+FROM_BLOCK=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --rpc-url)    RPC_URL="${2:?--rpc-url needs a value}"; shift 2 ;;
     --target)     TARGET="${2:?--target needs a value}"; shift 2 ;;
     --from-block) FROM_BLOCK="${2:?--from-block needs a value}"; shift 2 ;;
-    -h|--help)    sed -n '2,13p' "$0"; exit 0 ;;
+    -h|--help)    sed -n '2,20p' "$0"; exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
-if [[ -z "$RPC_URL" ]]; then
-  echo "usage: $0 --rpc-url <sepolia-rpc-url> [--target staging|production] [--from-block <n>]" >&2
+if [[ -z "$RPC_URL" || -z "$FROM_BLOCK" ]]; then
+  echo "usage: $0 --rpc-url <sepolia-rpc-url> --from-block <pool-deploy-block> [--target staging|production]" >&2
   exit 2
 fi
 

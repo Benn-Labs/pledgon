@@ -102,7 +102,14 @@ export function useLendingPosition(market?: LendingMarket) {
     // collateralValue is in debt-token units — same computation as
     // LendingPool.collateralValueInDebtUnits(), which now handles differing
     // collateral and debt token decimals.
-    const collateralValue = (collateralAmount * price) / 10n ** BigInt(priceDecimals);
+    let collateralValue = (collateralAmount * price) / 10n ** BigInt(priceDecimals);
+    if (collDecimals !== undefined && debtDecimals !== undefined) {
+      if (collDecimals > debtDecimals) {
+        collateralValue = collateralValue / 10n ** BigInt(collDecimals - debtDecimals);
+      } else if (collDecimals < debtDecimals) {
+        collateralValue = collateralValue * 10n ** BigInt(debtDecimals - collDecimals);
+      }
+    }
 
     if (debtAmount > 0n) {
       // Scaled by 10_000 before the division so the truncating BigInt

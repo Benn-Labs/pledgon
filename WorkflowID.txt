@@ -1,21 +1,13 @@
-The three workflows below are redeployed and ACTIVE on Sepolia staging (verified via `cre workflow list`, 2026-11-09).
+The three workflows below are redeployed and ACTIVE on Sepolia staging (verified via `cre workflow list`, 2026-11-16). All three monitor the sUSDe/USDC market (LendingPool 0x708954Ecf84107722351cD18E286d261c835ce13).
 
 Workflow	Workflow ID
-lending-oracle-staging	004f4dcd7815f5be3f5bc7a33a131b45f4df13ffc3117bfc8c63f826270a6dfc
-liquidation-protection-staging	00f2b8b31759a31bbf2b9a859ab92feeddad63c8950f793af75be73473abc986
-liquidation-protection-staging-safe	00ec72f5badda63192bfbd71e2d66eea834c6e7569c7a10244e0ca93cad9560c
+lending-oracle-staging	0078629642621bfbc6b133d8fa85fe7a9389ef7d618484a948f3ebeff81716b2
+liquidation-protection-staging	00f718df00c6ce65cc409a709651590ef09bcd21b8ee1ce839190d8c33035fcc
+liquidation-protection-staging-safe	000dd98605535faefc1f6708a9a3df871d1c7907156fc2e007230ec1a7d4584f
 
-liquidation-protection-staging was redeployed on 2026-11-09 after cmd/discover-borrowers
-refreshed its borrower list (close-watch tier: 0xe713298BA0B581D78aca144C6d5135957ef296BB;
-safe tier: empty — the safe deployment no-ops each tick until a safe borrower exists). The
-LiquidationConsumer (0xa2695De5596537D12e256C033a94f0fE35196e24) is deployed unbound, so the
-new workflow IDs are accepted without a consumer redeploy.
+Deployed 2026-11-16 per docs/sepolia-susde-deployment.md (sUSDe/USDC market replacing the retired mCOL/mUSD market). lending-oracle reports CoinGecko sUSDe/USD every 5 min to LendingOracleConsumer 0x71fcaE64b124989eF788CC3Efa9eE71723a43F63; liquidation-protection verifies positions against CoinPaprika and writes verdicts to LiquidationConsumer 0xFF71c57017145d8dA3830B226C53f86608faD236. Both liquidation tiers hold empty borrower lists until the first depositCollateral on the new pool — then run scripts/refresh-liquidation-borrowers.sh --from-block 12142928. Consumers are deployed unbound (expectedWorkflowId == 0): the accepted staging posture until the setExpectedWorkflowId setter exists (production runbook Phase 6).
 
-End-to-end verified 2026-11-09: isEligible(0xe713…96bb) = true, checkedAt within
-maxVerdictAge (900s) of the latest 5-minute tick.
-
-liquidation-protection-production / -safe have never been deployed (the runbook
-worksheet's empty Deployed-ID cells are original, not deletions). As of
-2026-11-09 their configs were repaired to mirror the current Sepolia stack
-(0xD389…/0xa269…, gasLimitWei 3000000) after being left one generation behind;
-deploying them is still deferred — single live pool + 3-workflow org quota.
+Previous generation (mCOL/mUSD market, 2026-11-09 IDs — now deregistered):
+- lending-oracle-staging 004f4dcd7815f5be3f5bc7a33a131b45f4df13ffc3117bfc8c63f826270a6dfc
+- liquidation-protection-staging 00f2b8b31759a31bbf2b9a859ab92feeddad63c8950f793af75be73473abc986
+- liquidation-protection-staging-safe 00ec72f5badda63192bfbd71e2d66eea834c6e7569c7a10244e0ca93cad9560c

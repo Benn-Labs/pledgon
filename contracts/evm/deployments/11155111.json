@@ -3,9 +3,9 @@
   "complianceConsumer": "0xB53debF35709B1C040bAbf0B41b3f5A92B908E0c",
   "escrowConfirmationConsumer": "0x075846414E0D911B3A1aF83AC85CF04bd09A953a",
   "escrowFactory": "0x98062049A1c96b223d4F441524572a5B6E0408fc",
-  "lendingOracleConsumer": "0xe94F2C9654c84091bbbF82c8Cac07e606215A84D",
-  "lendingPool": "0xD389c90a61F4de210D2632Df1545082D53d41ed9",
-  "liquidationConsumer": "0xa2695De5596537D12e256C033a94f0fE35196e24",
+  "lendingOracleConsumer": "0x71fcaE64b124989eF788CC3Efa9eE71723a43F63",
+  "lendingPool": "0x708954Ecf84107722351cD18E286d261c835ce13",
+  "liquidationConsumer": "0xFF71c57017145d8dA3830B226C53f86608faD236",
   "marketplace": "0x2091F788c40A62A70BdCE605821b8e429184B724",
   "tradeExpiryKeeper": "0xdBAF591d3360D23eeec5cF4aF47197042C400C91"
 }

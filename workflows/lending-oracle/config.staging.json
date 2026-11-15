@@ -1,11 +1,11 @@
 {
   "schedule": "0 */5 * * * *",
   "chainSelectorName": "ethereum-testnet-sepolia",
-  "priceUrl": "https://api.coinbase.com/v2/prices/ETH-USD/spot",
+  "priceUrl": "https://api.coingecko.com/api/v3/simple/price?ids=ethena-staked-usde&vs_currencies=usd",
   "secretId": "LENDING_ORACLE_API_TOKEN",
-  "responsePricePath": "data.amount",
+  "responsePricePath": "ethena-staked-usde.usd",
   "priceDecimals": 8,
-  "collateralFeedLabel": "RWA/USD",
-  "consumerAddress": "0xe94F2C9654c84091bbbF82c8Cac07e606215A84D",
+  "collateralFeedLabel": "sUSDe/USD",
+  "consumerAddress": "0x71fcaE64b124989eF788CC3Efa9eE71723a43F63",
   "gasLimitWei": 3000000
 }

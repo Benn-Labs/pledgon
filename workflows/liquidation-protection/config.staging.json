@@ -1,12 +1,12 @@
 {
   "schedule": "0 */5 * * * *",
   "chainSelectorName": "ethereum-testnet-sepolia",
-  "lendingPoolAddress": "0xD389c90a61F4de210D2632Df1545082D53d41ed9",
-  "borrowers": ["0xe713298BA0B581D78aca144C6d5135957ef296BB"],
-  "verificationUrl": "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd",
+  "lendingPoolAddress": "0x708954Ecf84107722351cD18E286d261c835ce13",
+  "borrowers": [],
+  "verificationUrl": "https://api.coinpaprika.com/v1/tickers/susde-ethena-staked-usde",
   "secretId": "LENDING_PRICE_API_TOKEN",
-  "responsePricePath": "ethereum.usd",
+  "responsePricePath": "quotes.USD.price",
   "priceDecimals": 8,
-  "consumerAddress": "0xa2695De5596537D12e256C033a94f0fE35196e24",
+  "consumerAddress": "0xFF71c57017145d8dA3830B226C53f86608faD236",
   "gasLimitWei": 3000000
 }
