@@ -14,7 +14,7 @@ import {
   useLendingBorrowers,
   useRegisterBorrowerFromDeposit,
 } from "@/hooks/useLendingBorrowers";
-import { formatToken } from "@/lib/format";
+import { formatToken, formatTokenDustAware } from "@/lib/format";
 import { tryParseUnits } from "@/lib/units";
 import { toast } from "@/lib/toast";
 import { useTxSequence, type TxStep } from "@/hooks/useTxSequence";
@@ -782,7 +782,7 @@ function LendingPageContent() {
           <div className="p-4 rounded-lg bg-ink-950/60 border border-ink-800 shadow-[inset_0_1px_2px_rgba(0,0,0,0.3)]">
             <div className="text-xs text-ink-400 mb-1">Debt Owed</div>
             <div className="font-mono text-lg text-ink-100">
-              {debtDecimals !== undefined ? formatToken(debtAmount, debtDecimals, debtSymbol, 2) : "…"}
+              {debtDecimals !== undefined ? formatTokenDustAware(debtAmount, debtDecimals, debtSymbol) : "…"}
             </div>
           </div>
           <div className="p-4 rounded-lg bg-ink-950/60 border border-ink-800 shadow-[inset_0_1px_2px_rgba(0,0,0,0.3)] flex flex-col items-center justify-center">
@@ -834,8 +834,13 @@ function LendingPageContent() {
           limitMessage="Exceeds your deposited collateral"
           onMax={debtAmount === 0n && collateralAmount > 0n ? withdrawMax : undefined}
           blockedReason={
-            withdrawBreaksPosition
-              ? "This withdrawal would leave your position undercollateralized — repay your debt first, then withdraw."
+            withdrawBreaksPosition && debtDecimals !== undefined
+              ? `This withdrawal would leave your position undercollateralized — repay the ${formatTokenDustAware(
+                  debtAmount,
+                  debtDecimals,
+                  debtSymbol,
+                  4,
+                )} debt first, then withdraw.`
               : undefined
           }
           onSubmit={withdrawCollateral}

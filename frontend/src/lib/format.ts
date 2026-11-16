@@ -22,6 +22,23 @@ export function formatToken(amount: bigint, decimals: number, symbol?: string, m
   return symbol ? `${formatted} ${symbol}` : formatted;
 }
 
+/**
+ * Like formatToken, but a nonzero amount that would round to 0.00 at
+ * maxDecimals is shown at higher precision instead. Dust balances (e.g.
+ * 0.001502 USDC of debt) must not read as "0.00" — the contract still counts
+ * them even when the display rounds them away.
+ */
+export function formatTokenDustAware(amount: bigint, decimals: number, symbol?: string, maxDecimals = 2): string {
+  const atMax = formatToken(amount, decimals, undefined, maxDecimals);
+  if (amount === 0n || parseFloat(atMax) !== 0) return formatToken(amount, decimals, symbol, maxDecimals);
+  for (const dp of [maxDecimals + 2, maxDecimals + 4]) {
+    if (dp >= decimals) break;
+    const candidate = formatToken(amount, decimals, undefined, dp);
+    if (parseFloat(candidate) > 0) return formatToken(amount, decimals, symbol, dp);
+  }
+  return formatToken(amount, decimals, symbol);
+}
+
 export function sumBigints(values: readonly bigint[]): bigint {
   return values.reduce((total, value) => total + value, 0n);
 }
