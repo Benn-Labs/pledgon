@@ -276,12 +276,23 @@ function LendingPageContent() {
     query: { enabled: Boolean(selectedMarket.lendingPool) },
   });
 
-  const { data: poolTotalBorrows, refetch: refetchPoolTotalBorrows } = useReadContract({
-    address: selectedMarket.lendingPool,
-    abi: lendingPoolAbi,
-    functionName: "totalBorrows",
-    query: { enabled: Boolean(selectedMarket.lendingPool) },
+  // The raw `totalBorrows` getter is storage-only: it only picks up accrued
+  // interest when a pool tx runs _accrue(), so it reads low between
+  // operations while totalSupply() (used for "Total Supplied") is always
+  // live. Derive borrows the same way LendingPool.totalSupply() does —
+  // balance + currentTotalBorrows — so the two stat cards and the
+  // utilization bar stay consistent (e.g. 2000.10 next to 6000.10, not a
+  // stale 2000.03).
+  const { data: poolTokenBalance, refetch: refetchPoolTokenBalance } = useReadContract({
+    address: selectedMarket.debtToken,
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: [selectedMarket.lendingPool],
+    query: { enabled: Boolean(selectedMarket.debtToken && selectedMarket.lendingPool) },
   });
+
+  const poolTotalBorrows =
+    poolTotalSupply !== undefined && poolTokenBalance !== undefined ? poolTotalSupply - poolTokenBalance : undefined;
 
   const { data: borrowRateBps } = useReadContract({
     address: selectedMarket.lendingPool,
@@ -314,7 +325,7 @@ function LendingPageContent() {
       refetchLenderShares();
       refetchLenderBalance();
       refetchPoolTotalSupply();
-      refetchPoolTotalBorrows();
+      refetchPoolTokenBalance();
     },
     onDone: () => {
       clearAfterRunRef.current?.();
