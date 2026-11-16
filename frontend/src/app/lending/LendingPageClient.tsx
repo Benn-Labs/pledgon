@@ -395,10 +395,31 @@ function LendingPageContent() {
     poolTotalSupply !== undefined && poolTotalBorrows !== undefined
       ? (() => {
           const idle = poolTotalSupply - poolTotalBorrows;
-          if (maxUtilizationBps === undefined || maxUtilizationBps === 0n) return idle;
-          const capBorrows = (poolTotalSupply * maxUtilizationBps) / 10_000n;
-          const underCap = capBorrows > poolTotalBorrows ? capBorrows - poolTotalBorrows : 0n;
-          return underCap < idle ? underCap : idle;
+          let poolCap: bigint;
+          if (maxUtilizationBps === undefined || maxUtilizationBps === 0n) {
+            poolCap = idle;
+          } else {
+            const capBorrows = (poolTotalSupply * maxUtilizationBps) / 10_000n;
+            poolCap = capBorrows > poolTotalBorrows ? capBorrows - poolTotalBorrows : 0n;
+            if (idle < poolCap) poolCap = idle;
+          }
+          // Collateral credit limit — mirrors LendingPool._isUndercollateralizedAmounts:
+          // collateral value in debt units (price scale + decimal conversion, same as
+          // the contract and useLendingPosition), times the liquidation threshold.
+          // Without a live price collateral can't be priced here; fall back to the
+          // pool cap and let the contract fail closed with StalePrice.
+          if (!hasPrice || liquidationThresholdBps === undefined || collDecimals === undefined || debtDecimals === undefined) {
+            return poolCap;
+          }
+          let collateralValue = (collateralAmount * price) / 10n ** BigInt(priceDecimals);
+          if (collDecimals > debtDecimals) {
+            collateralValue = collateralValue / 10n ** BigInt(collDecimals - debtDecimals);
+          } else if (collDecimals < debtDecimals) {
+            collateralValue = collateralValue * 10n ** BigInt(debtDecimals - collDecimals);
+          }
+          const maxDebt = (collateralValue * liquidationThresholdBps) / 10_000n;
+          const creditLimit = maxDebt > debtAmount ? maxDebt - debtAmount : 0n;
+          return creditLimit < poolCap ? creditLimit : poolCap;
         })()
       : undefined;
 
@@ -877,7 +898,7 @@ function LendingPageContent() {
           isPending={busy}
           activeHere={activeHere("borrow")}
           limit={borrowInputLimit}
-          limitMessage="Exceeds available liquidity / utilization cap"
+          limitMessage="Exceeds your collateral credit limit or available liquidity"
           onSubmit={borrow}
         />
       </div>
