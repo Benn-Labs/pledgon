@@ -233,7 +233,7 @@ export default function DashboardPage() {
                 <div className="flex flex-wrap gap-3">
                   {escrowTvl.map((t) => (
                     <div key={t.token} className="px-4 py-3 rounded-lg bg-ink-950/60 border border-ink-800 shadow-[inset_0_1px_2px_rgba(0,0,0,0.3)]">
-                      <TokenAmount amount={t.amount} decimals={t.decimals} symbol={t.symbol} />
+                      <TokenAmount amount={t.amount} decimals={t.decimals} symbol={t.symbol} maxDecimals={2} />
                     </div>
                   ))}
                 </div>
@@ -253,7 +253,7 @@ export default function DashboardPage() {
                         <span className="w-1.5 h-1.5 rounded-full bg-warning-400 shrink-0" />
                         Collateral Deposited
                       </div>
-                      <TokenAmount amount={lendingCollateral.amount} decimals={lendingCollateral.decimals} symbol={lendingCollateral.symbol} />
+                      <TokenAmount amount={lendingCollateral.amount} decimals={lendingCollateral.decimals} symbol={lendingCollateral.symbol} maxDecimals={2} />
                     </div>
                   )}
                   {lendingLiquidity && (
@@ -262,7 +262,7 @@ export default function DashboardPage() {
                         <span className="w-1.5 h-1.5 rounded-full bg-trust-400 shrink-0" />
                         Available to Borrow
                       </div>
-                      <TokenAmount amount={lendingLiquidity.amount} decimals={lendingLiquidity.decimals} symbol={lendingLiquidity.symbol} />
+                      <TokenAmount amount={lendingLiquidity.amount} decimals={lendingLiquidity.decimals} symbol={lendingLiquidity.symbol} maxDecimals={2} />
                     </div>
                   )}
                 </div>
