@@ -82,19 +82,24 @@ function rawErrorMessage(error: unknown): string {
 }
 
 /**
+ * Human-readable message for a transaction error without dumping raw revert
+ * JSON. A declined wallet signature is treated as a neutral "Cancelled", not
+ * a scary error; real reverts are shortened to their reason (capped at ~120
+ * chars).
+ */
+export function txErrorMessage(error: unknown, fallback = "Transaction failed"): string {
+  if (isUserRejection(error)) return "Cancelled";
+  if (error === null || error === undefined) return fallback;
+  const reason = extractRevertReason(rawErrorMessage(error));
+  return reason.length > 0 ? reason : fallback;
+}
+
+/**
  * Toast a transaction error without dumping raw revert JSON. A declined wallet
  * signature is treated as a neutral "Cancelled", not a scary error; real
  * reverts are shortened to their reason (capped at ~120 chars).
  */
 export function toastTxError(error: unknown, fallback = "Transaction failed") {
-  if (isUserRejection(error)) {
-    toast("Cancelled", "info");
-    return;
-  }
-  if (error === null || error === undefined) {
-    toast(fallback, "error");
-    return;
-  }
-  const reason = extractRevertReason(rawErrorMessage(error));
-  toast(reason.length > 0 ? reason : fallback, "error");
+  const message = txErrorMessage(error, fallback);
+  toast(message, message === "Cancelled" ? "info" : "error");
 }
