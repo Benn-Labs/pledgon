@@ -1,15 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { erc20Abi, formatUnits, isAddress } from "viem";
 import type { Address } from "viem";
-import {
-  useAccount,
-  useReadContract,
-  useWaitForTransactionReceipt,
-  useWriteContract,
-} from "wagmi";
+import { useAccount, useReadContract } from "wagmi";
 import { lendingPoolAbi, liquidationConsumerAbi } from "@/generated/contracts";
 import { lendingMarkets, isLendingConfigured } from "@/lib/addresses";
 import { useToken } from "@/hooks/useToken";
@@ -21,7 +16,9 @@ import {
 } from "@/hooks/useLendingBorrowers";
 import { formatToken } from "@/lib/format";
 import { tryParseUnits } from "@/lib/units";
-import { toast, toastTxError } from "@/lib/toast";
+import { toast } from "@/lib/toast";
+import { useTxSequence, type TxStep } from "@/hooks/useTxSequence";
+import { TxProgressModal } from "@/components/ui/TxProgressModal";
 import { LendingIcon } from "@/components/ui/icons";
 import { HealthFactorGauge } from "@/components/ui/HealthFactorGauge";
 
@@ -293,18 +290,43 @@ function LendingPageContent() {
     query: { enabled: Boolean(selectedMarket.lendingPool) },
   });
 
-  const { writeContract, data: hash, isPending, error } = useWriteContract();
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({
-    hash,
-    query: { enabled: Boolean(hash) },
+  // Clears the input of the operation whose sequence just completed, so a
+  // leftover amount doesn't sit there exceeding the freshly recomputed limit
+  // (e.g. after a borrow, the old amount reads as "over credit limit" even
+  // though it executed fine). Set when an op starts, fired in onDone.
+  const clearAfterRunRef = useRef<(() => void) | null>(null);
+
+  const sequence = useTxSequence({
+    onStepConfirmed: (confirmedHash) => {
+      // Best-effort, silent — write-lending-borrower verifies on-chain
+      // whether this transaction actually emitted CollateralDeposited, so
+      // passing every confirmed step's hash (not just known deposits) is
+      // safe: anything else just fails harmlessly server-side, and there's
+      // no wallet prompt either way to make that failure user-visible.
+      registerBorrowerFromDeposit(confirmedHash);
+      refetchPosition();
+      refetchCollBalance();
+      refetchDebtBalance();
+      refetchCollAllowance();
+      refetchDebtAllowance();
+      refetchTargetPosition();
+      refetchTargetEligible();
+      refetchLenderShares();
+      refetchLenderBalance();
+      refetchPoolTotalSupply();
+      refetchPoolTotalBorrows();
+    },
+    onDone: () => {
+      clearAfterRunRef.current?.();
+      clearAfterRunRef.current = null;
+    },
   });
-  const busy = isPending || isConfirming;
-  const [activeAction, setActiveAction] = useState<string | null>(null);
-  const activeHere = (action: string) => busy && activeAction === action;
-  const send = (action: string, params: Parameters<typeof writeContract>[0]) => {
-    setActiveAction(action);
-    writeContract(params);
-  };
+  const busy = sequence.busy;
+
+  function run(opTitle: string, opSteps: TxStep[], clear?: () => void) {
+    clearAfterRunRef.current = clear ?? null;
+    sequence.start(opTitle, opSteps);
+  }
 
   const [depositAmount, setDepositAmount] = useState("");
   const [withdrawAmount, setWithdrawAmount] = useState("");
@@ -332,62 +354,12 @@ function LendingPageContent() {
     query: { enabled: Boolean(selectedMarket.liquidationConsumer && liquidateTargetAddress) },
   });
 
-  useEffect(() => {
-    if (isSuccess) {
-      toast("Transaction confirmed", "success");
-      refetchPosition();
-      refetchCollBalance();
-      refetchDebtBalance();
-      refetchCollAllowance();
-      refetchDebtAllowance();
-      refetchTargetPosition();
-      refetchTargetEligible();
-      refetchLenderShares();
-      refetchLenderBalance();
-      refetchPoolTotalSupply();
-      refetchPoolTotalBorrows();
-      // Best-effort, silent — write-lending-borrower verifies on-chain
-      // whether this transaction actually emitted CollateralDeposited, so
-      // passing every successful tx's hash (not just known deposits) is
-      // safe: anything else just fails harmlessly server-side, and there's
-      // no wallet prompt either way to make that failure user-visible.
-      if (hash) registerBorrowerFromDeposit(hash);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- hash/registerBorrowerFromDeposit read at the moment of success, not meant to re-fire this on every render
-  }, [
-    isSuccess,
-    refetchPosition,
-    refetchCollBalance,
-    refetchDebtBalance,
-    refetchCollAllowance,
-    refetchDebtAllowance,
-    refetchTargetPosition,
-    refetchTargetEligible,
-    refetchLenderShares,
-    refetchLenderBalance,
-    refetchPoolTotalSupply,
-    refetchPoolTotalBorrows,
-  ]);
-
-  useEffect(() => {
-    if (error) toastTxError(error);
-  }, [error]);
-
   const [collateralAmount, debtAmount] = position ?? [0n, 0n];
   const [, targetDebtAmount] = targetPosition ?? [0n, 0n];
 
   const depositParsed = collDecimals !== undefined ? tryParseUnits(depositAmount, collDecimals) : undefined;
   const repayParsed = debtDecimals !== undefined ? tryParseUnits(repayAmount, debtDecimals) : undefined;
   const supplyParsed = debtDecimals !== undefined ? tryParseUnits(supplyAmount, debtDecimals) : undefined;
-  const needsCollApproval = depositParsed !== undefined && (collAllowance ?? 0n) < depositParsed;
-  const needsDebtApproval = repayParsed !== undefined && (debtAllowance ?? 0n) < repayParsed;
-  const needsLiquidateApproval = liquidateTargetAddress ? (debtAllowance ?? 0n) < targetDebtAmount : false;
-  const needsSupplyApproval = supplyParsed !== undefined && (debtAllowance ?? 0n) < supplyParsed;
-
-  const overBalance = (value: string, decimals: number | undefined, balance: bigint | undefined) => {
-    const parsed = decimals !== undefined ? tryParseUnits(value, decimals) : undefined;
-    return parsed !== undefined && balance !== undefined && parsed > balance;
-  };
 
   const repayLimit = debtBalance !== undefined && debtAmount > debtBalance ? debtBalance : undefined;
 
@@ -435,143 +407,149 @@ function LendingPageContent() {
     setWithdrawAmount(formatUnits(collateralAmount, collDecimals));
   }
 
-  function approveCollateral() {
-    if (!selectedMarket.lendingPool || !selectedMarket.collateralToken || collDecimals === undefined) return;
-    if (depositParsed === undefined) {
-      toast("Enter a valid amount to approve", "warning");
-      return;
-    }
-    send("approveColl", {
-      address: selectedMarket.collateralToken,
-      abi: erc20Abi,
-      functionName: "approve",
-      args: [selectedMarket.lendingPool, depositParsed],
-    });
-  }
-
+  // Every operation runs as a sequence through useTxSequence. When the token
+  // allowance doesn't cover the amount, an approve step is prepended and the
+  // main action fires automatically once the approve confirms on-chain — the
+  // two wallet prompts follow each other with no manual re-click. The step
+  // list (with per-step descriptions) drives the TxProgressModal.
   function depositCollateral() {
-    if (!selectedMarket.lendingPool || collDecimals === undefined) return;
+    const pool = selectedMarket.lendingPool;
+    const collToken = selectedMarket.collateralToken;
+    if (collDecimals === undefined) return;
     if (depositParsed === undefined) {
       toast("Enter a valid amount to deposit", "warning");
       return;
     }
-    send("deposit", {
-      address: selectedMarket.lendingPool,
-      abi: lendingPoolAbi,
-      functionName: "depositCollateral",
-      args: [depositParsed],
+    const amount = depositParsed;
+    const label = formatToken(amount, collDecimals, collSymbol);
+    const steps: TxStep[] = [];
+    if ((collAllowance ?? 0n) < amount) {
+      steps.push({
+        title: `Approve ${collSymbol}`,
+        description: `Allow the ${selectedMarket.name} pool to pull ${label} from your wallet. A one-time approval for this amount.`,
+        tx: { address: collToken, abi: erc20Abi, functionName: "approve", args: [pool, amount] },
+      });
+    }
+    steps.push({
+      title: "Deposit Collateral",
+      description: `Move ${label} into the pool as collateral for your position.`,
+      tx: { address: pool, abi: lendingPoolAbi, functionName: "depositCollateral", args: [amount] },
     });
+    run("Deposit Collateral", steps, () => setDepositAmount(""));
   }
 
   function withdrawCollateral() {
-    if (!selectedMarket.lendingPool || collDecimals === undefined) return;
+    const pool = selectedMarket.lendingPool;
+    if (collDecimals === undefined) return;
     const amount = tryParseUnits(withdrawAmount, collDecimals);
     if (amount === undefined) {
       toast("Enter a valid amount to withdraw", "warning");
       return;
     }
-    send("withdraw", {
-      address: selectedMarket.lendingPool,
-      abi: lendingPoolAbi,
-      functionName: "withdrawCollateral",
-      args: [amount],
-    });
-  }
-
-  function approveDebtForRepay() {
-    if (!selectedMarket.lendingPool || !selectedMarket.debtToken || debtDecimals === undefined) return;
-    if (repayParsed === undefined) {
-      toast("Enter a valid amount to approve", "warning");
-      return;
-    }
-    send("approveRepay", {
-      address: selectedMarket.debtToken,
-      abi: erc20Abi,
-      functionName: "approve",
-      args: [selectedMarket.lendingPool, repayParsed],
-    });
+    run("Withdraw Collateral", [
+      {
+        title: "Withdraw Collateral",
+        description:
+          `Send ${formatToken(amount, collDecimals, collSymbol)} of collateral back to your wallet` +
+          (debtAmount > 0n ? ". Your position must stay overcollateralized — the pool reverts otherwise." : "."),
+        tx: { address: pool, abi: lendingPoolAbi, functionName: "withdrawCollateral", args: [amount] },
+      },
+    ], () => setWithdrawAmount(""));
   }
 
   function repay() {
-    if (!selectedMarket.lendingPool || debtDecimals === undefined) return;
+    const pool = selectedMarket.lendingPool;
+    const debtToken = selectedMarket.debtToken;
+    if (debtDecimals === undefined) return;
     if (repayParsed === undefined) {
       toast("Enter a valid amount to repay", "warning");
       return;
     }
-    send("repay", {
-      address: selectedMarket.lendingPool,
-      abi: lendingPoolAbi,
-      functionName: "repay",
-      args: [repayParsed],
+    const amount = repayParsed;
+    const label = formatToken(amount, debtDecimals, debtSymbol);
+    const steps: TxStep[] = [];
+    if ((debtAllowance ?? 0n) < amount) {
+      steps.push({
+        title: `Approve ${debtSymbol}`,
+        description: `Allow the ${selectedMarket.name} pool to pull ${label} from your wallet to repay your debt.`,
+        tx: { address: debtToken, abi: erc20Abi, functionName: "approve", args: [pool, amount] },
+      });
+    }
+    steps.push({
+      title: "Repay Debt",
+      description: `Pay back ${label}. Interest stops accruing on the repaid amount.`,
+      tx: { address: pool, abi: lendingPoolAbi, functionName: "repay", args: [amount] },
     });
+    run("Repay Debt", steps, () => setRepayAmount(""));
   }
 
   function borrow() {
-    if (!selectedMarket.lendingPool || debtDecimals === undefined) return;
+    const pool = selectedMarket.lendingPool;
+    if (debtDecimals === undefined) return;
     const amount = tryParseUnits(borrowAmount, debtDecimals);
     if (amount === undefined) {
       toast("Enter a valid amount to borrow", "warning");
       return;
     }
-    send("borrow", {
-      address: selectedMarket.lendingPool,
-      abi: lendingPoolAbi,
-      functionName: "borrow",
-      args: [amount],
-    });
-  }
-
-  function approveDebtForLiquidate() {
-    if (!selectedMarket.lendingPool || !selectedMarket.debtToken || targetDebtAmount === 0n) return;
-    const buffered = targetDebtAmount + targetDebtAmount / 100n + 1n;
-    send("approveLiq", {
-      address: selectedMarket.debtToken,
-      abi: erc20Abi,
-      functionName: "approve",
-      args: [selectedMarket.lendingPool, buffered],
-    });
+    run("Borrow", [
+      {
+        title: "Borrow",
+        description: `Borrow ${formatToken(amount, debtDecimals, debtSymbol)} against your deposited collateral. Interest accrues at the fixed rate shown above — watch your health factor.`,
+        tx: { address: pool, abi: lendingPoolAbi, functionName: "borrow", args: [amount] },
+      },
+    ], () => setBorrowAmount(""));
   }
 
   function liquidate() {
-    if (!selectedMarket.lendingPool || !liquidateTargetAddress) return;
-    send("liquidate", {
-      address: selectedMarket.lendingPool,
-      abi: lendingPoolAbi,
-      functionName: "liquidate",
-      args: [liquidateTargetAddress],
-    });
-  }
-
-  function approveDebtForSupply() {
-    if (!selectedMarket.lendingPool || !selectedMarket.debtToken || debtDecimals === undefined) return;
-    if (supplyParsed === undefined) {
-      toast("Enter a valid amount to approve", "warning");
-      return;
+    const pool = selectedMarket.lendingPool;
+    const debtToken = selectedMarket.debtToken;
+    if (!liquidateTargetAddress || debtDecimals === undefined) return;
+    const buffered = targetDebtAmount + targetDebtAmount / 100n + 1n;
+    const steps: TxStep[] = [];
+    if ((debtAllowance ?? 0n) < targetDebtAmount) {
+      steps.push({
+        title: `Approve ${debtSymbol}`,
+        description: `Allow the pool to pull up to ${formatToken(buffered, debtDecimals, debtSymbol)} — the borrower's debt plus a small buffer for accrued interest.`,
+        tx: { address: debtToken, abi: erc20Abi, functionName: "approve", args: [pool, buffered] },
+      });
     }
-    send("approveSupply", {
-      address: selectedMarket.debtToken,
-      abi: erc20Abi,
-      functionName: "approve",
-      args: [selectedMarket.lendingPool, supplyParsed],
+    steps.push({
+      title: "Liquidate Position",
+      description: `Repay the borrower's debt and seize their collateral. Only succeeds once the DON has attested this borrower eligible.`,
+      tx: { address: pool, abi: lendingPoolAbi, functionName: "liquidate", args: [liquidateTargetAddress] },
     });
+    run("Liquidate Position", steps, () => setLiquidateTarget(""));
   }
 
   function supplyLiquidity() {
-    if (!selectedMarket.lendingPool || debtDecimals === undefined) return;
+    const pool = selectedMarket.lendingPool;
+    const debtToken = selectedMarket.debtToken;
+    if (debtDecimals === undefined) return;
     if (supplyParsed === undefined) {
       toast("Enter a valid amount to supply", "warning");
       return;
     }
-    send("supply", {
-      address: selectedMarket.lendingPool,
-      abi: lendingPoolAbi,
-      functionName: "depositLiquidity",
-      args: [supplyParsed],
+    const amount = supplyParsed;
+    const label = formatToken(amount, debtDecimals, debtSymbol);
+    const steps: TxStep[] = [];
+    if ((debtAllowance ?? 0n) < amount) {
+      steps.push({
+        title: `Approve ${debtSymbol}`,
+        description: `Allow the ${selectedMarket.name} pool to pull ${label} from your wallet for supplying.`,
+        tx: { address: debtToken, abi: erc20Abi, functionName: "approve", args: [pool, amount] },
+      });
+    }
+    steps.push({
+      title: "Supply Liquidity",
+      description: `Lend ${label} to the pool. Your share of the pool — and the interest borrowers pay — accrues in place.`,
+      tx: { address: pool, abi: lendingPoolAbi, functionName: "depositLiquidity", args: [amount] },
     });
+    run("Supply Liquidity", steps, () => setSupplyAmount(""));
   }
 
   function withdrawSupply() {
-    if (!selectedMarket.lendingPool || debtDecimals === undefined) return;
+    const pool = selectedMarket.lendingPool;
+    if (debtDecimals === undefined) return;
     const requested = tryParseUnits(withdrawSupplyAmount, debtDecimals);
     if (requested === undefined) {
       toast("Enter a valid amount to withdraw", "warning");
@@ -583,12 +561,13 @@ function LendingPageContent() {
       userBalance > 0n && requested >= userBalance
         ? userShares
         : (requested * userShares) / (userBalance || 1n);
-    send("withdrawSupply", {
-      address: selectedMarket.lendingPool,
-      abi: lendingPoolAbi,
-      functionName: "withdrawLiquidity",
-      args: [shares],
-    });
+    run("Withdraw Liquidity", [
+      {
+        title: "Withdraw Liquidity",
+        description: `Withdraw ${formatToken(requested, debtDecimals, debtSymbol)} of supplied liquidity, with its share of accrued interest, back to your wallet.`,
+        tx: { address: pool, abi: lendingPoolAbi, functionName: "withdrawLiquidity", args: [shares] },
+      },
+    ], () => setWithdrawSupplyAmount(""));
   }
 
   return (
@@ -713,39 +692,19 @@ function LendingPageContent() {
           </p>
         )}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {needsSupplyApproval ? (
-            <div className="bg-ink-950/60 border border-ink-800 shadow-[inset_0_1px_2px_rgba(0,0,0,0.3)] rounded-xl p-6">
-              <h3 className="font-semibold text-white mb-3">Supply Liquidity</h3>
-              <p className="text-sm text-ink-400 mb-4">Approve {debtSymbol} before supplying.</p>
-              <button
-                onClick={approveDebtForSupply}
-                disabled={!supplyAmount || busy || overBalance(supplyAmount, debtDecimals, debtBalance)}
-                className="btn-press w-full py-2.5 rounded-lg bg-warning-600 hover:bg-warning-500 disabled:bg-ink-700 disabled:cursor-not-allowed text-white font-semibold"
-              >
-                {activeHere("approveSupply") ? "Submitting…" : `Approve ${debtSymbol}`}
-              </button>
-              <input
-                className="w-full mt-3 bg-ink-800 border border-ink-700 rounded-lg px-4 py-3 text-ink-200 font-mono focus:outline-none focus:border-trust-500"
-                placeholder="Amount to approve/supply"
-                value={supplyAmount}
-                onChange={(e) => setSupplyAmount(e.target.value)}
-              />
-            </div>
-          ) : (
-            <ActionPanel
-              title="Supply Liquidity"
-              tokenSymbol={debtSymbol}
-              balance={debtBalance}
-              decimals={debtDecimals}
-              amount={supplyAmount}
-              setAmount={setSupplyAmount}
-              submitLabel="Supply"
-              isPending={busy}
-              activeHere={activeHere("supply")}
-              limit={debtBalance}
-              onSubmit={supplyLiquidity}
-            />
-          )}
+          <ActionPanel
+            title="Supply Liquidity"
+            tokenSymbol={debtSymbol}
+            balance={debtBalance}
+            decimals={debtDecimals}
+            amount={supplyAmount}
+            setAmount={setSupplyAmount}
+            submitLabel="Supply"
+            isPending={busy}
+            activeHere={busy}
+            limit={debtBalance}
+            onSubmit={supplyLiquidity}
+          />
 
           <ActionPanel
             title="Withdraw Liquidity"
@@ -757,7 +716,7 @@ function LendingPageContent() {
             setAmount={setWithdrawSupplyAmount}
             submitLabel="Withdraw"
             isPending={busy}
-            activeHere={activeHere("withdrawSupply")}
+            activeHere={busy}
             limit={lenderBalance}
             limitMessage="Exceeds your supplied balance"
             onSubmit={withdrawSupply}
@@ -800,39 +759,19 @@ function LendingPageContent() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-        {needsCollApproval ? (
-          <div className="bg-ink-900 border border-ink-800 rounded-xl p-6">
-            <h3 className="font-semibold text-white mb-3">Deposit Collateral</h3>
-            <p className="text-sm text-ink-400 mb-4">Approve {collSymbol} before depositing.</p>
-            <button
-              onClick={approveCollateral}
-              disabled={!depositAmount || busy || overBalance(depositAmount, collDecimals, collBalance)}
-              className="btn-press w-full py-2.5 rounded-lg bg-warning-600 hover:bg-warning-500 disabled:bg-ink-700 disabled:cursor-not-allowed text-white font-semibold"
-            >
-              {activeHere("approveColl") ? "Submitting…" : `Approve ${collSymbol}`}
-            </button>
-            <input
-              className="w-full mt-3 bg-ink-800 border border-ink-700 rounded-lg px-4 py-3 text-ink-200 font-mono focus:outline-none focus:border-trust-500"
-              placeholder="Amount to approve/deposit"
-              value={depositAmount}
-              onChange={(e) => setDepositAmount(e.target.value)}
-            />
-          </div>
-        ) : (
-          <ActionPanel
-            title="Deposit Collateral"
-            tokenSymbol={collSymbol}
-            balance={collBalance}
-            decimals={collDecimals}
-            amount={depositAmount}
-            setAmount={setDepositAmount}
-            submitLabel="Deposit"
-            isPending={busy}
-            activeHere={activeHere("deposit")}
-            limit={collBalance}
-            onSubmit={depositCollateral}
-          />
-        )}
+        <ActionPanel
+          title="Deposit Collateral"
+          tokenSymbol={collSymbol}
+          balance={collBalance}
+          decimals={collDecimals}
+          amount={depositAmount}
+          setAmount={setDepositAmount}
+          submitLabel="Deposit"
+          isPending={busy}
+          activeHere={busy}
+          limit={collBalance}
+          onSubmit={depositCollateral}
+        />
 
         <ActionPanel
           title="Withdraw Collateral"
@@ -844,47 +783,27 @@ function LendingPageContent() {
           setAmount={setWithdrawAmount}
           submitLabel="Withdraw"
           isPending={busy}
-          activeHere={activeHere("withdraw")}
+          activeHere={busy}
           limit={collateralAmount}
           limitMessage="Exceeds your deposited collateral"
           onMax={debtAmount === 0n && collateralAmount > 0n ? withdrawMax : undefined}
           onSubmit={withdrawCollateral}
         />
 
-        {needsDebtApproval ? (
-          <div className="bg-ink-900 border border-ink-800 rounded-xl p-6">
-            <h3 className="font-semibold text-white mb-3">Repay</h3>
-            <p className="text-sm text-ink-400 mb-4">Approve {debtSymbol} before repaying.</p>
-            <button
-              onClick={approveDebtForRepay}
-              disabled={!repayAmount || busy || overBalance(repayAmount, debtDecimals, repayLimit)}
-              className="btn-press w-full py-2.5 rounded-lg bg-warning-600 hover:bg-warning-500 disabled:bg-ink-700 disabled:cursor-not-allowed text-white font-semibold"
-            >
-              {activeHere("approveRepay") ? "Submitting…" : `Approve ${debtSymbol}`}
-            </button>
-            <input
-              className="w-full mt-3 bg-ink-800 border border-ink-700 rounded-lg px-4 py-3 text-ink-200 font-mono focus:outline-none focus:border-trust-500"
-              placeholder="Amount to approve/repay"
-              value={repayAmount}
-              onChange={(e) => setRepayAmount(e.target.value)}
-            />
-          </div>
-        ) : (
-          <ActionPanel
-            title="Repay"
-            tokenSymbol={debtSymbol}
-            balance={debtBalance}
-            decimals={debtDecimals}
-            amount={repayAmount}
-            setAmount={setRepayAmount}
-            submitLabel="Repay"
-            isPending={busy}
-            activeHere={activeHere("repay")}
-            limit={repayLimit}
-            onMax={repayMax}
-            onSubmit={repay}
-          />
-        )}
+        <ActionPanel
+          title="Repay"
+          tokenSymbol={debtSymbol}
+          balance={debtBalance}
+          decimals={debtDecimals}
+          amount={repayAmount}
+          setAmount={setRepayAmount}
+          submitLabel="Repay"
+          isPending={busy}
+          activeHere={busy}
+          limit={repayLimit}
+          onMax={repayMax}
+          onSubmit={repay}
+        />
 
         <ActionPanel
           title="Borrow"
@@ -896,7 +815,7 @@ function LendingPageContent() {
           setAmount={setBorrowAmount}
           submitLabel="Borrow"
           isPending={busy}
-          activeHere={activeHere("borrow")}
+          activeHere={busy}
           limit={borrowInputLimit}
           limitMessage="Exceeds your collateral credit limit or available liquidity"
           onSubmit={borrow}
@@ -972,24 +891,23 @@ function LendingPageContent() {
             {targetEligible ? "Eligible for liquidation" : "Not eligible"}
           </p>
         )}
-        {needsLiquidateApproval ? (
-          <button
-            onClick={approveDebtForLiquidate}
-            disabled={!liquidateTargetAddress || busy}
-            className="btn-press w-full py-2.5 rounded-lg bg-warning-600 hover:bg-warning-500 disabled:bg-ink-700 disabled:cursor-not-allowed text-white font-semibold"
-          >
-            {activeHere("approveLiq") ? "Submitting…" : `Approve ${debtSymbol}`}
-          </button>
-        ) : (
-          <button
-            onClick={liquidate}
-            disabled={!liquidateTargetAddress || !targetEligible || busy}
-            className="btn-press w-full py-2.5 rounded-lg bg-trust-600 hover:bg-trust-500 disabled:bg-ink-700 disabled:cursor-not-allowed text-white font-semibold"
-          >
-            {activeHere("liquidate") ? "Submitting…" : "Liquidate"}
-          </button>
-        )}
+        <button
+          onClick={liquidate}
+          disabled={!liquidateTargetAddress || !targetEligible || busy}
+          className="btn-press w-full py-2.5 rounded-lg bg-trust-600 hover:bg-trust-500 disabled:bg-ink-700 disabled:cursor-not-allowed text-white font-semibold"
+        >
+          {busy ? "Submitting…" : "Liquidate"}
+        </button>
       </div>
+
+      <TxProgressModal
+        title={sequence.title}
+        steps={sequence.steps}
+        index={sequence.index}
+        phase={sequence.phase}
+        errorMessage={sequence.errorMessage}
+        onClose={sequence.close}
+      />
     </div>
   );
 }

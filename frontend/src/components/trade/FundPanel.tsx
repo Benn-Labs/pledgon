@@ -1,14 +1,14 @@
 "use client";
 
-import { useEffect } from "react";
 import type { Address } from "viem";
 import { erc20Abi, maxUint256 } from "viem";
-import { useAccount, useReadContract, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
+import { useAccount, useReadContract } from "wagmi";
 import { escrowVaultAbi, escrowFactoryAbi } from "@/generated/contracts";
 import { useEffectiveTier } from "@/hooks/useEffectiveTier";
 import { addresses } from "@/lib/addresses";
 import { formatToken } from "@/lib/format";
-import { toast, toastTxError } from "@/lib/toast";
+import { useTxSequence, type TxStep } from "@/hooks/useTxSequence";
+import { TxProgressModal } from "@/components/ui/TxProgressModal";
 import { KycGate } from "@/components/KycGate";
 
 export function FundPanel({
@@ -60,44 +60,10 @@ export function FundPanel({
     query: { enabled: Boolean(account) },
   });
 
-  const {
-    writeContract: approve,
-    data: approveHash,
-    isPending: approvePending,
-    error: approveError,
-  } = useWriteContract();
-  const { isLoading: approveConfirming, isSuccess: approveSuccess } = useWaitForTransactionReceipt({
-    hash: approveHash,
-    query: { enabled: Boolean(approveHash) },
+  const sequence = useTxSequence({
+    onStepConfirmed: () => refetchAllowance(),
+    onDone: () => onSuccess(),
   });
-
-  const { writeContract: fund, data: fundHash, isPending: fundPending, error } = useWriteContract();
-  const { isLoading: fundConfirming, isSuccess: fundSuccess } = useWaitForTransactionReceipt({
-    hash: fundHash,
-    query: { enabled: Boolean(fundHash) },
-  });
-
-  useEffect(() => {
-    if (approveSuccess) {
-      refetchAllowance();
-      toast(`Approved ${symbol}`, "success");
-    }
-  }, [approveSuccess, refetchAllowance, symbol]);
-
-  useEffect(() => {
-    if (fundSuccess) {
-      toast("Trade funded", "success");
-      onSuccess();
-    }
-  }, [fundSuccess, onSuccess]);
-
-  useEffect(() => {
-    if (approveError) toastTxError(approveError);
-  }, [approveError]);
-
-  useEffect(() => {
-    if (error) toastTxError(error);
-  }, [error]);
 
   if (!isBuyer) return null;
 
@@ -123,7 +89,30 @@ export function FundPanel({
   const projectedVolume = (currentVolume ?? 0n) + totalAmount;
   const overCap = currentVolume !== undefined && tier !== undefined && projectedVolume > cap;
 
+  const label = formatToken(totalAmount, decimals, symbol);
   const needsApproval = (allowance ?? 0n) < totalAmount;
+
+  // Approve (only when the current allowance doesn't cover the total) then
+  // fund run as one sequence: the wallet prompts follow each other
+  // automatically, and each step is explained in the progress modal.
+  function fundTrade() {
+    const fundStep: TxStep = {
+      title: `Fund ${label}`,
+      description: `Pay ${label} into the escrow vault. Delivery windows start and you confirm each milestone as the seller submits it.`,
+      tx: { address: vault, abi: escrowVaultAbi, functionName: "fund" },
+    };
+    const steps: TxStep[] = needsApproval
+      ? [
+          {
+            title: `Approve ${symbol}`,
+            description: `Allow the escrow vault to pull ${label} from your wallet to fund this trade.`,
+            tx: { address: token, abi: erc20Abi, functionName: "approve", args: [vault, totalAmount] },
+          },
+          fundStep,
+        ]
+      : [fundStep];
+    sequence.start("Fund Trade", steps);
+  }
 
   return (
     <div className="bg-ink-900 border border-ink-800 rounded-xl p-6 mb-6">
@@ -131,7 +120,7 @@ export function FundPanel({
       <div className="p-4 rounded-lg bg-trust-500/10 border border-trust-500/30 mb-4">
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm text-ink-300">Amount to fund</span>
-          <span className="font-mono font-semibold text-ink-100">{formatToken(totalAmount, decimals, symbol)}</span>
+          <span className="font-mono font-semibold text-ink-100">{label}</span>
         </div>
         {tier !== undefined && currentVolume !== undefined && (
           <div className="flex items-center justify-between text-sm">
@@ -145,27 +134,21 @@ export function FundPanel({
 
       {overCap && <KycGate subject={buyer} />}
 
-      {needsApproval ? (
-        <button
-          onClick={() => approve({ address: token, abi: erc20Abi, functionName: "approve", args: [vault, totalAmount] })}
-          disabled={approvePending || approveConfirming}
-          className="btn-press w-full py-3 rounded-lg bg-trust-600 hover:bg-trust-500 disabled:bg-ink-700 disabled:cursor-not-allowed text-white font-semibold glow-trust disabled:shadow-none mt-4"
-        >
-          {approvePending || approveConfirming ? "Approving…" : `Approve ${symbol}`}
-        </button>
-      ) : (
-        <button
-          onClick={() => fund({ address: vault, abi: escrowVaultAbi, functionName: "fund" })}
-          disabled={overCap || fundPending || fundConfirming}
-          className="btn-press w-full py-3 rounded-lg bg-trust-600 hover:bg-trust-500 disabled:bg-ink-700 disabled:cursor-not-allowed text-white font-semibold glow-trust disabled:shadow-none mt-4"
-        >
-          {overCap
-            ? "Compliance Limit Exceeded"
-            : fundPending || fundConfirming
-              ? "Funding…"
-              : `Fund ${formatToken(totalAmount, decimals, symbol)}`}
-        </button>
-      )}
+      <button
+        onClick={fundTrade}
+        disabled={overCap || sequence.busy}
+        className="btn-press w-full py-3 rounded-lg bg-trust-600 hover:bg-trust-500 disabled:bg-ink-700 disabled:cursor-not-allowed text-white font-semibold glow-trust disabled:shadow-none mt-4"
+      >
+        {overCap ? "Compliance Limit Exceeded" : sequence.busy ? "Submitting…" : needsApproval ? `Approve & Fund ${label}` : `Fund ${label}`}
+      </button>
+      <TxProgressModal
+        title={sequence.title}
+        steps={sequence.steps}
+        index={sequence.index}
+        phase={sequence.phase}
+        errorMessage={sequence.errorMessage}
+        onClose={sequence.close}
+      />
     </div>
   );
 }
