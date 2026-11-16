@@ -466,6 +466,28 @@ function LendingPageContent() {
     setWithdrawAmount(formatUnits(collateralAmount, collDecimals));
   }
 
+  function depositMax() {
+    if (collDecimals === undefined || collBalance === undefined) return;
+    setDepositAmount(formatUnits(collBalance, collDecimals));
+  }
+
+  function supplyMax() {
+    if (debtDecimals === undefined || debtBalance === undefined) return;
+    setSupplyAmount(formatUnits(debtBalance, debtDecimals));
+  }
+
+  function withdrawSupplyMax() {
+    if (debtDecimals === undefined || lenderBalance === undefined) return;
+    // withdrawLiquidity converts requested >= balance to the full share
+    // amount, so filling the exact balance is the clean "withdraw all".
+    setWithdrawSupplyAmount(formatUnits(lenderBalance, debtDecimals));
+  }
+
+  function borrowMax() {
+    if (debtDecimals === undefined || borrowInputLimit === undefined || borrowInputLimit === 0n) return;
+    setBorrowAmount(formatUnits(borrowInputLimit, debtDecimals));
+  }
+
   // Every operation runs as a sequence through useTxSequence. When the token
   // allowance doesn't cover the amount, an approve step is prepended and the
   // main action fires automatically once the approve confirms on-chain — the
@@ -797,6 +819,7 @@ function LendingPageContent() {
             isPending={busy}
             activeHere={busy}
             limit={debtBalance}
+            onMax={debtBalance !== undefined && debtBalance > 0n ? supplyMax : undefined}
             onSubmit={supplyLiquidity}
           />
 
@@ -813,6 +836,7 @@ function LendingPageContent() {
             activeHere={busy}
             limit={lenderBalance}
             limitMessage="Exceeds your supplied balance"
+            onMax={lenderBalance !== undefined && lenderBalance > 0n ? withdrawSupplyMax : undefined}
             onSubmit={withdrawSupply}
           />
         </div>
@@ -864,6 +888,7 @@ function LendingPageContent() {
           isPending={busy}
           activeHere={busy}
           limit={collBalance}
+          onMax={collBalance !== undefined && collBalance > 0n ? depositMax : undefined}
           onSubmit={depositCollateral}
         />
 
@@ -880,7 +905,7 @@ function LendingPageContent() {
           activeHere={busy}
           limit={collateralAmount}
           limitMessage="Exceeds your deposited collateral"
-          onMax={debtAmount === 0n && collateralAmount > 0n ? withdrawMax : undefined}
+          onMax={collateralAmount > 0n ? withdrawMax : undefined}
           blockedReason={
             withdrawBreaksPosition && debtDecimals !== undefined
               ? `This withdrawal would leave your position undercollateralized — repay the ${formatTokenDustAware(
@@ -944,6 +969,7 @@ function LendingPageContent() {
           activeHere={busy}
           limit={borrowInputLimit}
           limitMessage="Exceeds your collateral credit limit or available liquidity"
+          onMax={borrowMax}
           onSubmit={borrow}
         />
       </div>
