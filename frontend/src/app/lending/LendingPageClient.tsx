@@ -112,6 +112,23 @@ function UtilizationBar({
   );
 }
 
+/** Mirrors LendingPool.collateralValueInDebtUnits(): collateral base units priced by the DON report, converted into debt-token base units. */
+function collateralValueInDebtUnits(
+  amount: bigint,
+  price: bigint,
+  priceDecimals: number,
+  collDecimals: number,
+  debtDecimals: number,
+): bigint {
+  let value = (amount * price) / 10n ** BigInt(priceDecimals);
+  if (collDecimals > debtDecimals) {
+    value = value / 10n ** BigInt(collDecimals - debtDecimals);
+  } else if (collDecimals < debtDecimals) {
+    value = value * 10n ** BigInt(debtDecimals - collDecimals);
+  }
+  return value;
+}
+
 function ActionPanel({
   title,
   tokenSymbol,
@@ -127,6 +144,7 @@ function ActionPanel({
   limit,
   limitMessage = "Exceeds wallet balance",
   onMax,
+  blockedReason,
 }: {
   title: string;
   tokenSymbol?: string;
@@ -142,6 +160,8 @@ function ActionPanel({
   limit?: bigint;
   limitMessage?: string;
   onMax?: () => void;
+  /** When set, the entered amount would revert on-chain — show why and block submit. */
+  blockedReason?: string;
 }) {
   const parsed = decimals !== undefined ? tryParseUnits(amount, decimals) : undefined;
   const overLimit = limit !== undefined && parsed !== undefined && parsed > limit;
@@ -174,9 +194,10 @@ function ActionPanel({
         </p>
       )}
       {overLimit && <p className="text-xs text-danger-400 mb-2">{limitMessage}</p>}
+      {blockedReason && !overLimit && <p className="text-xs text-danger-400 mb-2">{blockedReason}</p>}
       <button
         onClick={onSubmit}
-        disabled={!amount || isPending || overLimit}
+        disabled={!amount || isPending || overLimit || Boolean(blockedReason)}
         className="btn-press mt-2 w-full py-2.5 rounded-lg bg-trust-600 hover:bg-trust-500 disabled:bg-ink-700 disabled:cursor-not-allowed text-white font-semibold"
       >
         {activeHere ? "Submitting…" : submitLabel}
@@ -371,8 +392,27 @@ function LendingPageContent() {
   const depositParsed = collDecimals !== undefined ? tryParseUnits(depositAmount, collDecimals) : undefined;
   const repayParsed = debtDecimals !== undefined ? tryParseUnits(repayAmount, debtDecimals) : undefined;
   const supplyParsed = debtDecimals !== undefined ? tryParseUnits(supplyAmount, debtDecimals) : undefined;
+  const withdrawParsed = collDecimals !== undefined ? tryParseUnits(withdrawAmount, collDecimals) : undefined;
 
   const repayLimit = debtBalance !== undefined && debtAmount > debtBalance ? debtBalance : undefined;
+
+  // Mirrors the pool's withdrawCollateral revert: after removing the entered
+  // amount, remaining collateral must still cover existing debt at the
+  // liquidation threshold (debt of 0 means any withdraw up to the deposit is
+  // fine). Catches the "withdraw everything while dust debt remains" case
+  // client-side instead of a WouldBeUndercollateralized revert.
+  const withdrawBreaksPosition =
+    withdrawParsed !== undefined &&
+    withdrawParsed <= collateralAmount &&
+    debtAmount > 0n &&
+    hasPrice &&
+    liquidationThresholdBps !== undefined &&
+    collDecimals !== undefined &&
+    debtDecimals !== undefined &&
+    (() => {
+      const value = collateralValueInDebtUnits(collateralAmount - withdrawParsed, price, priceDecimals, collDecimals, debtDecimals);
+      return value * liquidationThresholdBps < debtAmount * 10_000n;
+    })();
 
   const borrowInputLimit =
     poolTotalSupply !== undefined && poolTotalBorrows !== undefined
@@ -394,12 +434,7 @@ function LendingPageContent() {
           if (!hasPrice || liquidationThresholdBps === undefined || collDecimals === undefined || debtDecimals === undefined) {
             return poolCap;
           }
-          let collateralValue = (collateralAmount * price) / 10n ** BigInt(priceDecimals);
-          if (collDecimals > debtDecimals) {
-            collateralValue = collateralValue / 10n ** BigInt(collDecimals - debtDecimals);
-          } else if (collDecimals < debtDecimals) {
-            collateralValue = collateralValue * 10n ** BigInt(debtDecimals - collDecimals);
-          }
+          const collateralValue = collateralValueInDebtUnits(collateralAmount, price, priceDecimals, collDecimals, debtDecimals);
           const maxDebt = (collateralValue * liquidationThresholdBps) / 10_000n;
           const creditLimit = maxDebt > debtAmount ? maxDebt - debtAmount : 0n;
           return creditLimit < poolCap ? creditLimit : poolCap;
@@ -452,11 +487,11 @@ function LendingPageContent() {
   function withdrawCollateral() {
     const pool = selectedMarket.lendingPool;
     if (collDecimals === undefined) return;
-    const amount = tryParseUnits(withdrawAmount, collDecimals);
-    if (amount === undefined) {
+    if (withdrawParsed === undefined) {
       toast("Enter a valid amount to withdraw", "warning");
       return;
     }
+    const amount = withdrawParsed;
     run("Withdraw Collateral", [
       {
         title: "Withdraw Collateral",
@@ -798,6 +833,11 @@ function LendingPageContent() {
           limit={collateralAmount}
           limitMessage="Exceeds your deposited collateral"
           onMax={debtAmount === 0n && collateralAmount > 0n ? withdrawMax : undefined}
+          blockedReason={
+            withdrawBreaksPosition
+              ? "This withdrawal would leave your position undercollateralized — repay your debt first, then withdraw."
+              : undefined
+          }
           onSubmit={withdrawCollateral}
         />
 
