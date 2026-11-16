@@ -21,3 +21,6 @@ node_modules/
 .claude/skills/
 agent/
 skills-lock.json
+
+# Local business doc — not project source
+docs/cre-quota-increase-request.md
