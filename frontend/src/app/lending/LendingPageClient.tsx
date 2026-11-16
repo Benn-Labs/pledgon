@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { erc20Abi, formatUnits, isAddress } from "viem";
 import type { Address } from "viem";
@@ -145,6 +145,7 @@ function ActionPanel({
   limitMessage = "Exceeds wallet balance",
   onMax,
   blockedReason,
+  footer,
 }: {
   title: string;
   tokenSymbol?: string;
@@ -162,6 +163,8 @@ function ActionPanel({
   onMax?: () => void;
   /** When set, the entered amount would revert on-chain — show why and block submit. */
   blockedReason?: string;
+  /** Extra content under the submit button (e.g. an escape hatch for a blocked state). */
+  footer?: ReactNode;
 }) {
   const parsed = decimals !== undefined ? tryParseUnits(amount, decimals) : undefined;
   const overLimit = limit !== undefined && parsed !== undefined && parsed > limit;
@@ -202,6 +205,7 @@ function ActionPanel({
       >
         {activeHere ? "Submitting…" : submitLabel}
       </button>
+      {footer}
     </div>
   );
 }
@@ -414,6 +418,13 @@ function LendingPageContent() {
       return value * liquidationThresholdBps < debtAmount * 10_000n;
     })();
 
+  // The dust debt, buffered for interest that accrues before the repay lands
+  // (repay() clamps overpayment to the real debt, so the wallet and approval
+  // only ever fund what's actually owed). The combined repay-and-escape is
+  // offered only when the wallet can actually cover this figure.
+  const dustBuffered = debtAmount > 0n ? debtAmount + debtAmount / 1000n + 1n : undefined;
+  const dustClearable = dustBuffered !== undefined && debtBalance !== undefined && debtBalance >= dustBuffered;
+
   const borrowInputLimit =
     poolTotalSupply !== undefined && poolTotalBorrows !== undefined
       ? (() => {
@@ -443,9 +454,11 @@ function LendingPageContent() {
 
   function repayMax() {
     if (debtDecimals === undefined || debtAmount === 0n) return;
-    const buffered = debtAmount + debtAmount / 1000n + 1n;
-    const capped = debtBalance !== undefined && buffered > debtBalance ? debtBalance : buffered;
-    setRepayAmount(formatUnits(capped, debtDecimals));
+    // Fill the full (interest-buffered) debt even when the wallet can't
+    // cover it — the panel's limit then shows "Exceeds wallet balance"
+    // instead of silently collapsing to 0, which hid the dust debt behind
+    // an empty-looking input. repay() clamps overpayment to the real debt.
+    setRepayAmount(formatUnits(debtAmount + debtAmount / 1000n + 1n, debtDecimals));
   }
 
   function withdrawMax() {
@@ -501,6 +514,41 @@ function LendingPageContent() {
         tx: { address: pool, abi: lendingPoolAbi, functionName: "withdrawCollateral", args: [amount] },
       },
     ], () => setWithdrawAmount(""));
+  }
+
+  // One-click escape for the blocked-full-withdrawal state: clear the dust
+  // debt and pull out the entire collateral as a single sequence. The repay
+  // amount is buffered for interest accrued since the read and clamped by
+  // the pool to the real debt, so the wallet only funds what's owed; once
+  // the debt hits zero the withdraw of everything is unconditional.
+  function repayDustAndWithdrawAll() {
+    const pool = selectedMarket.lendingPool;
+    const debtToken = selectedMarket.debtToken;
+    if (collDecimals === undefined || debtDecimals === undefined || dustBuffered === undefined) return;
+    if (debtBalance === undefined || debtBalance < dustBuffered) {
+      toast("Your wallet needs USDC to cover the dust debt first", "warning");
+      return;
+    }
+    const dustLabel = formatTokenDustAware(debtAmount, debtDecimals, debtSymbol, 4);
+    const steps: TxStep[] = [];
+    if ((debtAllowance ?? 0n) < dustBuffered) {
+      steps.push({
+        title: `Approve ${debtSymbol}`,
+        description: `Allow the pool to pull up to ${formatToken(dustBuffered, debtDecimals, debtSymbol)} to cover the ${dustLabel} debt — the pool only takes what's actually owed.`,
+        tx: { address: debtToken, abi: erc20Abi, functionName: "approve", args: [pool, dustBuffered] },
+      });
+    }
+    steps.push({
+      title: "Repay Dust Debt",
+      description: `Pay off the ${dustLabel} debt so the collateral can be released. Anything above the real debt is clamped and stays in your wallet.`,
+      tx: { address: pool, abi: lendingPoolAbi, functionName: "repay", args: [dustBuffered] },
+    });
+    steps.push({
+      title: "Withdraw Collateral",
+      description: `Send all ${formatToken(collateralAmount, collDecimals, collSymbol)} of your collateral back to your wallet.`,
+      tx: { address: pool, abi: lendingPoolAbi, functionName: "withdrawCollateral", args: [collateralAmount] },
+    });
+    run("Repay Dust & Withdraw All", steps, () => setWithdrawAmount(""));
   }
 
   function repay() {
@@ -842,6 +890,28 @@ function LendingPageContent() {
                   4,
                 )} debt first, then withdraw.`
               : undefined
+          }
+          footer={
+            withdrawBreaksPosition && debtDecimals !== undefined ? (
+              dustClearable ? (
+                <button
+                  onClick={repayDustAndWithdrawAll}
+                  disabled={busy}
+                  className="btn-press w-full py-2 rounded-lg bg-warning-600 hover:bg-warning-500 disabled:bg-ink-700 disabled:cursor-not-allowed text-white text-sm font-semibold"
+                >
+                  {busy
+                    ? "Submitting…"
+                    : `Repay ${formatTokenDustAware(debtAmount, debtDecimals, debtSymbol, 4)} & Withdraw All ${collSymbol ?? "Collateral"}`}
+                </button>
+              ) : (
+                <p className="text-xs text-warning-400">
+                  Clearing the {formatTokenDustAware(debtAmount, debtDecimals, debtSymbol, 4)} dust debt needs USDC in
+                  your wallet (balance:{" "}
+                  {debtBalance !== undefined ? formatTokenDustAware(debtBalance, debtDecimals, debtSymbol, 4) : "…"}).
+                  Grab testnet USDC from a faucet (e.g. faucet.circle.com), then use the button above.
+                </p>
+              )
+            ) : undefined
           }
           onSubmit={withdrawCollateral}
         />
