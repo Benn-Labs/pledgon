@@ -2,7 +2,7 @@
   "schedule": "0 0 * * * *",
   "chainSelectorName": "ethereum-testnet-sepolia",
   "lendingPoolAddress": "0x708954Ecf84107722351cD18E286d261c835ce13",
-  "borrowers": [],
+  "borrowers": ["0x2ec717584c96D81bEa7CE9c979A354F169F01093", "0xA1fDb0DfDD05967A1DF50479F8895D8DfC4B4272", "0xD212a8bb21112c9941D58E232d01b542C3577F37"],
   "verificationUrl": "https://api.coinpaprika.com/v1/tickers/susde-ethena-staked-usde",
   "secretId": "LENDING_PRICE_API_TOKEN",
   "responsePricePath": "quotes.USD.price",

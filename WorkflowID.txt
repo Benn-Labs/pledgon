@@ -3,9 +3,12 @@ The three workflows below are redeployed and ACTIVE on Sepolia staging (verified
 Workflow	Workflow ID
 lending-oracle-staging	0078629642621bfbc6b133d8fa85fe7a9389ef7d618484a948f3ebeff81716b2
 liquidation-protection-staging	00f718df00c6ce65cc409a709651590ef09bcd21b8ee1ce839190d8c33035fcc
-liquidation-protection-staging-safe	000dd98605535faefc1f6708a9a3df871d1c7907156fc2e007230ec1a7d4584f
+liquidation-protection-staging-safe	00b00149c9830b40f80609451ebbd350cee7d959364ab5c2b70bba15f44c4800
 
-Deployed 2026-11-16 per docs/sepolia-susde-deployment.md (sUSDe/USDC market replacing the retired mCOL/mUSD market). lending-oracle reports CoinGecko sUSDe/USD every 5 min to LendingOracleConsumer 0x71fcaE64b124989eF788CC3Efa9eE71723a43F63; liquidation-protection verifies positions against CoinPaprika and writes verdicts to LiquidationConsumer 0xFF71c57017145d8dA3830B226C53f86608faD236. Both liquidation tiers hold empty borrower lists until the first depositCollateral on the new pool — then run scripts/refresh-liquidation-borrowers.sh --from-block 12142928. Consumers are deployed unbound (expectedWorkflowId == 0): the accepted staging posture until the setExpectedWorkflowId setter exists (production runbook Phase 6).
+Deployed 2026-11-16 per docs/sepolia-susde-deployment.md (sUSDe/USDC market replacing the retired mCOL/mUSD market). lending-oracle reports CoinGecko sUSDe/USD every 5 min to LendingOracleConsumer 0x71fcaE64b124989eF788CC3Efa9eE71723a43F63; liquidation-protection verifies positions against CoinPaprika and writes verdicts to LiquidationConsumer 0xFF71c57017145d8dA3830B226C53f86608faD236. Borrower lists refreshed 2026-11-16 (first deposits on the new pool): close-watch empty; safe tier monitors 0x2ec717584c96D81bEa7CE9c979A354F169F01093, 0xA1fDb0DfDD05967A1DF50479F8895D8DfC4B4272, 0xD212a8bb21112c9941D58E232d01b542C3577F37 hourly. Re-run scripts/refresh-liquidation-borrowers.sh --from-block 12142928 after any new depositCollateral. Consumers are deployed unbound (expectedWorkflowId == 0): the accepted staging posture until the setExpectedWorkflowId setter exists (production runbook Phase 6).
+
+Note: 2026-11-16 safe-tier redeploy (00b00149...) superseded the original safe-tier ID from the same day:
+- liquidation-protection-staging-safe (first deploy) 000dd98605535faefc1f6708a9a3df871d1c7907156fc2e007230ec1a7d4584f
 
 Previous generation (mCOL/mUSD market, 2026-11-09 IDs — now deregistered):
 - lending-oracle-staging 004f4dcd7815f5be3f5bc7a33a131b45f4df13ffc3117bfc8c63f826270a6dfc
