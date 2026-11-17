@@ -425,6 +425,18 @@ function LendingPageContent() {
   const dustBuffered = debtAmount > 0n ? debtAmount + debtAmount / 1000n + 1n : undefined;
   const dustClearable = dustBuffered !== undefined && debtBalance !== undefined && debtBalance >= dustBuffered;
 
+  // The pool can only pay out idle cash — whatever is lent out (borrowed)
+  // isn't available until repaid. Withdrawing the full supplied claim while
+  // anything is borrowed reverts InsufficientLiquidity (observed: a 2-base-
+  // unit dust loan made a full 6000.109720 withdraw fail against 6000.109718
+  // idle), so the input is capped at the lower of supplied and idle.
+  const withdrawSupplyLimit =
+    lenderBalance !== undefined
+      ? poolTokenBalance !== undefined && poolTokenBalance < lenderBalance
+        ? poolTokenBalance
+        : lenderBalance
+      : undefined;
+
   const borrowInputLimit =
     poolTotalSupply !== undefined && poolTotalBorrows !== undefined
       ? (() => {
@@ -478,9 +490,10 @@ function LendingPageContent() {
 
   function withdrawSupplyMax() {
     if (debtDecimals === undefined || lenderBalance === undefined) return;
-    // withdrawLiquidity converts requested >= balance to the full share
-    // amount, so filling the exact balance is the clean "withdraw all".
-    setWithdrawSupplyAmount(formatUnits(lenderBalance, debtDecimals));
+    // The pool can only pay out idle cash — cap Max at the lower of the
+    // supplied balance and what's actually sitting in the pool.
+    const max = poolTokenBalance !== undefined && poolTokenBalance < lenderBalance ? poolTokenBalance : lenderBalance;
+    setWithdrawSupplyAmount(formatUnits(max, debtDecimals));
   }
 
   function borrowMax() {
@@ -834,8 +847,8 @@ function LendingPageContent() {
             submitLabel="Withdraw"
             isPending={busy}
             activeHere={busy}
-            limit={lenderBalance}
-            limitMessage="Exceeds your supplied balance"
+            limit={withdrawSupplyLimit}
+            limitMessage="Exceeds your supplied balance or the pool's idle liquidity (part may be lent out)"
             onMax={lenderBalance !== undefined && lenderBalance > 0n ? withdrawSupplyMax : undefined}
             onSubmit={withdrawSupply}
           />
