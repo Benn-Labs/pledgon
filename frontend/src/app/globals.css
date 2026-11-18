@@ -199,8 +199,7 @@ body {
 }
 
 /* TxProgressModal success state: confetti pieces rain down inside the modal,
-   the clap emoji beats like an ovation, and each confirmed step's checkmark
-   pops in. */
+   and each confirmed step's checkmark pops in. */
 @keyframes confetti-fall {
   0% { transform: translateY(-10%) rotate(0deg); opacity: 1; }
   100% { transform: translateY(46rem) rotate(720deg); opacity: 0; }
@@ -209,14 +208,6 @@ body {
   animation-name: confetti-fall;
   animation-timing-function: linear;
   animation-fill-mode: forwards;
-}
-@keyframes clap {
-  0%, 100% { transform: scale(1) rotate(-4deg); }
-  50% { transform: scale(1.3) rotate(4deg); }
-}
-.clap {
-  animation: clap 0.55s ease-in-out 4;
-  transform-origin: 50% 80%;
 }
 @keyframes success-pop {
   0% { transform: scale(0.4); opacity: 0; }
@@ -228,7 +219,6 @@ body {
 }
 @media (prefers-reduced-motion: reduce) {
   .confetti-piece,
-  .clap,
   .success-pop {
     animation: none;
   }

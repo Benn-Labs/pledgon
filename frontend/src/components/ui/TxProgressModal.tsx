@@ -103,8 +103,8 @@ function Confetti() {
 /**
  * Progress modal for an operation running through useTxSequence: lists the
  * operation's steps in order, shows each one moving through wallet →
- * on-chain → confirmed, and finishes with an applause-style success state
- * (confetti + clap sound) once every step has executed.
+ * on-chain → confirmed, and finishes with a success state (check symbol,
+ * confetti, and a short applause sound) once every step has executed.
  */
 export function TxProgressModal({
   title,
@@ -177,8 +177,11 @@ export function TxProgressModal({
 
         {phase === "done" ? (
           <div className="relative text-center pt-1">
-            <div className="text-4xl mb-2 clap" aria-hidden>
-              👏
+            <div className="flex justify-center mb-3 success-pop" aria-hidden>
+              <svg className="w-16 h-16" viewBox="0 0 64 64" fill="none">
+                <circle cx="32" cy="32" r="30" fill="#16a34a" />
+                <path d="M20 33.5L28.5 42L45 23" stroke="#ffffff" strokeWidth="6.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
             </div>
             <p className="text-success-400 font-semibold mb-4">Operation completed successfully!</p>
             <button
