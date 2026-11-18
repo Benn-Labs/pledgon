@@ -530,7 +530,7 @@ export async function buildListingPdf(model: ListingPdfModel): Promise<{ bytes: 
   L.note("Understand this before buying - it describes exactly how funds move on-chain.");
   L.procedure(
     "Listing -",
-    "The seller fixes the unit price, quantity, per-unit bond, milestone split, payment token, arbiter and deadline windows on-chain. Publishing a listing moves no funds. The seller may delist at any time to stop new purchases, and the platform administrator may remove a listing that breaches the terms of use; neither affects trades already opened.",
+    "The seller fixes the unit price, quantity, per-unit bond, milestone split, payment token, arbiter and deadline windows on-chain. Publishing costs the platform's listing fee (ETH) and the listing stays purchasable for one monthly window; the seller can renew for another month, re-price the remaining quantity and add supply while it is active, and may delist at any time to stop new purchases. The platform administrator may remove a listing that breaches the terms of use. None of this affects trades already opened.",
   );
   L.procedure(
     "Purchase -",

@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { decodeEventLog, isAddress, parseUnits, zeroAddress, type Address } from "viem";
-import { useAccount, useChainId, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
+import { decodeEventLog, formatEther, isAddress, parseUnits, zeroAddress, type Address } from "viem";
+import { useAccount, useChainId, useReadContract, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import { marketplaceAbi } from "@/generated/contracts";
 import { addresses } from "@/lib/addresses";
 import { useToken } from "@/hooks/useToken";
@@ -58,6 +58,15 @@ export default function CreateListingPage() {
   const { writeContract, data: hash, isPending, error } = useWriteContract();
   const { data: receipt, isLoading: isConfirming } = useWaitForTransactionReceipt({ hash, query: { enabled: Boolean(hash) } });
   const handledHash = useRef<`0x${string}` | undefined>(undefined);
+
+  // Listing fee in native ETH — listings are valid for one monthly window and
+  // the same fee applies again on renewal.
+  const { data: listingFee } = useReadContract({
+    address: addresses.marketplace,
+    abi: marketplaceAbi,
+    functionName: "listingFee",
+    query: { enabled: Boolean(addresses.marketplace) },
+  });
 
   const percentTotal = sumPercent(milestonePercentInputs.map((p) => parseFloat(p)));
   const percentValid = Math.abs(percentTotal - 100) < 0.01;
@@ -142,7 +151,7 @@ export default function CreateListingPage() {
   }
 
   function submit() {
-    if (!addresses.marketplace || !token || decimals === undefined || !percentValid) return;
+    if (!addresses.marketplace || !token || decimals === undefined || !percentValid || listingFee === undefined) return;
 
     const arbiterAddress = (arbiterInput || zeroAddress) as Address;
     const milestoneBps = toMilestoneBps(milestonePercentInputs.map((p) => parseFloat(p) || 0));
@@ -166,6 +175,7 @@ export default function CreateListingPage() {
         BigInt(milestoneWindowInput),
         BigInt(deliveryWindowInput),
       ],
+      value: listingFee,
     });
   }
 
@@ -535,6 +545,12 @@ export default function CreateListingPage() {
         >
           {isPending || isConfirming ? "Submitting…" : "Create Listing"}
         </button>
+        {listingFee !== undefined && listingFee > 0n && (
+          <p className="text-xs text-ink-500 text-center mt-2">
+            Costs {formatEther(listingFee)} ETH to publish — the listing stays active for one month and can be renewed,
+            re-priced and restocked while active.
+          </p>
+        )}
       </div>
     </div>
   );

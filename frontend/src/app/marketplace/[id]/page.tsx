@@ -14,6 +14,7 @@ import { toast, toastTxError } from "@/lib/toast";
 import { StatusBadge, LISTING_STATUS } from "@/components/ui/badges";
 import { useListingMetadata } from "@/hooks/useListingMetadata";
 import { EditListingMetadata } from "@/components/marketplace/EditListingMetadata";
+import { SellerListingControls } from "@/components/marketplace/SellerListingControls";
 import { ListingThumbnail } from "@/components/marketplace/ListingThumbnail";
 import { DownloadListingTermsButton } from "@/components/marketplace/DownloadListingTermsButton";
 import { formatPerUnit, unitShortLabel } from "@/lib/units";
@@ -281,6 +282,21 @@ export default function ListingDetailPage() {
                   metadata={metadata}
                   onSaved={setMetadata}
                   milestoneCount={milestoneBps?.length ?? 0}
+                />
+              </div>
+            )}
+            {isSeller && marketplace && listingId !== undefined && isActive && tokenReady && decimals !== undefined && (
+              <div className="mb-4">
+                <SellerListingControls
+                  marketplaceAddress={marketplace}
+                  listingId={listingId}
+                  unitPrice={unitPrice ?? 0n}
+                  decimals={decimals}
+                  symbol={symbol ?? ""}
+                  onChanged={() => {
+                    refetchListing();
+                    refetchPricing();
+                  }}
                 />
               </div>
             )}

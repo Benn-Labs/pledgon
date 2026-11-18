@@ -18,6 +18,7 @@ export default defineConfig({
         "LendingPool.sol/**",
         "LendingOracleConsumer.sol/**",
         "LiquidationConsumer.sol/**",
+        "RebalancingConsumer.sol/**",
         "FlashArbV3.sol/**",
       ],
       // No `deployments` here — addresses differ per network and aren't known

@@ -2884,6 +2884,7 @@ export const marketplaceAbi = [
         internalType: 'contract EscrowFactory',
         type: 'address',
       },
+      { name: '_listingFee', internalType: 'uint256', type: 'uint256' },
     ],
     stateMutability: 'nonpayable',
   },
@@ -2891,6 +2892,13 @@ export const marketplaceAbi = [
     type: 'function',
     inputs: [],
     name: 'BPS_DENOMINATOR',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'LISTING_WINDOW',
     outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
     stateMutability: 'view',
   },
@@ -2928,7 +2936,7 @@ export const marketplaceAbi = [
     ],
     name: 'createListing',
     outputs: [{ name: 'listingId', internalType: 'uint256', type: 'uint256' }],
-    stateMutability: 'nonpayable',
+    stateMutability: 'payable',
   },
   {
     type: 'function',
@@ -2943,6 +2951,20 @@ export const marketplaceAbi = [
     type: 'function',
     inputs: [],
     name: 'listingCount',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'listingId', internalType: 'uint256', type: 'uint256' }],
+    name: 'listingExpiry',
+    outputs: [{ name: 'expiresAt', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'listingFee',
     outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
     stateMutability: 'view',
   },
@@ -3044,6 +3066,30 @@ export const marketplaceAbi = [
   },
   {
     type: 'function',
+    inputs: [{ name: 'listingId', internalType: 'uint256', type: 'uint256' }],
+    name: 'renewListing',
+    outputs: [],
+    stateMutability: 'payable',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'listingId', internalType: 'uint256', type: 'uint256' },
+      { name: 'addQuantity', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'restockListing',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'newFee', internalType: 'uint256', type: 'uint256' }],
+    name: 'setListingFee',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
     inputs: [
       { name: 'listingId', internalType: 'uint256', type: 'uint256' },
       { name: 'reason', internalType: 'string', type: 'string' },
@@ -3051,6 +3097,42 @@ export const marketplaceAbi = [
     name: 'takeDownListing',
     outputs: [],
     stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'listingId', internalType: 'uint256', type: 'uint256' },
+      { name: 'newUnitPrice', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'updatePrice',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'withdrawFees',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'recipient',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      {
+        name: 'amount',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: false,
+      },
+    ],
+    name: 'FeesWithdrawn',
   },
   {
     type: 'event',
@@ -3113,6 +3195,44 @@ export const marketplaceAbi = [
     anonymous: false,
     inputs: [
       {
+        name: 'previousFee',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: false,
+      },
+      {
+        name: 'newFee',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: false,
+      },
+    ],
+    name: 'ListingFeeUpdated',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'listingId',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: true,
+      },
+      {
+        name: 'unitPrice',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: false,
+      },
+    ],
+    name: 'ListingPriceUpdated',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
         name: 'listingId',
         internalType: 'uint256',
         type: 'uint256',
@@ -3155,6 +3275,50 @@ export const marketplaceAbi = [
         type: 'uint256',
         indexed: true,
       },
+      {
+        name: 'expiresAt',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: false,
+      },
+    ],
+    name: 'ListingRenewed',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'listingId',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: true,
+      },
+      {
+        name: 'addQuantity',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: false,
+      },
+      {
+        name: 'remainingQuantity',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: false,
+      },
+    ],
+    name: 'ListingRestocked',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'listingId',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: true,
+      },
     ],
     name: 'ListingSoldOut',
   },
@@ -3183,6 +3347,15 @@ export const marketplaceAbi = [
     ],
     name: 'ListingTakenDown',
   },
+  { type: 'error', inputs: [], name: 'FeeTransferFailed' },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'sent', internalType: 'uint256', type: 'uint256' },
+      { name: 'required', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'IncorrectFeeAmount',
+  },
   {
     type: 'error',
     inputs: [{ name: 'sum', internalType: 'uint256', type: 'uint256' }],
@@ -3193,6 +3366,7 @@ export const marketplaceAbi = [
     inputs: [{ name: 'listingId', internalType: 'uint256', type: 'uint256' }],
     name: 'InvalidListingId',
   },
+  { type: 'error', inputs: [], name: 'InvalidPrice' },
   {
     type: 'error',
     inputs: [
@@ -3200,6 +3374,14 @@ export const marketplaceAbi = [
       { name: 'available', internalType: 'uint256', type: 'uint256' },
     ],
     name: 'InvalidQuantity',
+  },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'listingId', internalType: 'uint256', type: 'uint256' },
+      { name: 'expiresAt', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'ListingExpired',
   },
   {
     type: 'error',
@@ -3225,4 +3407,151 @@ export const marketplaceAbi = [
     name: 'NotSeller',
   },
   { type: 'error', inputs: [], name: 'ZeroAddress' },
+] as const
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// RebalancingConsumer
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+export const rebalancingConsumerAbi = [
+  {
+    type: 'constructor',
+    inputs: [
+      { name: '_forwarder', internalType: 'address', type: 'address' },
+      { name: '_maxVerdictAge', internalType: 'uint256', type: 'uint256' },
+      { name: '_expectedWorkflowId', internalType: 'bytes32', type: 'bytes32' },
+    ],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'borrower', internalType: 'address', type: 'address' }],
+    name: 'checkedAt',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'expectedWorkflowId',
+    outputs: [{ name: '', internalType: 'bytes32', type: 'bytes32' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'forwarder',
+    outputs: [{ name: '', internalType: 'address', type: 'address' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: '', internalType: 'bytes32', type: 'bytes32' }],
+    name: 'isAdditionalWorkflow',
+    outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'borrower', internalType: 'address', type: 'address' }],
+    name: 'isAdvised',
+    outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [],
+    name: 'maxVerdictAge',
+    outputs: [{ name: '', internalType: 'uint256', type: 'uint256' }],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    inputs: [
+      { name: 'metadata', internalType: 'bytes', type: 'bytes' },
+      { name: 'report', internalType: 'bytes', type: 'bytes' },
+    ],
+    name: 'onReport',
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    inputs: [{ name: 'interfaceId', internalType: 'bytes4', type: 'bytes4' }],
+    name: 'supportsInterface',
+    outputs: [{ name: '', internalType: 'bool', type: 'bool' }],
+    stateMutability: 'pure',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'borrower',
+        internalType: 'address',
+        type: 'address',
+        indexed: true,
+      },
+      { name: 'advised', internalType: 'bool', type: 'bool', indexed: false },
+      {
+        name: 'checkedAt',
+        internalType: 'uint256',
+        type: 'uint256',
+        indexed: false,
+      },
+    ],
+    name: 'VerdictUpdated',
+  },
+  {
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      {
+        name: 'workflowId',
+        internalType: 'bytes32',
+        type: 'bytes32',
+        indexed: true,
+      },
+    ],
+    name: 'WorkflowBound',
+  },
+  { type: 'error', inputs: [], name: 'AdditionalWorkflowWhileUnbound' },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'borrower', internalType: 'address', type: 'address' },
+      { name: 'checkedAt', internalType: 'uint256', type: 'uint256' },
+      { name: 'blockTimestamp', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'FutureCheckedAt',
+  },
+  {
+    type: 'error',
+    inputs: [{ name: 'length', internalType: 'uint256', type: 'uint256' }],
+    name: 'InvalidMetadataLength',
+  },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'borrower', internalType: 'address', type: 'address' },
+      { name: 'incomingCheckedAt', internalType: 'uint256', type: 'uint256' },
+      { name: 'storedCheckedAt', internalType: 'uint256', type: 'uint256' },
+    ],
+    name: 'StaleReport',
+  },
+  {
+    type: 'error',
+    inputs: [{ name: 'caller', internalType: 'address', type: 'address' }],
+    name: 'UnauthorizedForwarder',
+  },
+  {
+    type: 'error',
+    inputs: [
+      { name: 'received', internalType: 'bytes32', type: 'bytes32' },
+      { name: 'expected', internalType: 'bytes32', type: 'bytes32' },
+    ],
+    name: 'UnexpectedWorkflowId',
+  },
+  { type: 'error', inputs: [], name: 'ZeroAddress' },
+  { type: 'error', inputs: [], name: 'ZeroWorkflowId' },
 ] as const
