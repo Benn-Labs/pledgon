@@ -191,6 +191,183 @@ func TestIsUndercollateralized(t *testing.T) {
 	})
 }
 
+func TestSourcesDisagree(t *testing.T) {
+	onchain := big.NewInt(100_000_000_000) // $1000, 8 decimals
+
+	t.Run("identical prices agree", func(t *testing.T) {
+		assert.False(t, sourcesDisagree(new(big.Int).Set(onchain), onchain, 500))
+	})
+	t.Run("small deviation agrees", func(t *testing.T) {
+		within := big.NewInt(101_000_000_000) // +1%
+		assert.False(t, sourcesDisagree(within, onchain, 500))
+	})
+	t.Run("large deviation disagrees", func(t *testing.T) {
+		far := big.NewInt(110_000_000_000) // +10%
+		assert.True(t, sourcesDisagree(far, onchain, 500))
+	})
+	t.Run("zero onchain value disagrees with any positive price", func(t *testing.T) {
+		assert.True(t, sourcesDisagree(big.NewInt(1), big.NewInt(0), 500))
+		assert.False(t, sourcesDisagree(big.NewInt(0), big.NewInt(0), 500))
+	})
+	t.Run("independent price crash disagrees", func(t *testing.T) {
+		crashed := big.NewInt(10_000_000_000) // -90%
+		assert.True(t, sourcesDisagree(crashed, onchain, 500))
+	})
+}
+
+// stubEVMWithFeed extends stubEVM with the three reads the cross-source
+// deviation check performs: pool.collateralFeedId(), pool.oracleConsumer()
+// and oracleConsumer.latestRound(feedId). Existing tests keep using stubEVM,
+// whose fatal-on-unknown-call default proves the deviation check never
+// touches the feed when it is disabled.
+func stubEVMWithFeed(
+	t *testing.T,
+	positions map[common.Address]position,
+	thresholdBps *big.Int,
+	feedValue *big.Int,
+	feedDecimals uint8,
+	feedUpdatedAt *big.Int,
+	writeStatus evm.TxStatus,
+) (writes *[]*evm.WriteReportRequest, feedReads *int) {
+	t.Helper()
+
+	chainSelector, err := evm.ChainSelectorFromName(sepoliaChainName)
+	require.NoError(t, err)
+
+	capability, err := evmmock.NewClientCapability(chainSelector, t)
+	require.NoError(t, err)
+
+	positionsSelector := selector("positions(address)")
+	thresholdSelector := selector("liquidationThresholdBps()")
+	feedIdSelector := selector("collateralFeedId()")
+	consumerSelector := selector("oracleConsumer()")
+	latestSelector := selector("latestRound(bytes32)")
+
+	reads := 0
+	capability.CallContract = func(_ context.Context, input *evm.CallContractRequest) (*evm.CallContractReply, error) {
+		data := input.Call.Data
+		switch {
+		case len(data) >= 4 && string(data[:4]) == string(positionsSelector):
+			addrType, _ := abi.NewType("address", "", nil)
+			vals, err := (abi.Arguments{{Type: addrType}}).Unpack(data[4:])
+			require.NoError(t, err)
+			borrower := vals[0].(common.Address)
+			pos, ok := positions[borrower]
+			if !ok {
+				pos = position{collateral: big.NewInt(0), debt: big.NewInt(0)}
+			}
+			u256, _ := abi.NewType("uint256", "", nil)
+			packed, err := (abi.Arguments{{Type: u256}, {Type: u256}}).Pack(pos.collateral, pos.debt)
+			require.NoError(t, err)
+			return &evm.CallContractReply{Data: packed}, nil
+		case len(data) >= 4 && string(data[:4]) == string(thresholdSelector):
+			u256, _ := abi.NewType("uint256", "", nil)
+			packed, err := (abi.Arguments{{Type: u256}}).Pack(thresholdBps)
+			require.NoError(t, err)
+			return &evm.CallContractReply{Data: packed}, nil
+		case len(data) >= 4 && string(data[:4]) == string(feedIdSelector):
+			bytes32Type, _ := abi.NewType("bytes32", "", nil)
+			packed, err := (abi.Arguments{{Type: bytes32Type}}).Pack([32]byte{1, 2, 3})
+			require.NoError(t, err)
+			return &evm.CallContractReply{Data: packed}, nil
+		case len(data) >= 4 && string(data[:4]) == string(consumerSelector):
+			addrType, _ := abi.NewType("address", "", nil)
+			packed, err := (abi.Arguments{{Type: addrType}}).Pack(common.HexToAddress("0x00000000000000000000000000000000C011A7E0"))
+			require.NoError(t, err)
+			return &evm.CallContractReply{Data: packed}, nil
+		case len(data) >= 4 && string(data[:4]) == string(latestSelector):
+			reads++
+			u256Type, _ := abi.NewType("uint256", "", nil)
+			u8Type, _ := abi.NewType("uint8", "", nil)
+			packed, err := (abi.Arguments{{Type: u256Type}, {Type: u8Type}, {Type: u256Type}}).Pack(feedValue, feedDecimals, feedUpdatedAt)
+			require.NoError(t, err)
+			return &evm.CallContractReply{Data: packed}, nil
+		default:
+			t.Fatalf("unexpected CallContract data: %x", data)
+			return nil, nil
+		}
+	}
+
+	captured := &[]*evm.WriteReportRequest{}
+	capability.WriteReport = func(_ context.Context, input *evm.WriteReportRequest) (*evm.WriteReportReply, error) {
+		*captured = append(*captured, input)
+		txHash := make([]byte, 32)
+		txHash[31] = byte(len(*captured))
+		return &evm.WriteReportReply{TxStatus: writeStatus, TxHash: txHash}, nil
+	}
+	return captured, &reads
+}
+
+func configWithDeviation(maxBps uint32) *Config {
+	config := configWithConsumer()
+	config.MaxSourceDeviationBps = maxBps
+	return config
+}
+
+func TestOnCronTrigger_SourceDeviationWithinBound_Attests(t *testing.T) {
+	// Both sources at $1000.00000000 (8 decimals) — zero deviation.
+	stubHTTP(t, 200, `{"data":{"price":"1000"}}`)
+	writes, feedReads := stubEVMWithFeed(t,
+		map[common.Address]position{borrowerAddress: {weiAmount(10, 18), weiAmount(9000, 18)}},
+		big.NewInt(8000), big.NewInt(100_000_000_000), 8, big.NewInt(1_700_000_000),
+		evm.TxStatus_TX_STATUS_SUCCESS)
+	runtime := testutils.NewTeeRuntime(t, testSecrets())
+
+	result, err := onCronTrigger(configWithDeviation(500), runtime, nil)
+	require.NoError(t, err)
+	assert.Equal(t, 1, *feedReads, "feed round must be read exactly once per tick")
+	require.Len(t, *writes, 1)
+	assert.Contains(t, result, "eligible=true")
+}
+
+func TestOnCronTrigger_SourceDeviationBeyondBound_SkipsAttestation(t *testing.T) {
+	// Independent source says $5000, on-chain feed says $1000: a 400%
+	// divergence. Neither an eligible=true nor an eligible=false verdict may
+	// be written — the DON can't tell which source is lying.
+	stubHTTP(t, 200, `{"data":{"price":"5000"}}`)
+	writes, _ := stubEVMWithFeed(t,
+		map[common.Address]position{borrowerAddress: {weiAmount(10, 18), weiAmount(9000, 18)}},
+		big.NewInt(8000), big.NewInt(100_000_000_000), 8, big.NewInt(1_700_000_000),
+		evm.TxStatus_TX_STATUS_SUCCESS)
+	runtime := testutils.NewTeeRuntime(t, testSecrets())
+
+	result, err := onCronTrigger(configWithDeviation(500), runtime, nil)
+	require.NoError(t, err)
+	assert.Contains(t, result, "skipped")
+	assert.Contains(t, result, "diverge beyond 500 bps")
+	assert.Len(t, *writes, 0, "no verdict of either kind may be written while sources disagree")
+}
+
+func TestOnCronTrigger_UnseededOnChainFeed_SkipsAttestation(t *testing.T) {
+	stubHTTP(t, 200, `{"data":{"price":"1000"}}`)
+	writes, _ := stubEVMWithFeed(t,
+		map[common.Address]position{borrowerAddress: {weiAmount(10, 18), weiAmount(9000, 18)}},
+		big.NewInt(8000), big.NewInt(0), 8, big.NewInt(0), // updatedAt 0 = no round stored
+		evm.TxStatus_TX_STATUS_SUCCESS)
+	runtime := testutils.NewTeeRuntime(t, testSecrets())
+
+	result, err := onCronTrigger(configWithDeviation(500), runtime, nil)
+	require.NoError(t, err)
+	assert.Contains(t, result, "unseeded feed")
+	assert.Len(t, *writes, 0)
+}
+
+func TestOnCronTrigger_DecimalsMismatch_SkipsAttestation(t *testing.T) {
+	stubHTTP(t, 200, `{"data":{"price":"1000"}}`)
+	// On-chain feed reports 6 decimals while the independent source is
+	// configured for 8 — the two values aren't comparable.
+	writes, _ := stubEVMWithFeed(t,
+		map[common.Address]position{borrowerAddress: {weiAmount(10, 18), weiAmount(9000, 18)}},
+		big.NewInt(8000), big.NewInt(1_000_000), 6, big.NewInt(1_700_000_000),
+		evm.TxStatus_TX_STATUS_SUCCESS)
+	runtime := testutils.NewTeeRuntime(t, testSecrets())
+
+	result, err := onCronTrigger(configWithDeviation(500), runtime, nil)
+	require.NoError(t, err)
+	assert.Contains(t, result, "decimals mismatch")
+	assert.Len(t, *writes, 0)
+}
+
 func TestEncodeLiquidationReportRoundTrips(t *testing.T) {
 	encoded, err := encodeLiquidationReport(borrowerAddress, true, 1_700_000_000)
 	require.NoError(t, err)

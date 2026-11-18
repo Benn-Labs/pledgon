@@ -45,6 +45,18 @@ type Config struct {
 	ResponsePricePath string `json:"responsePricePath"` // dot-path to a numeric price
 	PriceDecimals     uint32 `json:"priceDecimals"`     // scale applied to the fetched price; must match LendingPool's own feed convention (USD per whole collateral token)
 
+	// Cross-source sanity bound, in basis points relative to the on-chain
+	// feed's stored value: |independent - onchain| * 10_000 > onchain * bound
+	// means the two sources disagree wildly. When that happens this tick
+	// attests NOTHING — not even eligible=false — because we can't tell which
+	// source is lying (a glitching independent API and a manipulated on-chain
+	// feed look identical from here), and a DON attestation under that
+	// uncertainty could green-light a wrongful liquidation. LendingOracle
+	// Consumer's own maxDeviationBps only bounds one source's single-tick
+	// moves; this bounds the two sources against each other at the moment of
+	// attestation. 0 disables the check (preserves pre-check behavior).
+	MaxSourceDeviationBps uint32 `json:"maxSourceDeviationBps"`
+
 	// On-chain delivery. Leave ConsumerAddress as the zero address to stop after
 	// GenerateReport (useful for simulating before it's deployed).
 	ConsumerAddress string `json:"consumerAddress"` // deployed LiquidationConsumer
@@ -148,6 +160,171 @@ func decodeUint256Reply(data []byte) (*big.Int, error) {
 		return nil, err
 	}
 	return vals[0].(*big.Int), nil
+}
+
+// ─── Cross-source deviation check ───────────────────────────
+// The independent price is corroboration for the pool's on-chain feed, but
+// it is itself a single HTTP source — a glitching or compromised provider
+// could attest wrongful liquidations just as a manipulated on-chain feed
+// could. Before attesting anything, compare the two at the moment of
+// attestation and fail closed when they disagree beyond the configured
+// bound. All reads are pool-wide constants/rounds — once per tick, never
+// per borrower.
+
+func encodeCollateralFeedIdCall() []byte {
+	return selector("collateralFeedId()")
+}
+
+func encodeOracleConsumerCall() []byte {
+	return selector("oracleConsumer()")
+}
+
+func encodeLatestRoundCall(feedId [32]byte) ([]byte, error) {
+	bytes32Type, err := abi.NewType("bytes32", "", nil)
+	if err != nil {
+		return nil, err
+	}
+	packed, err := (abi.Arguments{{Type: bytes32Type}}).Pack(feedId)
+	if err != nil {
+		return nil, err
+	}
+	return append(selector("latestRound(bytes32)"), packed...), nil
+}
+
+// latestRoundReply is LendingOracleConsumer.latestRound's (value, decimals, updatedAt).
+type latestRoundReply struct {
+	value     *big.Int
+	decimals  uint8
+	updatedAt *big.Int
+}
+
+func decodeLatestRoundReply(data []byte) (latestRoundReply, error) {
+	u256Type, err := abi.NewType("uint256", "", nil)
+	if err != nil {
+		return latestRoundReply{}, err
+	}
+	u8Type, err := abi.NewType("uint8", "", nil)
+	if err != nil {
+		return latestRoundReply{}, err
+	}
+	vals, err := (abi.Arguments{{Type: u256Type}, {Type: u8Type}, {Type: u256Type}}).Unpack(data)
+	if err != nil {
+		return latestRoundReply{}, err
+	}
+	return latestRoundReply{
+		value:     vals[0].(*big.Int),
+		decimals:  vals[1].(uint8),
+		updatedAt: vals[2].(*big.Int),
+	}, nil
+}
+
+// sourcesDisagree reports whether the independently fetched price and the
+// on-chain feed's stored value deviate by more than maxBps (basis points,
+// relative to the on-chain value). A zero on-chain value can't serve as a
+// baseline, so any positive independent price "disagrees" with it.
+func sourcesDisagree(independent, onchain *big.Int, maxBps uint32) bool {
+	if onchain.Sign() == 0 {
+		return independent.Sign() > 0
+	}
+	delta := new(big.Int).Sub(independent, onchain)
+	delta.Abs(delta)
+	lhs := new(big.Int).Mul(delta, big.NewInt(bpsDenominator))
+	rhs := new(big.Int).Mul(onchain, big.NewInt(int64(maxBps)))
+	return lhs.Cmp(rhs) > 0
+}
+
+// checkSourceDeviation reads the pool's on-chain feed round and compares it
+// against the independently fetched price. It returns "" when attestation
+// may proceed, or a human-readable skip reason when the two sources can't be
+// reconciled (caller must attest nothing this tick).
+func checkSourceDeviation(
+	evmClient *evm.Client,
+	donRuntime cre.Runtime,
+	poolAddress common.Address,
+	independent *big.Int,
+	priceDecimals uint32,
+	maxBps uint32,
+) (string, error) {
+	feedReply, err := evmClient.CallContract(donRuntime, &evm.CallContractRequest{
+		Call: &evm.CallMsg{To: poolAddress.Bytes(), Data: encodeCollateralFeedIdCall()},
+	}).Await()
+	if err != nil {
+		return "", fmt.Errorf("read collateralFeedId(): %w", err)
+	}
+	feedIdBytes, err := decodeBytes32Reply(feedReply.Data)
+	if err != nil {
+		return "", fmt.Errorf("decode collateralFeedId() reply: %w", err)
+	}
+
+	consumerReply, err := evmClient.CallContract(donRuntime, &evm.CallContractRequest{
+		Call: &evm.CallMsg{To: poolAddress.Bytes(), Data: encodeOracleConsumerCall()},
+	}).Await()
+	if err != nil {
+		return "", fmt.Errorf("read oracleConsumer(): %w", err)
+	}
+	oracleConsumer, err := decodeAddressReply(consumerReply.Data)
+	if err != nil {
+		return "", fmt.Errorf("decode oracleConsumer() reply: %w", err)
+	}
+
+	latestCall, err := encodeLatestRoundCall(feedIdBytes)
+	if err != nil {
+		return "", err
+	}
+	roundReply, err := evmClient.CallContract(donRuntime, &evm.CallContractRequest{
+		Call: &evm.CallMsg{To: oracleConsumer.Bytes(), Data: latestCall},
+	}).Await()
+	if err != nil {
+		return "", fmt.Errorf("read latestRound(feedId): %w", err)
+	}
+	round, err := decodeLatestRoundReply(roundReply.Data)
+	if err != nil {
+		return "", fmt.Errorf("decode latestRound(feedId) reply: %w", err)
+	}
+
+	if round.updatedAt.Sign() == 0 {
+		return "on-chain feed has no data yet — refusing to attest against an unseeded feed", nil
+	}
+	if uint32(round.decimals) != priceDecimals {
+		return fmt.Sprintf(
+			"decimals mismatch: on-chain feed uses %d, independent source uses %d — cannot compare sources",
+			round.decimals, priceDecimals,
+		), nil
+	}
+	if sourcesDisagree(independent, round.value, maxBps) {
+		return fmt.Sprintf(
+			"independent price %s and on-chain feed %s diverge beyond %d bps — refusing to attest this tick",
+			independent.String(), round.value.String(), maxBps,
+		), nil
+	}
+	return "", nil
+}
+
+func decodeBytes32Reply(data []byte) ([32]byte, error) {
+	var out [32]byte
+	bytes32Type, err := abi.NewType("bytes32", "", nil)
+	if err != nil {
+		return out, err
+	}
+	vals, err := (abi.Arguments{{Type: bytes32Type}}).Unpack(data)
+	if err != nil {
+		return out, err
+	}
+	feedId := vals[0].([32]byte)
+	copy(out[:], feedId[:])
+	return out, nil
+}
+
+func decodeAddressReply(data []byte) (common.Address, error) {
+	addrType, err := abi.NewType("address", "", nil)
+	if err != nil {
+		return common.Address{}, err
+	}
+	vals, err := (abi.Arguments{{Type: addrType}}).Unpack(data)
+	if err != nil {
+		return common.Address{}, err
+	}
+	return vals[0].(common.Address), nil
 }
 
 // isUndercollateralized mirrors LendingPool.sol's own _isUndercollateralized
@@ -276,6 +453,21 @@ func onCronTrigger(config *Config, runtime cre.TeeRuntime, _ *cron.Payload) (str
 	thresholdBps, err := decodeUint256Reply(thresholdReply.Data)
 	if err != nil {
 		return "", fmt.Errorf("decode liquidationThresholdBps() reply: %w", err)
+	}
+
+	// Cross-source sanity gate: if the independently fetched price and the
+	// pool's on-chain feed disagree beyond the configured bound, attest
+	// NOTHING this tick — not even eligible=false verdicts. When sources
+	// diverge we can't tell which one is lying, and a DON attestation under
+	// that uncertainty could green-light a wrongful liquidation.
+	if config.MaxSourceDeviationBps > 0 {
+		skipReason, err := checkSourceDeviation(evmClient, donRuntime, poolAddress, price, config.PriceDecimals, config.MaxSourceDeviationBps)
+		if err != nil {
+			return "", err
+		}
+		if skipReason != "" {
+			return fmt.Sprintf("checked %d borrower(s): skipped — %s", len(config.Borrowers), skipReason), nil
+		}
 	}
 
 	checkedAt := donRuntime.Now().Unix()
