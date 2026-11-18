@@ -14,19 +14,26 @@ import {Marketplace} from "../src/marketplace/Marketplace.sol";
 ///
 /// Required env vars:
 ///   ESCROW_FACTORY_ADDRESS   the live EscrowFactory (its owner() becomes the
-///                            new Marketplace's moderation admin)
+///                            new Marketplace's moderation admin and its
+///                            feeRecipient() receives withdrawn listing fees)
+///
+/// Optional env vars:
+///   LISTING_FEE_WEI          default 0 — flat ETH fee on createListing and
+///                            renewListing (listings are valid monthly)
 ///
 /// Usage:
 ///   forge script script/DeployMarketplace.s.sol --rpc-url <url> --account deployer --broadcast --verify --slow
 contract DeployMarketplace is Script {
     function run() external {
         EscrowFactory factory = EscrowFactory(vm.envAddress("ESCROW_FACTORY_ADDRESS"));
+        uint256 listingFee = vm.envOr("LISTING_FEE_WEI", uint256(0));
 
         vm.startBroadcast();
-        Marketplace marketplace = new Marketplace(factory);
+        Marketplace marketplace = new Marketplace(factory, listingFee);
         vm.stopBroadcast();
 
         console.log("Marketplace:", address(marketplace));
+        console.log("Listing fee (wei):", listingFee);
         console.log("Moderation admin (factory.owner()):", factory.owner());
 
         string memory json = "marketplace";

@@ -11,6 +11,7 @@ import {ComplianceConsumer} from "../src/compliance/ComplianceConsumer.sol";
 import {Marketplace} from "../src/marketplace/Marketplace.sol";
 import {LendingOracleConsumer} from "../src/lending/LendingOracleConsumer.sol";
 import {LiquidationConsumer} from "../src/lending/LiquidationConsumer.sol";
+import {RebalancingConsumer} from "../src/lending/RebalancingConsumer.sol";
 import {LendingPool} from "../src/lending/LendingPool.sol";
 
 /// @title Deploy
@@ -101,6 +102,10 @@ contract Deploy is Script {
         uint256 tier1CapUsd = vm.envOr("TIER1_CAP_USD", uint256(10_000));
         address feeRecipient = vm.envOr("FEE_RECIPIENT_ADDRESS", owner);
         uint256 vaultCreationFee = vm.envOr("VAULT_CREATION_FEE_WEI", uint256(0));
+        // Flat fee in native ETH charged by Marketplace.createListing (and
+        // renewListing — listings are valid monthly, renewing costs the
+        // current fee). Same shape as VAULT_CREATION_FEE_WEI; default 0.
+        uint256 listingFee = vm.envOr("LISTING_FEE_WEI", uint256(0));
         // Per-consumer workflow bindings (WorkflowBoundReceiver). Bytes32 0 =
         // unbound = accepts any DON-signed workflow — fine for `cre workflow
         // simulate` (MockForwarder carries no metadata), never for production.
@@ -132,7 +137,7 @@ contract Deploy is Script {
             feeRecipient,
             vaultCreationFee
         );
-        Marketplace marketplace = new Marketplace(factory);
+        Marketplace marketplace = new Marketplace(factory, listingFee);
         TradeExpiryKeeper tradeExpiryKeeper = new TradeExpiryKeeper(forwarder, tradeExpiryWorkflowId);
 
         if (
@@ -150,7 +155,8 @@ contract Deploy is Script {
         console.log("Marketplace:               ", address(marketplace));
         console.log("TradeExpiryKeeper:         ", address(tradeExpiryKeeper));
 
-        (address lendingOracleConsumer, address liquidationConsumer, address lendingPool) = _maybeDeployLending(forwarder);
+        (address lendingOracleConsumer, address liquidationConsumer, address lendingPool, address rebalancingConsumer) =
+            _maybeDeployLending(forwarder);
 
         vm.stopBroadcast();
 
@@ -163,20 +169,26 @@ contract Deploy is Script {
             address(tradeExpiryKeeper),
             lendingOracleConsumer,
             liquidationConsumer,
-            lendingPool
+            lendingPool,
+            rebalancingConsumer
         );
     }
 
     function _maybeDeployLending(address forwarder)
         private
-        returns (address lendingOracleConsumer, address liquidationConsumer, address lendingPool)
+        returns (
+            address lendingOracleConsumer,
+            address liquidationConsumer,
+            address lendingPool,
+            address rebalancingConsumer
+        )
     {
         address collateralToken = vm.envOr("COLLATERAL_TOKEN_ADDRESS", address(0));
         address debtToken = vm.envOr("DEBT_TOKEN_ADDRESS", address(0));
 
         if (collateralToken == address(0) || debtToken == address(0)) {
             console.log("Skipping lending: COLLATERAL_TOKEN_ADDRESS / DEBT_TOKEN_ADDRESS not both set");
-            return (address(0), address(0), address(0));
+            return (address(0), address(0), address(0), address(0));
         }
 
         string memory feedLabel = vm.envOr("COLLATERAL_FEED_LABEL", string("RWA/USD"));
@@ -200,6 +212,8 @@ contract Deploy is Script {
         LendingOracleConsumer oracleConsumer =
             new LendingOracleConsumer(forwarder, maxDeviationBps, maxPriceAge, lendingOracleWorkflowId);
         LiquidationConsumer liqConsumer = new LiquidationConsumer(forwarder, maxVerdictAge, liquidationWorkflowId, liquidationExtra);
+        RebalancingConsumer rebConsumer =
+            new RebalancingConsumer(forwarder, maxVerdictAge, vm.envOr("REBALANCING_WORKFLOW_ID", bytes32(0)));
         LendingPool pool = new LendingPool(
             IERC20(collateralToken),
             IERC20(debtToken),
@@ -214,9 +228,10 @@ contract Deploy is Script {
 
         console.log("LendingOracleConsumer:     ", address(oracleConsumer));
         console.log("LiquidationConsumer:       ", address(liqConsumer));
+        console.log("RebalancingConsumer:       ", address(rebConsumer));
         console.log("LendingPool:               ", address(pool));
 
-        return (address(oracleConsumer), address(liqConsumer), address(pool));
+        return (address(oracleConsumer), address(liqConsumer), address(pool), address(rebConsumer));
     }
 
     function _writeDeploymentJson(
@@ -228,7 +243,8 @@ contract Deploy is Script {
         address tradeExpiryKeeper,
         address lendingOracleConsumer,
         address liquidationConsumer,
-        address lendingPool
+        address lendingPool,
+        address rebalancingConsumer
     ) private {
         string memory json = "deployment";
         vm.serializeAddress(json, "escrowConfirmationConsumer", confirmationConsumer);
@@ -239,7 +255,8 @@ contract Deploy is Script {
         vm.serializeAddress(json, "tradeExpiryKeeper", tradeExpiryKeeper);
         vm.serializeAddress(json, "lendingOracleConsumer", lendingOracleConsumer);
         vm.serializeAddress(json, "liquidationConsumer", liquidationConsumer);
-        string memory finalJson = vm.serializeAddress(json, "lendingPool", lendingPool);
+        vm.serializeAddress(json, "lendingPool", lendingPool);
+        string memory finalJson = vm.serializeAddress(json, "rebalancingConsumer", rebalancingConsumer);
 
         string memory path = string.concat("deployments/", vm.toString(block.chainid), ".json");
         vm.writeJson(finalJson, path);
