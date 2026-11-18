@@ -35,7 +35,7 @@ contract MarketplaceTest is Test {
         factory = new EscrowFactory(
             confirmationConsumer, complianceConsumer, 999, 10_000, registry, defaultArbiter, address(this), feeRecipient, 0
         );
-        marketplace = new Marketplace(factory);
+        marketplace = new Marketplace(factory, 0); // fee 0 keeps the pre-fee tests unchanged; fee behavior tested separately
         token = new MockERC20(6);
     }
 
@@ -94,7 +94,12 @@ contract MarketplaceTest is Test {
 
     function test_Constructor_RevertsOnZeroFactory() public {
         vm.expectRevert(Marketplace.ZeroAddress.selector);
-        new Marketplace(EscrowFactory(address(0)));
+        new Marketplace(EscrowFactory(address(0)), 0);
+    }
+
+    function test_Constructor_StoresListingFee() public {
+        Marketplace feeMarketplace = new Marketplace(factory, 0.01 ether);
+        assertEq(feeMarketplace.listingFee(), 0.01 ether);
     }
 
     // ─── createListing ────────────────────────────────────────
@@ -539,5 +544,331 @@ contract MarketplaceTest is Test {
         vm.prank(buyer);
         vm.expectRevert(abi.encodeWithSelector(EscrowFactory.IncorrectFeeAmount.selector, 0, 0.01 ether));
         marketplace.purchase(listingId, 100 * Q);
+    }
+
+    // ─── Monthly validity (create/renew/expiry) ────────────────
+
+    function test_CreateListing_SetsExpiryOneMonthOut() public {
+        uint256 listingId = _createListing(_singleBps(), 100 * Q, 1e6, 0);
+        assertEq(marketplace.listingExpiry(listingId), block.timestamp + 30 days);
+    }
+
+    function test_Purchase_RevertsWhenExpired() public {
+        uint256 listingId = _createListing(_singleBps(), 100 * Q, 1e6, 0);
+        uint256 expiresAt = marketplace.listingExpiry(listingId);
+
+        vm.warp(expiresAt + 1);
+        vm.expectRevert(abi.encodeWithSelector(Marketplace.ListingExpired.selector, listingId, expiresAt));
+        vm.prank(buyer);
+        marketplace.purchase(listingId, Q);
+
+        vm.expectRevert(abi.encodeWithSelector(Marketplace.ListingExpired.selector, listingId, expiresAt));
+        marketplace.previewPurchase(listingId, Q);
+    }
+
+    /// @dev Renewing while still valid must extend from the CURRENT expiry,
+    /// not from now — otherwise renewing early would waste paid-for time
+    /// (Garantor's `base = max(now, expiresAt)`).
+    function test_RenewListing_ExtendsFromCurrentExpiryWhenRenewedEarly() public {
+        uint256 listingId = _createListing(_singleBps(), 100 * Q, 1e6, 0);
+        uint256 firstExpiry = marketplace.listingExpiry(listingId);
+
+        vm.warp(firstExpiry - 5 days); // still valid
+        vm.prank(seller);
+        marketplace.renewListing(listingId);
+
+        assertEq(marketplace.listingExpiry(listingId), firstExpiry + 30 days);
+    }
+
+    /// @dev The point of renewal: an expired listing isn't dead — paying the
+    /// fee again reactivates it for another month instead of forcing the
+    /// seller to recreate the listing.
+    function test_RenewListing_AfterExpiryReactivatesPurchasing() public {
+        uint256 listingId = _createListing(_singleBps(), 100 * Q, 1e6, 0);
+        uint256 firstExpiry = marketplace.listingExpiry(listingId);
+
+        vm.warp(firstExpiry + 1);
+        vm.prank(seller);
+        marketplace.renewListing(listingId);
+
+        assertEq(marketplace.listingExpiry(listingId), block.timestamp + 30 days);
+
+        vm.prank(buyer);
+        address vault = marketplace.purchase(listingId, Q);
+        assertTrue(vault != address(0));
+    }
+
+    function test_RenewListing_EmitsRenewed() public {
+        uint256 listingId = _createListing(_singleBps(), 100 * Q, 1e6, 0);
+
+        vm.expectEmit(true, false, false, true, address(marketplace));
+        emit Marketplace.ListingRenewed(listingId, block.timestamp + 60 days);
+        vm.prank(seller);
+        marketplace.renewListing(listingId);
+    }
+
+    function test_RenewListing_RevertsOnWrongFee() public {
+        Marketplace feeMarketplace = new Marketplace(factory, 0.01 ether);
+        vm.deal(seller, 1 ether);
+        vm.prank(seller);
+        uint256 listingId = feeMarketplace.createListing{value: 0.01 ether}(
+            IERC20(address(token)), _singleBps(), arbiter, "ipfs://listing", 100 * Q, 1e6, 0, 0, 0, 0
+        );
+
+        vm.prank(seller);
+        vm.expectRevert(abi.encodeWithSelector(Marketplace.IncorrectFeeAmount.selector, 0, 0.01 ether));
+        feeMarketplace.renewListing(listingId);
+
+        vm.deal(seller, 1 ether);
+        vm.prank(seller);
+        feeMarketplace.renewListing{value: 0.01 ether}(listingId);
+    }
+
+    function test_RenewListing_RevertsIfNotSeller() public {
+        uint256 listingId = _createListing(_singleBps(), 100 * Q, 1e6, 0);
+        vm.expectRevert(abi.encodeWithSelector(Marketplace.NotSeller.selector, buyer));
+        vm.prank(buyer);
+        marketplace.renewListing(listingId);
+    }
+
+    function test_RenewListing_RevertsIfNotActive() public {
+        uint256 listingId = _createListing(_singleBps(), 100 * Q, 1e6, 0);
+        vm.prank(seller);
+        marketplace.cancelListing(listingId);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(Marketplace.ListingNotActive.selector, listingId, Marketplace.ListingStatus.Cancelled)
+        );
+        vm.prank(seller);
+        marketplace.renewListing(listingId);
+    }
+
+    // ─── updatePrice ───────────────────────────────────────────
+
+    function test_UpdatePrice_ChangesPriceForFuturePurchases() public {
+        uint256 listingId = _createListing(_singleBps(), 100 * Q, 1e6, 0);
+
+        vm.prank(seller);
+        marketplace.updatePrice(listingId, 2e6);
+
+        (,, uint256 unitPrice,) = marketplace.listingPricing(listingId);
+        assertEq(unitPrice, 2e6);
+
+        vm.prank(buyer);
+        address vault = marketplace.purchase(listingId, 10 * Q);
+        assertEq(EscrowVault(vault).totalAmount(), 10 * 2e6);
+    }
+
+    /// @dev Re-pricing must not rewrite history: a vault opened before the
+    /// price change keeps the price it was actually purchased at (Garantor's
+    /// pendingPrice lesson — report what was charged, not the current price).
+    function test_UpdatePrice_LeavesAlreadyOpenedVaultUnchanged() public {
+        uint256 listingId = _createListing(_singleBps(), 100 * Q, 1e6, 0);
+        vm.prank(buyer);
+        address vault = marketplace.purchase(listingId, 10 * Q);
+        assertEq(EscrowVault(vault).totalAmount(), 10 * 1e6);
+
+        vm.prank(seller);
+        marketplace.updatePrice(listingId, 5e6);
+
+        assertEq(EscrowVault(vault).totalAmount(), 10 * 1e6);
+    }
+
+    function test_UpdatePrice_Emits() public {
+        uint256 listingId = _createListing(_singleBps(), 100 * Q, 1e6, 0);
+
+        vm.expectEmit(true, false, false, true, address(marketplace));
+        emit Marketplace.ListingPriceUpdated(listingId, 3e6);
+        vm.prank(seller);
+        marketplace.updatePrice(listingId, 3e6);
+    }
+
+    function test_UpdatePrice_RevertsIfNotSeller() public {
+        uint256 listingId = _createListing(_singleBps(), 100 * Q, 1e6, 0);
+        vm.expectRevert(abi.encodeWithSelector(Marketplace.NotSeller.selector, buyer));
+        vm.prank(buyer);
+        marketplace.updatePrice(listingId, 2e6);
+    }
+
+    function test_UpdatePrice_RevertsOnZeroPrice() public {
+        uint256 listingId = _createListing(_singleBps(), 100 * Q, 1e6, 0);
+        vm.expectRevert(Marketplace.InvalidPrice.selector);
+        vm.prank(seller);
+        marketplace.updatePrice(listingId, 0);
+    }
+
+    function test_UpdatePrice_RevertsIfNotActive() public {
+        uint256 listingId = _createListing(_singleBps(), 100 * Q, 1e6, 0);
+        vm.prank(buyer);
+        marketplace.purchase(listingId, 100 * Q); // sold out
+
+        vm.expectRevert(
+            abi.encodeWithSelector(Marketplace.ListingNotActive.selector, listingId, Marketplace.ListingStatus.Sold)
+        );
+        vm.prank(seller);
+        marketplace.updatePrice(listingId, 2e6);
+    }
+
+    // ─── restockListing ────────────────────────────────────────
+
+    function test_Restock_AddsSupplyToTotalAndRemaining() public {
+        uint256 listingId = _createListing(_singleBps(), 100 * Q, 1e6, 0);
+        vm.prank(buyer);
+        marketplace.purchase(listingId, 30 * Q); // 70 left
+
+        vm.prank(seller);
+        marketplace.restockListing(listingId, 50 * Q);
+
+        (uint256 totalQuantity, uint256 remainingQuantity,,) = marketplace.listingPricing(listingId);
+        assertEq(totalQuantity, 150 * Q);
+        assertEq(remainingQuantity, 120 * Q);
+        assertEq(uint8(_statusOf(listingId)), uint8(Marketplace.ListingStatus.Active));
+    }
+
+    function test_Restock_Emits() public {
+        uint256 listingId = _createListing(_singleBps(), 100 * Q, 1e6, 0);
+
+        vm.expectEmit(true, false, false, true, address(marketplace));
+        emit Marketplace.ListingRestocked(listingId, 50 * Q, 150 * Q);
+        vm.prank(seller);
+        marketplace.restockListing(listingId, 50 * Q);
+    }
+
+    function test_Restock_RevertsIfNotSeller() public {
+        uint256 listingId = _createListing(_singleBps(), 100 * Q, 1e6, 0);
+        vm.expectRevert(abi.encodeWithSelector(Marketplace.NotSeller.selector, buyer));
+        vm.prank(buyer);
+        marketplace.restockListing(listingId, Q);
+    }
+
+    function test_Restock_RevertsOnZeroQuantity() public {
+        uint256 listingId = _createListing(_singleBps(), 100 * Q, 1e6, 0);
+        vm.expectRevert(abi.encodeWithSelector(Marketplace.InvalidQuantity.selector, 0, 100 * Q));
+        vm.prank(seller);
+        marketplace.restockListing(listingId, 0);
+    }
+
+    function test_Restock_RevertsOnOverflow() public {
+        uint256 listingId = _createListing(_singleBps(), 100 * Q, 1e6, 0);
+        vm.expectRevert(
+            abi.encodeWithSelector(Marketplace.InvalidQuantity.selector, type(uint256).max, 100 * Q)
+        );
+        vm.prank(seller);
+        marketplace.restockListing(listingId, type(uint256).max);
+    }
+
+    function test_Restock_RevertsIfNotActive() public {
+        uint256 listingId = _createListing(_singleBps(), 100 * Q, 1e6, 0);
+        vm.prank(seller);
+        marketplace.cancelListing(listingId);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(Marketplace.ListingNotActive.selector, listingId, Marketplace.ListingStatus.Cancelled)
+        );
+        vm.prank(seller);
+        marketplace.restockListing(listingId, Q);
+    }
+
+    /// @dev Sold is terminal: once quantity hits 0 the seller can't restock
+    /// the listing back to life — a sold-out listing stays Sold (Garantor
+    /// semantics: restock requires an active listing).
+    function test_Restock_RevertsOnceSoldOut() public {
+        uint256 listingId = _createListing(_singleBps(), 100 * Q, 1e6, 0);
+        vm.prank(buyer);
+        marketplace.purchase(listingId, 100 * Q);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(Marketplace.ListingNotActive.selector, listingId, Marketplace.ListingStatus.Sold)
+        );
+        vm.prank(seller);
+        marketplace.restockListing(listingId, Q);
+    }
+
+    // ─── Listing fees in ETH (create/renew/withdraw) ───────────
+
+    function test_CreateListing_RequiresExactFee() public {
+        Marketplace feeMarketplace = new Marketplace(factory, 0.01 ether);
+
+        vm.expectRevert(abi.encodeWithSelector(Marketplace.IncorrectFeeAmount.selector, 0, 0.01 ether));
+        vm.prank(seller);
+        feeMarketplace.createListing(
+            IERC20(address(token)), _singleBps(), arbiter, "ipfs://listing", 100 * Q, 1e6, 0, 0, 0, 0
+        );
+
+        vm.deal(seller, 1 ether);
+        vm.prank(seller);
+        uint256 listingId =
+            feeMarketplace.createListing{value: 0.01 ether}(
+                IERC20(address(token)), _singleBps(), arbiter, "ipfs://listing", 100 * Q, 1e6, 0, 0, 0, 0
+            );
+        assertEq(address(feeMarketplace).balance, 0.01 ether);
+        assertEq(feeMarketplace.listingExpiry(listingId), block.timestamp + 30 days);
+    }
+
+    function test_RenewListing_CollectsFee() public {
+        Marketplace feeMarketplace = new Marketplace(factory, 0.01 ether);
+        vm.deal(seller, 1 ether);
+        vm.prank(seller);
+        uint256 listingId =
+            feeMarketplace.createListing{value: 0.01 ether}(
+                IERC20(address(token)), _singleBps(), arbiter, "ipfs://listing", 100 * Q, 1e6, 0, 0, 0, 0
+            );
+
+        vm.prank(seller);
+        feeMarketplace.renewListing{value: 0.01 ether}(listingId);
+        assertEq(address(feeMarketplace).balance, 0.02 ether);
+    }
+
+    function test_SetListingFee_OnlyAdmin() public {
+        vm.expectRevert(abi.encodeWithSelector(Marketplace.NotAdmin.selector, seller));
+        vm.prank(seller);
+        marketplace.setListingFee(0.02 ether);
+
+        vm.expectEmit(false, false, false, true, address(marketplace));
+        emit Marketplace.ListingFeeUpdated(0, 0.02 ether);
+        marketplace.setListingFee(0.02 ether);
+        assertEq(marketplace.listingFee(), 0.02 ether);
+    }
+
+    function test_SetListingFee_RightFollowsFactoryOwnership() public {
+        address multisig = makeAddr("multisig");
+        factory.transferOwnership(multisig);
+
+        vm.expectRevert(abi.encodeWithSelector(Marketplace.NotAdmin.selector, address(this)));
+        marketplace.setListingFee(0.02 ether);
+
+        vm.prank(multisig);
+        marketplace.setListingFee(0.02 ether);
+        assertEq(marketplace.listingFee(), 0.02 ether);
+    }
+
+    function test_WithdrawFees_SendsAccumulatedFeesToFactoryRecipient() public {
+        Marketplace feeMarketplace = new Marketplace(factory, 0.01 ether);
+        vm.deal(seller, 1 ether);
+        vm.prank(seller);
+        feeMarketplace.createListing{value: 0.01 ether}(
+            IERC20(address(token)), _singleBps(), arbiter, "ipfs://listing", 100 * Q, 1e6, 0, 0, 0, 0
+        );
+
+        uint256 recipientBefore = feeRecipient.balance;
+        vm.expectEmit(true, false, false, true, address(feeMarketplace));
+        emit Marketplace.FeesWithdrawn(feeRecipient, 0.01 ether);
+        feeMarketplace.withdrawFees();
+
+        assertEq(address(feeMarketplace).balance, 0);
+        assertEq(feeRecipient.balance, recipientBefore + 0.01 ether);
+    }
+
+    function test_WithdrawFees_OnlyAdmin() public {
+        Marketplace feeMarketplace = new Marketplace(factory, 0.01 ether);
+        vm.expectRevert(abi.encodeWithSelector(Marketplace.NotAdmin.selector, seller));
+        vm.prank(seller);
+        feeMarketplace.withdrawFees();
+    }
+
+    // ─── Helpers ───────────────────────────────────────────────
+
+    function _statusOf(uint256 listingId) internal view returns (Marketplace.ListingStatus status) {
+        (,,,, status) = marketplace.listings(listingId);
     }
 }
