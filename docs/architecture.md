@@ -13,11 +13,12 @@ transaction plumbing with Solidity contracts and DON-verified confidential workf
 
 | PLEDGON feature | Maps to | Status |
 |---|---|---|
-| Marketplace (listings, transfers) | Plain Solidity — CRE doesn't do much here | **Built**: `Marketplace` (Solidity, 16 tests) |
+| Marketplace (listings, transfers) | Plain Solidity — CRE doesn't do much here | **Built**: `Marketplace` (Solidity, 67 tests) — listings carry a native-ETH listing fee and a monthly validity window (renew/reprice/restock), modeled on Garantor's `marketplace_listing.tact` |
 | Escrow + DON confirmation | Confidential workflow verifies an off-chain condition (title recorded, payment cleared) → signed report → escrow contract checks it before releasing funds | **Built**: `EscrowVault`/`EscrowFactory`/`EscrowConfirmationConsumer` (Solidity, 66 tests) + `escrow-confirmation` workflow (Go, 18 tests) |
 | Milestone escrows | Same pattern, repeated per milestone. Triggered by an EVM log trigger (fires when a milestone is claimed via `submitMilestoneDocs`) rather than cron polling | Built as part of the row above — `DocsSubmitted` is the claim event |
 | Compliance layer (confidentiality) | KYC/AML/sanctions API called inside the enclave — PII and the provider's credentials never leave it, only a tier (0/1/2) crosses out | **Built**: `compliance-check` workflow (Go, 16 tests), writes to `ComplianceConsumer` (Solidity, 16 tests) — rolling-volume + tiering + expiry, see "Compliance hardening" below |
-| Lending/borrowing | Its own large protocol: collateral valuation (the RWA oracle feeds this directly), liquidation logic | **Built (minimal substrate)**: `LendingPool`/`LendingOracleConsumer`/`LiquidationConsumer` (Solidity, 20 tests) + `liquidation-protection` workflow (Go, 16 tests). Deliberately not a production money market — see below |
+| Lending/borrowing | Its own large protocol: collateral valuation (the RWA oracle feeds this directly), liquidation logic | **Built (minimal substrate)**: `LendingPool`/`LendingOracleConsumer`/`LiquidationConsumer` (Solidity, 20 tests) + `liquidation-protection` workflow (Go, 27 tests). Deliberately not a production money market — see below |
+| Portfolio rebalancing (proactive lending protection) | Same verify → attest pattern as liquidation-protection, but the verdict band sits *below* liquidation: LTV above the rebalance target, still under the liquidation threshold | **Built**: `RebalancingConsumer` (Solidity, 14 tests) + `portfolio-rebalancing` workflow (Go, 13 tests). Verdict is advisory — no funds move; see "Portfolio rebalancing" below |
 
 ## Prior art (source material, not yet ported)
 
@@ -243,9 +244,15 @@ be touched for this (now 69 across the three Solidity test files); flagging it
 here since it's a change to previously-shipped, tested code rather than
 purely-additive work.
 
-Listings are one-shot (unique items/services, matching the RWA/"deed" theme):
-once `purchase()`d, a listing can't be bought again. `purchase()` does not move
-funds — it only creates the vault; the buyer still calls `fund()` and the seller
+Listings are long-lived, not one-shot: `purchase()` only decrements the
+listing's remaining quantity, and the seller manages the listing over its
+life — `renewListing` extends the monthly validity window (paying the
+current `listingFee` in native ETH again, the Garantor marketplace model),
+`updatePrice` re-prices the remaining quantity, and `restockListing` adds
+supply. Vaults already opened keep the terms they were created with. None of
+the seller actions or admin moderation moves trade funds: `purchase()` does
+not move `token` funds — it only creates the vault (plus the factory's
+vault-creation fee) — the buyer still calls `fund()` and the seller
 `depositBond()` afterward, same as calling `EscrowFactory` directly.
 
 ## Lending: DON-verified liquidation trigger, not a CEX-funded protection bot
@@ -389,3 +396,35 @@ the final report write through that one `donRuntime`. Nothing confirms whether
 calling `UsingTheDons()` earlier (e.g. to read on-chain state before the
 confidential leg) is safe, so this stuck to the verified ordering rather than
 assume it.
+
+**Cross-source deviation gate (liquidation-protection).** The independent
+price corroborates the pool's feed, but it is itself a single HTTP source —
+a glitching provider could attest wrongful liquidations just as a
+manipulated on-chain feed could. When `maxSourceDeviationBps` is configured
+(non-zero), the tick reads the pool's on-chain round
+(`collateralFeedId()` → `oracleConsumer()` → `latestRound(feedId)`, once per
+tick) and attests NOTHING — not even eligible=false — when the two sources
+diverge beyond the bound: at that magnitude we can't tell which source is
+lying, and a DON attestation under that uncertainty could green-light a
+wrongful liquidation. A missing feed round (updatedAt 0) or a decimals
+mismatch also fails closed. This complements
+`LendingOracleConsumer.maxDeviationBps`, which bounds only one source's
+single-tick moves. Default 0 = off, preserving the pre-check behavior.
+
+**Portfolio rebalancing.** The proactive half of lending/borrowing
+protection. `portfolio-rebalancing` is the same verify → attest shape as
+liquidation-protection (independent in-enclave price fetch, per-borrower
+`positions()` reads, one report per borrower, false verdicts written too)
+but the verdict band sits below liquidation: a borrower is `advised` when it
+has debt, is NOT undercollateralized, and its LTV exceeds
+`rebalanceTargetBps` (default band target 70% against the pool's 80%
+threshold). `RebalancingConsumer` stores the verdict exactly like
+`LiquidationConsumer` — per-borrower, `checkedAt`-monotonic,
+`maxVerdictAge`-expiring — and deliberately moves no funds: acting on the
+verdict (topping up collateral, repaying debt from a reserve, notifying the
+borrower) is the keeper/frontend integration's job. It uses a third price
+provider by config convention, so lending-oracle, liquidation-protection and
+this workflow are three genuinely independent readings. Borrower discovery
+reuses `cmd/discover-borrowers` (which now also patches this workflow's
+`borrowers`) and `scripts/refresh-liquidation-borrowers.sh` rolls all three
+deployments together.
