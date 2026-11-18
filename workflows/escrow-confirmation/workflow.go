@@ -31,10 +31,45 @@ type Config struct {
 	SecretID              string `json:"secretId"`              // Vault DON secret id, mapped in secrets.yaml
 	ResponseConfirmedPath string `json:"responseConfirmedPath"` // dot-path to a boolean, e.g. "verified"
 
+	// Optional second corroboration leg for BULK DELIVERIES (large-quantity
+	// purchases shipped as freight/IoT-tracked consignments). When a watched
+	// vault has a shipment mapped here, the milestone claim must also be
+	// corroborated by the IoT sensor API provider — delivered quantity,
+	// custody/handoff events and condition telemetry — before the DON
+	// attests confirmation. Without this, a seller could anchor any docHash
+	// to a bulk-delivery milestone and a single compromised verification
+	// source would be enough to release the funds. Leave nil to keep the
+	// original single-source behavior.
+	BulkDeliveryIoT *BulkDeliveryIoT `json:"bulkDeliveryIoT"`
+
 	// On-chain delivery. Leave ConfirmationConsumerAddress as the zero address to
 	// stop after GenerateReport (useful for simulating before it's deployed).
 	ConfirmationConsumerAddress string `json:"confirmationConsumerAddress"` // deployed EscrowConfirmationConsumer
 	GasLimitWei                 uint64 `json:"gasLimitWei"`
+}
+
+// BulkDeliveryIoT wires an IoT sensor API provider into the verification
+// path. Everything here is confidential: the provider URL, its credential
+// and the raw telemetry never leave the enclave — only the final boolean
+// verdict crosses UsingTheDons(), same as the primary source.
+type BulkDeliveryIoT struct {
+	// ProviderURL is the IoT provider's shipment-delivery endpoint, e.g.
+	// "https://api.iot-provider.com/v1/shipments/delivery". The workflow
+	// appends ?shipmentId=...&vault=...&milestoneIndex=...&docHash=... so the
+	// provider answers for the exact claim being verified.
+	ProviderURL string `json:"providerUrl"`
+	// SecretID is the Vault DON secret holding the provider's API credential,
+	// mapped in secrets.yaml (keep it separate from the primary source's
+	// credential so the two can be rotated independently).
+	SecretID string `json:"iotSecretId"`
+	// ResponseDeliveredPath is the dot-path to a boolean in the provider's
+	// response — true meaning "sensor telemetry attests the claimed shipment
+	// quantity was delivered in acceptable condition".
+	ResponseDeliveredPath string `json:"responseDeliveredPath"`
+	// Shipments maps an EscrowVault address (the vault a bulk purchase
+	// opened) to the IoT provider's shipment/tracking id for that
+	// consignment. Vaults not listed here skip the IoT leg entirely.
+	Shipments map[string]string `json:"shipments"`
 }
 
 // docsSubmittedSignature must match EscrowVault.sol's event exactly:
@@ -71,6 +106,23 @@ func buildVerificationURL(base string, vault common.Address, milestoneIndex *big
 		return "", fmt.Errorf("parse base URL: %w", err)
 	}
 	q := u.Query()
+	q.Set("vault", vault.Hex())
+	q.Set("milestoneIndex", milestoneIndex.String())
+	q.Set("docHash", "0x"+common.Bytes2Hex(docHash[:]))
+	u.RawQuery = q.Encode()
+	return u.String(), nil
+}
+
+// buildIotDeliveryURL appends the shipment reference plus the claim being
+// corroborated, so the IoT provider answers for the exact consignment and
+// milestone: "did sensor telemetry observe this claim's delivery".
+func buildIotDeliveryURL(base string, shipmentID string, vault common.Address, milestoneIndex *big.Int, docHash [32]byte) (string, error) {
+	u, err := url.Parse(base)
+	if err != nil {
+		return "", fmt.Errorf("parse IoT provider URL: %w", err)
+	}
+	q := u.Query()
+	q.Set("shipmentId", shipmentID)
 	q.Set("vault", vault.Hex())
 	q.Set("milestoneIndex", milestoneIndex.String())
 	q.Set("docHash", "0x"+common.Bytes2Hex(docHash[:]))
@@ -181,13 +233,54 @@ func onMilestoneClaimed(config *Config, runtime cre.TeeRuntime, log *evm.Log) (s
 		return "", fmt.Errorf("extract confirmation: %w", err)
 	}
 
+	// ── In enclave: bulk-delivery corroboration via the IoT sensor provider.
+	// A bulk purchase's milestone claim only counts if the shipment's sensor
+	// telemetry agrees with the primary source. This leg runs entirely before
+	// UsingTheDons() — the provider credential and raw telemetry never cross
+	// out, only the final AND of the two booleans does. ──
+	iotNote := ""
+	if iot := config.BulkDeliveryIoT; iot != nil {
+		shipmentID, isBulk := iot.Shipments[vault.Hex()]
+		if isBulk {
+			iotSecret, err := runtime.GetSecret(&cre.SecretRequest{Id: iot.SecretID}).Await()
+			if err != nil {
+				return "", fmt.Errorf("fetch IoT provider secret %q inside the enclave: %w", iot.SecretID, err)
+			}
+
+			iotURL, err := buildIotDeliveryURL(iot.ProviderURL, shipmentID, vault, milestoneIndex, docHash)
+			if err != nil {
+				return "", err
+			}
+			iotResponse, err := client.SendRequestInTee(runtime, &http.Request{
+				Url:    iotURL,
+				Method: "GET",
+				MultiHeaders: map[string]*http.HeaderValues{
+					"Authorization": {Values: []string{"Bearer " + iotSecret.Value}},
+				},
+			}).Await()
+			if err != nil {
+				return "", fmt.Errorf("IoT delivery request failed: %w", err)
+			}
+			if iotResponse.StatusCode < 200 || iotResponse.StatusCode > 299 {
+				return "", fmt.Errorf("IoT delivery request failed with status: %d", iotResponse.StatusCode)
+			}
+
+			iotDelivered, err := extractBool(iotResponse.Body, iot.ResponseDeliveredPath)
+			if err != nil {
+				return "", fmt.Errorf("extract IoT delivery verdict: %w", err)
+			}
+			iotNote = fmt.Sprintf(" (bulk delivery %s: iotDelivered=%t)", shipmentID, iotDelivered)
+			confirmed = confirmed && iotDelivered
+		}
+	}
+
 	// ── Cross back to the DON ──
 	// Only the boolean verdict crosses out. The secret and the raw verification
 	// response do not.
 	donRuntime := runtime.UsingTheDons()
 
 	if !confirmed {
-		return fmt.Sprintf("vault %s milestone %s: not confirmed, no report written", vault.Hex(), milestoneIndex), nil
+		return fmt.Sprintf("vault %s milestone %s: not confirmed%s, no report written", vault.Hex(), milestoneIndex, iotNote), nil
 	}
 
 	encoded, err := encodeConfirmationReport(vault, milestoneIndex, true)
@@ -207,7 +300,7 @@ func onMilestoneClaimed(config *Config, runtime cre.TeeRuntime, log *evm.Log) (s
 
 	// ── Deliver on-chain (skipped when no consumer is configured) ──
 	if isZeroAddress(config.ConfirmationConsumerAddress) {
-		return fmt.Sprintf("vault %s milestone %s confirmed (no consumer configured, write skipped)", vault.Hex(), milestoneIndex), nil
+		return fmt.Sprintf("vault %s milestone %s confirmed%s (no consumer configured, write skipped)", vault.Hex(), milestoneIndex, iotNote), nil
 	}
 
 	chainSelector, err := evm.ChainSelectorFromName(config.ChainSelectorName)
@@ -229,13 +322,46 @@ func onMilestoneClaimed(config *Config, runtime cre.TeeRuntime, log *evm.Log) (s
 	}
 
 	txHash := common.BytesToHash(reply.TxHash).Hex()
-	return fmt.Sprintf("vault %s milestone %s confirmed, tx %s", vault.Hex(), milestoneIndex, txHash), nil
+	return fmt.Sprintf("vault %s milestone %s confirmed%s, tx %s", vault.Hex(), milestoneIndex, iotNote, txHash), nil
+}
+
+// validateBulkDeliveryIoT fails closed at workflow start rather than
+// mid-tick: a half-configured IoT leg must never let a bulk claim through
+// unverified.
+func validateBulkDeliveryIoT(iot *BulkDeliveryIoT) error {
+	if iot == nil {
+		return nil
+	}
+	if iot.ProviderURL == "" {
+		return fmt.Errorf("bulkDeliveryIoT.providerUrl is required when bulkDeliveryIoT is configured")
+	}
+	if iot.SecretID == "" {
+		return fmt.Errorf("bulkDeliveryIoT.iotSecretId is required when bulkDeliveryIoT is configured")
+	}
+	if iot.ResponseDeliveredPath == "" {
+		return fmt.Errorf("bulkDeliveryIoT.responseDeliveredPath is required when bulkDeliveryIoT is configured")
+	}
+	if len(iot.Shipments) == 0 {
+		return fmt.Errorf("bulkDeliveryIoT.shipments must map at least one vault when bulkDeliveryIoT is configured")
+	}
+	for vault, shipmentID := range iot.Shipments {
+		if !common.IsHexAddress(vault) {
+			return fmt.Errorf("bulkDeliveryIoT.shipments: %q is not a valid vault address", vault)
+		}
+		if shipmentID == "" {
+			return fmt.Errorf("bulkDeliveryIoT.shipments[%q]: shipment id is empty", vault)
+		}
+	}
+	return nil
 }
 
 // ─── Workflow Init ──────────────────────────────────────────
 func InitWorkflow(config *Config, _ *slog.Logger, _ cre.SecretsProvider) (cre.Workflow[*Config], error) {
 	if len(config.VaultAddresses) == 0 {
 		return nil, fmt.Errorf("vaultAddresses must list at least one EscrowVault to watch")
+	}
+	if err := validateBulkDeliveryIoT(config.BulkDeliveryIoT); err != nil {
+		return nil, err
 	}
 
 	chainSelector, err := evm.ChainSelectorFromName(config.ChainSelectorName)

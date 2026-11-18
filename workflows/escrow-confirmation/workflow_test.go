@@ -159,6 +159,63 @@ func TestBuildVerificationURL(t *testing.T) {
 	assert.Contains(t, got, "docHash=0x"+common.Bytes2Hex(docHash[:]))
 }
 
+func TestBuildIotDeliveryURL(t *testing.T) {
+	docHash := crypto.Keccak256Hash([]byte("bill-of-lading.pdf"))
+	got, err := buildIotDeliveryURL("https://iot.example.com/v1/shipments/delivery", "SHP-12345", vaultAddress, big.NewInt(2), docHash)
+	require.NoError(t, err)
+
+	assert.Contains(t, got, "shipmentId=SHP-12345")
+	assert.Contains(t, got, "vault="+vaultAddress.Hex())
+	assert.Contains(t, got, "milestoneIndex=2")
+	assert.Contains(t, got, "docHash=0x"+common.Bytes2Hex(docHash[:]))
+}
+
+func TestValidateBulkDeliveryIoT(t *testing.T) {
+	valid := &BulkDeliveryIoT{
+		ProviderURL:           "https://iot.example.com/v1/shipments/delivery",
+		SecretID:              "IOT_PROVIDER_TOKEN",
+		ResponseDeliveredPath: "delivered",
+		Shipments:             map[string]string{vaultAddress.Hex(): "SHP-1"},
+	}
+
+	t.Run("nil is valid (IoT leg disabled)", func(t *testing.T) {
+		require.NoError(t, validateBulkDeliveryIoT(nil))
+	})
+	t.Run("valid config passes", func(t *testing.T) {
+		require.NoError(t, validateBulkDeliveryIoT(valid))
+	})
+	t.Run("missing provider URL", func(t *testing.T) {
+		c := *valid
+		c.ProviderURL = ""
+		require.ErrorContains(t, validateBulkDeliveryIoT(&c), "providerUrl")
+	})
+	t.Run("missing secret id", func(t *testing.T) {
+		c := *valid
+		c.SecretID = ""
+		require.ErrorContains(t, validateBulkDeliveryIoT(&c), "iotSecretId")
+	})
+	t.Run("missing response path", func(t *testing.T) {
+		c := *valid
+		c.ResponseDeliveredPath = ""
+		require.ErrorContains(t, validateBulkDeliveryIoT(&c), "responseDeliveredPath")
+	})
+	t.Run("no shipments", func(t *testing.T) {
+		c := *valid
+		c.Shipments = map[string]string{}
+		require.ErrorContains(t, validateBulkDeliveryIoT(&c), "shipments")
+	})
+	t.Run("invalid vault address", func(t *testing.T) {
+		c := *valid
+		c.Shipments = map[string]string{"not-an-address": "SHP-1"}
+		require.ErrorContains(t, validateBulkDeliveryIoT(&c), "not a valid vault address")
+	})
+	t.Run("empty shipment id", func(t *testing.T) {
+		c := *valid
+		c.Shipments = map[string]string{vaultAddress.Hex(): ""}
+		require.ErrorContains(t, validateBulkDeliveryIoT(&c), "shipment id is empty")
+	})
+}
+
 func TestExtractBool(t *testing.T) {
 	t.Run("top-level bool", func(t *testing.T) {
 		b, err := extractBool([]byte(`{"verified": true}`), "verified")
@@ -310,6 +367,156 @@ func TestOnMilestoneClaimed_ErrorsOnMalformedLog(t *testing.T) {
 	assert.Contains(t, err.Error(), "decode DocsSubmitted log")
 }
 
+// stubHTTPByURL registers an in-enclave HTTP stub whose response depends on
+// the request URL (primary verification vs IoT provider), recording every
+// URL and Authorization header it was called with.
+func stubHTTPByURL(t *testing.T, respond func(url string) (uint32, string)) (urls *[]string, authHeaders *[]string) {
+	t.Helper()
+
+	capability, err := httpmock.NewClientCapability(t)
+	require.NoError(t, err)
+
+	urls = &[]string{}
+	authHeaders = &[]string{}
+	capability.SendRequest = func(_ context.Context, input *http.Request) (*http.Response, error) {
+		*urls = append(*urls, input.Url)
+		if auth := input.MultiHeaders["Authorization"]; auth != nil {
+			*authHeaders = append(*authHeaders, auth.Values...)
+		}
+		status, body := respond(input.Url)
+		return &http.Response{StatusCode: status, Body: []byte(body)}, nil
+	}
+	return urls, authHeaders
+}
+
+func iotConfig() *Config {
+	config := configWithConsumer()
+	config.BulkDeliveryIoT = &BulkDeliveryIoT{
+		ProviderURL:           "https://iot.example.com/v1/shipments/delivery",
+		SecretID:              "IOT_PROVIDER_TOKEN",
+		ResponseDeliveredPath: "delivered",
+		Shipments:             map[string]string{vaultAddress.Hex(): "SHP-12345"},
+	}
+	return config
+}
+
+func iotSecrets() testutils.Secrets {
+	return testutils.Secrets{
+		cre.DefaultSecretNamespace: {
+			"VERIFICATION_API_TOKEN": apiToken,
+			"IOT_PROVIDER_TOKEN":     "test-iot-provider-token",
+		},
+	}
+}
+
+func TestOnMilestoneClaimed_BulkDeliveryWritesOnlyWhenBothSourcesConfirm(t *testing.T) {
+	docHash := crypto.Keccak256Hash([]byte("bill-of-lading.pdf"))
+	log := docsSubmittedLog(t, vaultAddress, 1, docHash)
+	urls, authHeaders := stubHTTPByURL(t, func(u string) (uint32, string) {
+		if strings.Contains(u, "iot.example.com") {
+			return 200, `{"delivered": true, "telemetry": "confidential-detail"}`
+		}
+		return 200, `{"verified": true}`
+	})
+	captured := stubEVMWrite(t, evm.TxStatus_TX_STATUS_SUCCESS)
+	runtime := testutils.NewTeeRuntime(t, iotSecrets())
+
+	result, err := onMilestoneClaimed(iotConfig(), runtime, log)
+	require.NoError(t, err)
+	require.NotNil(t, *captured)
+	assert.Contains(t, result, "confirmed")
+
+	// Both legs ran, each with its own credential.
+	require.Len(t, *urls, 2)
+	assert.Contains(t, strings.Join(*urls, "\n"), "shipmentId=SHP-12345")
+	assert.ElementsMatch(t, []string{"Bearer " + apiToken, "Bearer test-iot-provider-token"}, *authHeaders)
+}
+
+func TestOnMilestoneClaimed_BulkDeliveryBlockedWhenIotDisagrees(t *testing.T) {
+	docHash := crypto.Keccak256Hash([]byte("bill-of-lading.pdf"))
+	log := docsSubmittedLog(t, vaultAddress, 1, docHash)
+	// Primary source says confirmed; the IoT telemetry says the shipment was
+	// NOT delivered. The DON must not attest.
+	urls, _ := stubHTTPByURL(t, func(u string) (uint32, string) {
+		if strings.Contains(u, "iot.example.com") {
+			return 200, `{"delivered": false}`
+		}
+		return 200, `{"verified": true}`
+	})
+	captured := stubEVMWrite(t, evm.TxStatus_TX_STATUS_SUCCESS)
+	runtime := testutils.NewTeeRuntime(t, iotSecrets())
+
+	result, err := onMilestoneClaimed(iotConfig(), runtime, log)
+	require.NoError(t, err)
+
+	assert.Contains(t, result, "not confirmed")
+	assert.Contains(t, result, "iotDelivered=false")
+	assert.Nil(t, *captured, "no report may be written when the IoT provider disagrees")
+	assert.Len(t, *urls, 2)
+}
+
+func TestOnMilestoneClaimed_BulkDeliverySkippedForUnmappedVault(t *testing.T) {
+	otherVault := common.HexToAddress("0x00000000000000000000000000000000FEEDFACE")
+	docHash := crypto.Keccak256Hash([]byte("deed-transfer.pdf"))
+	log := docsSubmittedLog(t, otherVault, 0, docHash)
+	urls, _ := stubHTTPByURL(t, func(u string) (uint32, string) {
+		return 200, `{"verified": true}`
+	})
+	// No consumer configured — checking only which HTTP legs ran.
+	config := testConfig()
+	config.BulkDeliveryIoT = iotConfig().BulkDeliveryIoT
+	runtime := testutils.NewTeeRuntime(t, iotSecrets())
+
+	result, err := onMilestoneClaimed(config, runtime, log)
+	require.NoError(t, err)
+	assert.Contains(t, result, "confirmed")
+	assert.Len(t, *urls, 1, "vaults without a mapped shipment must not hit the IoT provider")
+}
+
+func TestOnMilestoneClaimed_IotFailureAbortsTheClaim(t *testing.T) {
+	docHash := crypto.Keccak256Hash([]byte("bill-of-lading.pdf"))
+	log := docsSubmittedLog(t, vaultAddress, 1, docHash)
+	stubHTTPByURL(t, func(u string) (uint32, string) {
+		if strings.Contains(u, "iot.example.com") {
+			return 500, `{"error": "provider exploded"}`
+		}
+		return 200, `{"verified": true}`
+	})
+	captured := stubEVMWrite(t, evm.TxStatus_TX_STATUS_SUCCESS)
+	runtime := testutils.NewTeeRuntime(t, iotSecrets())
+
+	_, err := onMilestoneClaimed(iotConfig(), runtime, log)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "IoT delivery request failed with status: 500")
+	assert.Nil(t, *captured, "a failing IoT leg must fail closed, never attest")
+}
+
+func TestOnMilestoneClaimed_IotLegDoesNotLeakTelemetry(t *testing.T) {
+	docHash := crypto.Keccak256Hash([]byte("bill-of-lading.pdf"))
+	log := docsSubmittedLog(t, vaultAddress, 0, docHash)
+	const sensitiveTelemetry = "gps-coordinates-and-temperature-trace-xyz"
+	stubHTTPByURL(t, func(u string) (uint32, string) {
+		if strings.Contains(u, "iot.example.com") {
+			return 200, `{"delivered": true, "telemetry": "`+sensitiveTelemetry+`"}`
+		}
+		return 200, `{"verified": true, "note": "sensitive-note"}`
+	})
+	// No consumer configured — the run stops after the verdict, which is all
+	// this test needs to inspect the enclave logs.
+	config := testConfig()
+	config.BulkDeliveryIoT = iotConfig().BulkDeliveryIoT
+	runtime := testutils.NewTeeRuntime(t, iotSecrets())
+
+	_, err := onMilestoneClaimed(config, runtime, log)
+	require.NoError(t, err)
+
+	for _, raw := range runtime.GetLogs() {
+		line := string(raw)
+		assert.False(t, strings.Contains(line, "test-iot-provider-token"), "log leaked the IoT secret: %s", line)
+		assert.False(t, strings.Contains(line, sensitiveTelemetry), "log leaked raw telemetry: %s", line)
+	}
+}
+
 func TestOnMilestoneClaimed_DoesNotLogSecretOrResponseBody(t *testing.T) {
 	docHash := crypto.Keccak256Hash([]byte("deed-transfer.pdf"))
 	log := docsSubmittedLog(t, vaultAddress, 0, docHash)
@@ -348,4 +555,18 @@ func TestInitWorkflow_RevertsOnUnknownChainSelectorName(t *testing.T) {
 
 	_, err := InitWorkflow(config, nil, nil)
 	require.Error(t, err)
+}
+
+func TestInitWorkflow_RevertsOnInvalidBulkDeliveryIoT(t *testing.T) {
+	config := testConfig()
+	config.BulkDeliveryIoT = &BulkDeliveryIoT{
+		ProviderURL:           "https://iot.example.com/v1/shipments/delivery",
+		SecretID:              "IOT_PROVIDER_TOKEN",
+		ResponseDeliveredPath: "delivered",
+		Shipments:             map[string]string{"not-an-address": "SHP-1"},
+	}
+
+	_, err := InitWorkflow(config, nil, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not a valid vault address")
 }
