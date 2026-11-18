@@ -50,7 +50,7 @@ export function FundingDeadlinePanel({
     <div className={`bg-ink-900 border rounded-xl p-6 mb-6 ${timeLeft.expired ? "border-danger-500/30" : "border-ink-800"}`}>
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h2 className="font-semibold text-white mb-1">Funding Deadline</h2>
+          <h2 className="font-semibold text-ink-50 mb-1">Funding Deadline</h2>
           <p className={`text-sm ${timeLeft.expired ? "text-danger-400" : "text-ink-400"}`}>
             {timeLeft.expired
               ? "Deadline passed — the seller's bond can now be reclaimed and the trade cancelled."

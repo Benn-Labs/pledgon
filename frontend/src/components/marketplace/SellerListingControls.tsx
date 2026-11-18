@@ -86,7 +86,7 @@ export function SellerListingControls({
   return (
     <div className="p-4 rounded-lg bg-ink-950/60 border border-ink-800 shadow-[inset_0_1px_2px_rgba(0,0,0,0.3)] space-y-3">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-white">Manage listing</h3>
+        <h3 className="text-sm font-semibold text-ink-50">Manage listing</h3>
         {expiresAt !== undefined && (
           <span className={`text-xs ${expired ? "text-danger-400" : "text-ink-500"}`}>
             {expired

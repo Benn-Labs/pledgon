@@ -72,7 +72,7 @@ function VaultLookup() {
         <button
           onClick={submit}
           disabled={!isAddress(input) || isFetching}
-          className="btn-press px-4 py-2.5 rounded-lg bg-ink-800 hover:bg-ink-700 border border-ink-700 disabled:opacity-40 text-white text-sm font-medium shrink-0"
+          className="btn-press px-4 py-2.5 rounded-lg bg-ink-800 hover:bg-ink-700 border border-ink-700 disabled:opacity-40 text-ink-50 text-sm font-medium shrink-0"
         >
           {isFetching ? "Checking…" : "Open"}
         </button>
@@ -185,7 +185,7 @@ function VaultSection({
   if (entries.length === 0) return null;
   return (
     <div className="mb-8">
-      <h2 className="font-semibold text-white mb-4">
+      <h2 className="font-semibold text-ink-50 mb-4">
         {title} <span className="text-ink-500 font-normal">({entries.length})</span>
       </h2>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -386,7 +386,7 @@ export default function EscrowListPage() {
     <div className="fade-in">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-3xl font-display text-white">Escrow</h1>
+          <h1 className="text-3xl font-display text-ink-50">Escrow</h1>
           <p className="text-ink-400 mt-1">Every trade you&apos;re a party to — as buyer, seller, or arbiter</p>
         </div>
         <Link

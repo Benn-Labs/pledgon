@@ -45,7 +45,7 @@ function DisputeResolutionCard({
   return (
     <div className="p-4 rounded-lg bg-danger-500/5 border border-danger-500/20">
       <div className="flex items-center justify-between mb-3">
-        <span className="font-semibold text-white">Milestone #{milestone.index + 1}</span>
+        <span className="font-semibold text-ink-50">Milestone #{milestone.index + 1}</span>
         <span className="font-mono text-warning-400">{formatToken(milestone.amount, decimals, symbol)}</span>
       </div>
       <p className="text-sm text-ink-300 mb-4">
@@ -172,7 +172,7 @@ export function ArbiterPanel({
           </svg>
         </div>
         <div>
-          <h2 className="font-semibold text-white">Arbiter Panel</h2>
+          <h2 className="font-semibold text-ink-50">Arbiter Panel</h2>
           <p className="text-sm text-ink-400">You have arbiter privileges on this trade</p>
         </div>
       </div>

@@ -103,13 +103,13 @@ export default function ArbitrageBotPage({ params }: { params: Promise<{ address
 
   return (
     <div className="fade-in max-w-3xl mx-auto">
-      <Link href="/arbitrage" className="text-sm text-ink-400 hover:text-white mb-4 inline-block">
+      <Link href="/arbitrage" className="text-sm text-ink-400 hover:text-ink-50 mb-4 inline-block">
         ← Back to bots
       </Link>
 
       <div className="flex items-start justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-3xl font-display text-white">{formatAddress(botAddress)}</h1>
+          <h1 className="text-3xl font-display text-ink-50">{formatAddress(botAddress)}</h1>
           <p className="text-ink-400 mt-1">FlashArbV3 arbitrage bot</p>
         </div>
         {isOwner && (
@@ -140,7 +140,7 @@ export default function ArbitrageBotPage({ params }: { params: Promise<{ address
       </div>
 
       <div className="p-6 rounded-xl bg-ink-900 border border-ink-800 mb-6">
-        <h2 className="font-semibold text-white mb-4">Execute Flash Loan</h2>
+        <h2 className="font-semibold text-ink-50 mb-4">Execute Flash Loan</h2>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
           <div>
@@ -269,7 +269,7 @@ export default function ArbitrageBotPage({ params }: { params: Promise<{ address
       </div>
 
       <div className="p-6 rounded-xl bg-ink-900 border border-ink-800">
-        <h2 className="font-semibold text-white mb-2">Withdraw profits</h2>
+        <h2 className="font-semibold text-ink-50 mb-2">Withdraw profits</h2>
         <p className="text-sm text-ink-400 mb-4">
           Profits accumulate in the bot contract. Use the contract&apos;s owner functions directly (e.g. via Etherscan
           or cast) until a withdrawal UI is added here.

@@ -76,10 +76,10 @@ export function NotificationBell() {
         aria-expanded={open}
         aria-haspopup="true"
         className={`relative flex h-9 w-9 items-center justify-center rounded-lg transition-colors hover:bg-ink-800 ${
-          open ? "bg-ink-800 text-white" : "text-ink-300 hover:text-white"
+          open ? "bg-ink-800 text-ink-50" : "text-ink-300 hover:text-ink-50"
         }`}
       >
-        <BellIcon className={`h-5 w-5 ${unread > 0 ? "bell-ring text-white" : ""}`} />
+        <BellIcon className={`h-5 w-5 ${unread > 0 ? "bell-ring text-ink-50" : ""}`} />
         {unread > 0 && (
           <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger-500 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-ink-950">
             {unread > 9 ? "9+" : unread}
@@ -90,7 +90,7 @@ export function NotificationBell() {
       {open && (
         <div className="fade-in absolute right-0 top-full z-50 mt-2 w-96 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-ink-800 bg-ink-900 shadow-2xl shadow-black/50">
           <div className="flex items-center justify-between border-b border-ink-800 px-4 py-3">
-            <h2 className="text-sm font-semibold text-white">Recent Activity</h2>
+            <h2 className="text-sm font-semibold text-ink-50">Recent Activity</h2>
             {feed.length > 0 && <span className="text-xs text-ink-500">{feed.length} recent</span>}
           </div>
 
@@ -114,7 +114,7 @@ export function NotificationBell() {
                         className={`group flex items-start gap-3 px-4 py-3 transition-colors hover:bg-ink-800 ${isNew ? "bg-trust-500/5" : ""}`}
                       >
                         <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${DOT[entry.tone]}`} />
-                        <p className={`min-w-0 flex-1 text-sm group-hover:text-white ${isNew ? "text-white" : "text-ink-300"}`}>
+                        <p className={`min-w-0 flex-1 text-sm group-hover:text-ink-50 ${isNew ? "text-ink-50" : "text-ink-300"}`}>
                           {entry.message}
                         </p>
                         <span className="shrink-0 text-xs text-ink-500">{formatRelativeTime(entry.at, now)}</span>

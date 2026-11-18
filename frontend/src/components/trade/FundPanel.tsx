@@ -70,7 +70,7 @@ export function FundPanel({
   if (funded) {
     return (
       <div className="bg-ink-900 border border-ink-800 rounded-xl p-6 mb-6">
-        <h2 className="font-semibold mb-2 text-white">Funding</h2>
+        <h2 className="font-semibold mb-2 text-ink-50">Funding</h2>
         <p className="text-sm text-success-400">Funded ({formatToken(totalAmount, decimals, symbol)}).</p>
       </div>
     );
@@ -79,7 +79,7 @@ export function FundPanel({
   if (bondAmount > 0n && !bondDeposited) {
     return (
       <div className="bg-ink-900 border border-ink-800 rounded-xl p-6 mb-6">
-        <h2 className="font-semibold mb-2 text-white">Funding Required</h2>
+        <h2 className="font-semibold mb-2 text-ink-50">Funding Required</h2>
         <p className="text-sm text-ink-400">Waiting for the seller to deposit the performance bond.</p>
       </div>
     );
@@ -116,7 +116,7 @@ export function FundPanel({
 
   return (
     <div className="bg-ink-900 border border-ink-800 rounded-xl p-6 mb-6">
-      <h2 className="font-semibold mb-4 text-white">Funding Required</h2>
+      <h2 className="font-semibold mb-4 text-ink-50">Funding Required</h2>
       <div className="p-4 rounded-lg bg-trust-500/10 border border-trust-500/30 mb-4">
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm text-ink-300">Amount to fund</span>

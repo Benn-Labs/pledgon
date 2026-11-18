@@ -55,6 +55,63 @@
   --radius-xl: 1rem;
 }
 
+/* Light theme — the same semantic tokens, re-mapped. Every screen reads
+   these variables through the ink- and trust-family utilities, so flipping
+   the values flips the whole app; `data-theme="light"` is set on <html> by
+   lib/theme.tsx (Settings → Appearance). The ink scale inverts: what was
+   the near-black page (ink-950) becomes off-white, what was near-white text
+   (ink-50/100) becomes near-black. Accent ramps deepen so they keep
+   readable contrast on light surfaces. Components that hardcoded
+   white/black instead of tokens are the known exception — the app chrome
+   (sidebar/header/settings) has been converted; content screens that
+   hardcode text-white keep white text and are the remaining sweep. */
+:root[data-theme="light"] {
+  --color-ink-50: #11161f;
+  --color-ink-100: #1b2230;
+  --color-ink-200: #2b3446;
+  --color-ink-300: #3c465c;
+  --color-ink-400: #56617a;
+  --color-ink-500: #6d7890;
+  --color-ink-600: #8d97ab;
+  --color-ink-700: #b3bcc9;
+  --color-ink-800: #d5dae3;
+  --color-ink-850: #e4e8ef;
+  --color-ink-900: #f2f4f8;
+  --color-ink-950: #f8fafc;
+
+  --color-trust-50: #eef4ff;
+  --color-trust-100: #dce8fd;
+  --color-trust-200: #c3d5fb;
+  --color-trust-300: #96b4f6;
+  --color-trust-400: #3b62c4;
+  --color-trust-500: #2f55a4;
+  --color-trust-600: #2a4c94;
+  --color-trust-700: #27418a;
+
+  --color-success-400: #16a34a;
+  --color-success-500: #15803d;
+  --color-success-600: #166534;
+
+  --color-warning-400: #b45309;
+  --color-warning-500: #b45309;
+  --color-warning-600: #92400e;
+
+  --color-danger-400: #dc2626;
+  --color-danger-500: #b91c1c;
+  --color-danger-600: #991b1b;
+}
+
+/* Settings → Appearance → "Reduce motion": force the same calm the OS-level
+   prefers-reduced-motion media query grants, regardless of the OS setting.
+   Kept in sync with the per-animation media queries below. */
+.force-reduced-motion *,
+.force-reduced-motion *::before,
+.force-reduced-motion *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+}
+
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;

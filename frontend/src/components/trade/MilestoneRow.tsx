@@ -131,7 +131,7 @@ export function MilestoneRow({
           </div>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-semibold text-white">{label ? label : `Milestone #${index + 1}`}</span>
+              <span className="font-semibold text-ink-50">{label ? label : `Milestone #${index + 1}`}</span>
               <StatusBadge status={statusLabel} size="sm" />
             </div>
             <div className="text-sm text-ink-400 mt-1 font-mono">
@@ -339,7 +339,7 @@ export function MilestoneRow({
                           })
                         }
                         disabled={isPending || isConfirming}
-                        className="btn-press px-3 py-1.5 rounded-lg border border-ink-700 text-ink-400 hover:text-white text-xs font-medium"
+                        className="btn-press px-3 py-1.5 rounded-lg border border-ink-700 text-ink-400 hover:text-ink-50 text-xs font-medium"
                       >
                         Withdraw Proposal
                       </button>

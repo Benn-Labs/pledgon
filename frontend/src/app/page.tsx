@@ -43,7 +43,7 @@ function QuickAccessTile({
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
         </svg>
       </div>
-      <div className="font-semibold text-white">{title}</div>
+      <div className="font-semibold text-ink-50">{title}</div>
       <div className="text-sm text-ink-300 mt-0.5">{caption}</div>
     </Link>
   );
@@ -74,7 +74,7 @@ export default function DashboardPage() {
     return (
       <div className="fade-in max-w-2xl mx-auto text-center py-16">
         <div className="w-16 h-16 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-trust-500 to-trust-700 flex items-center justify-center">
-          <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-8 h-8 text-ink-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -83,7 +83,7 @@ export default function DashboardPage() {
             />
           </svg>
         </div>
-        <h1 className="text-3xl font-display text-white mb-2">Welcome to PLEDGON</h1>
+        <h1 className="text-3xl font-display text-ink-50 mb-2">Welcome to PLEDGON</h1>
         <p className="text-ink-400">
           Milestone escrow, independently verified — connect a wallet to browse the marketplace, view your active
           trades, and see your compliance standing.
@@ -97,7 +97,7 @@ export default function DashboardPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <div>
           <p className="text-[11px] font-bold text-ink-400 uppercase tracking-[0.09em] mb-1">Overview</p>
-          <h1 className="text-3xl font-display text-white">Dashboard</h1>
+          <h1 className="text-3xl font-display text-ink-50">Dashboard</h1>
           <p className="text-ink-400 mt-1">
             {account?.slice(0, 6)}…{account?.slice(-4)}
           </p>
@@ -105,7 +105,7 @@ export default function DashboardPage() {
         <div className="flex gap-2">
           <Link
             href="/escrow/create"
-            className="btn-press px-4 py-2.5 rounded-lg bg-linear-to-r from-trust-500 to-trust-700 hover:from-trust-400 hover:to-trust-600 text-white text-sm font-semibold glow-trust flex items-center gap-2"
+            className="btn-press px-4 py-2.5 rounded-lg bg-linear-to-r from-trust-500 to-trust-700 hover:from-trust-400 hover:to-trust-600 text-ink-50 text-sm font-semibold glow-trust flex items-center gap-2"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -114,7 +114,7 @@ export default function DashboardPage() {
           </Link>
           <Link
             href="/marketplace/create"
-            className="btn-press px-4 py-2.5 rounded-lg bg-ink-800 hover:bg-ink-700 border border-ink-700 text-white text-sm font-semibold flex items-center gap-2"
+            className="btn-press px-4 py-2.5 rounded-lg bg-ink-800 hover:bg-ink-700 border border-ink-700 text-ink-50 text-sm font-semibold flex items-center gap-2"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -134,7 +134,7 @@ export default function DashboardPage() {
             </div>
             <span className="text-xs font-bold text-ink-400 uppercase tracking-wider">Active Trades</span>
           </div>
-          <div className="text-5xl font-extrabold text-white">
+          <div className="text-5xl font-extrabold text-ink-50">
             {attentionLoading ? <span className="block h-10 w-14 rounded bg-ink-800 animate-pulse" /> : activeCount}
           </div>
           {!attentionLoading && activeCount === 0 && <div className="text-sm text-ink-300 mt-1">No trades in progress</div>}
@@ -165,7 +165,7 @@ export default function DashboardPage() {
               Needs Attention
             </span>
           </div>
-          <div className={`text-5xl font-extrabold ${attentionCount > 0 ? "text-warning-400 attention-pulse" : "text-white"}`}>
+          <div className={`text-5xl font-extrabold ${attentionCount > 0 ? "text-warning-400 attention-pulse" : "text-ink-50"}`}>
             {attentionLoading ? <span className="block h-10 w-14 rounded bg-ink-800 animate-pulse" /> : attentionCount}
           </div>
           {!attentionLoading && attentionCount === 0 && <div className="text-sm text-ink-300 mt-1">You&apos;re all caught up</div>}
@@ -177,7 +177,7 @@ export default function DashboardPage() {
             </div>
             <span className="text-xs font-bold text-ink-400 uppercase tracking-wider">Marketplace Listings</span>
           </div>
-          <div className="text-5xl font-extrabold text-white">{listingCount?.toString() ?? "…"}</div>
+          <div className="text-5xl font-extrabold text-ink-50">{listingCount?.toString() ?? "…"}</div>
           {listingCount === 0n && <div className="text-sm text-ink-300 mt-1">Nothing listed yet</div>}
         </Link>
       </div>
@@ -195,7 +195,7 @@ export default function DashboardPage() {
             </svg>
           </div>
           <div>
-            <h2 className="font-semibold text-white">Total Value Locked</h2>
+            <h2 className="font-semibold text-ink-50">Total Value Locked</h2>
             <p className="text-sm text-ink-400">Real on-chain balances, grouped by what the value actually is</p>
           </div>
         </div>
@@ -226,7 +226,7 @@ export default function DashboardPage() {
                       d="M3 8l3-5h12l3 5m-18 0v10a1 1 0 001 1h14a1 1 0 001-1V8m-18 0h18M9 12h6"
                     />
                   </svg>
-                  <p className="text-white font-semibold">Nothing in escrow yet</p>
+                  <p className="text-ink-50 font-semibold">Nothing in escrow yet</p>
                   <p className="text-xs text-ink-500 mt-1">Held until milestones release it.</p>
                 </div>
               ) : (
@@ -285,7 +285,7 @@ export default function DashboardPage() {
               <LendingIcon className="w-5 h-5 text-warning-400" />
             </div>
             <div>
-              <h2 className="font-semibold text-white">Lending Position</h2>
+              <h2 className="font-semibold text-ink-50">Lending Position</h2>
               <p className="text-sm text-ink-400">Your collateral, debt, and liquidation-protection standing.</p>
             </div>
           </div>
@@ -315,7 +315,7 @@ export default function DashboardPage() {
                       amount={lending.collateralAmount}
                       decimals={lending.collDecimals}
                       symbol={lending.collSymbol}
-                      className="text-sm font-bold text-white"
+                      className="text-sm font-bold text-ink-50"
                     />
                   ) : (
                     <span className="text-sm text-ink-500">…</span>
@@ -329,7 +329,7 @@ export default function DashboardPage() {
                       decimals={lending.debtDecimals}
                       symbol={lending.debtSymbol}
                       maxDecimals={2}
-                      className="text-sm font-bold text-white"
+                      className="text-sm font-bold text-ink-50"
                     />
                   ) : (
                     <span className="text-sm text-ink-500">…</span>
@@ -337,19 +337,19 @@ export default function DashboardPage() {
                 </div>
                 <div className="p-3 rounded-lg bg-ink-950/60 border border-ink-800 shadow-[inset_0_1px_2px_rgba(0,0,0,0.3)]">
                   <div className="text-xs text-ink-400 mb-1.5">Liq. Threshold</div>
-                  <div className="text-sm font-bold text-white">
+                  <div className="text-sm font-bold text-ink-50">
                     {lending.liquidationThresholdBps !== undefined ? `${Number(lending.liquidationThresholdBps) / 100}%` : "…"}
                   </div>
                 </div>
                 <div className="p-3 rounded-lg bg-ink-950/60 border border-ink-800 shadow-[inset_0_1px_2px_rgba(0,0,0,0.3)]">
                   <div className="text-xs text-ink-400 mb-1.5">Current LTV</div>
-                  <div className="text-sm font-bold text-white">
+                  <div className="text-sm font-bold text-ink-50">
                     {lending.debtAmount === 0n ? "0%" : lending.ltvBps !== undefined ? `${Number(lending.ltvBps) / 100}%` : "—"}
                   </div>
                 </div>
                 <div className="p-3 rounded-lg bg-ink-950/60 border border-ink-800 shadow-[inset_0_1px_2px_rgba(0,0,0,0.3)]">
                   <div className="text-xs text-ink-400 mb-1.5">Est. Liq. Price</div>
-                  <div className="text-sm font-bold text-white">
+                  <div className="text-sm font-bold text-ink-50">
                     {lending.debtAmount === 0n
                       ? "N/A"
                       : lending.liquidationPrice !== undefined
@@ -378,7 +378,7 @@ export default function DashboardPage() {
             <button
               onClick={() => setTradeTab("active")}
               className={`px-3 py-1.5 rounded-md text-sm font-medium ${
-                tradeTab === "active" ? "bg-ink-700 text-white" : "text-ink-400 hover:text-white"
+                tradeTab === "active" ? "bg-ink-700 text-ink-50" : "text-ink-400 hover:text-ink-50"
               }`}
             >
               Active ({activeTrades.length})
@@ -386,7 +386,7 @@ export default function DashboardPage() {
             <button
               onClick={() => setTradeTab("closed")}
               className={`px-3 py-1.5 rounded-md text-sm font-medium ${
-                tradeTab === "closed" ? "bg-ink-700 text-white" : "text-ink-400 hover:text-white"
+                tradeTab === "closed" ? "bg-ink-700 text-ink-50" : "text-ink-400 hover:text-ink-50"
               }`}
             >
               Closed ({closedTrades.length})
@@ -411,20 +411,20 @@ export default function DashboardPage() {
                 d="M3 8l3-5h12l3 5m-18 0v10a1 1 0 001 1h14a1 1 0 001-1V8m-18 0h18M9 12h6"
               />
             </svg>
-            <p className="text-white font-semibold">{tradeTab === "active" ? "No active trades" : "No closed trades yet"}</p>
+            <p className="text-ink-50 font-semibold">{tradeTab === "active" ? "No active trades" : "No closed trades yet"}</p>
             {tradeTab === "active" && (
               <>
                 <p className="text-sm text-ink-400 mt-1">Create an escrow or purchase a listing to get started.</p>
                 <div className="flex gap-2 mt-4">
                   <Link
                     href="/escrow/create"
-                    className="btn-press px-4 py-2 rounded-lg bg-linear-to-r from-trust-500 to-trust-700 hover:from-trust-400 hover:to-trust-600 text-white text-sm font-semibold glow-trust"
+                    className="btn-press px-4 py-2 rounded-lg bg-linear-to-r from-trust-500 to-trust-700 hover:from-trust-400 hover:to-trust-600 text-ink-50 text-sm font-semibold glow-trust"
                   >
                     Create Escrow
                   </Link>
                   <Link
                     href="/marketplace"
-                    className="btn-press px-4 py-2 rounded-lg bg-ink-800 hover:bg-ink-700 border border-ink-700 text-white text-sm font-semibold"
+                    className="btn-press px-4 py-2 rounded-lg bg-ink-800 hover:bg-ink-700 border border-ink-700 text-ink-50 text-sm font-semibold"
                   >
                     Browse Marketplace
                   </Link>

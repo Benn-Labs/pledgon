@@ -100,7 +100,7 @@ export function DownloadListingTermsButton({
       type="button"
       onClick={download}
       disabled={busy || windows === undefined || milestoneBps.length === 0}
-      className="btn-press inline-flex items-center gap-2 rounded-lg border border-ink-700 bg-ink-800 px-3 py-2 text-xs font-semibold text-ink-200 hover:bg-ink-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+      className="btn-press inline-flex items-center gap-2 rounded-lg border border-ink-700 bg-ink-800 px-3 py-2 text-xs font-semibold text-ink-200 hover:bg-ink-700 hover:text-ink-50 disabled:cursor-not-allowed disabled:opacity-50"
     >
       <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M12 3v12m0 0l-4-4m4 4l4-4M5 19h14" />

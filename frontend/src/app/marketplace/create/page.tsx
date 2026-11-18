@@ -193,7 +193,7 @@ export default function CreateListingPage() {
   return (
     <div className="fade-in max-w-3xl mx-auto">
       <div className="mb-8">
-        <h1 className="text-3xl font-display text-white">Create Listing</h1>
+        <h1 className="text-3xl font-display text-ink-50">Create Listing</h1>
         <p className="text-ink-400 mt-1">List your service or asset with milestone-based escrow protection</p>
       </div>
 
@@ -258,7 +258,7 @@ export default function CreateListingPage() {
                 className={`px-3 py-2.5 rounded-lg text-sm font-medium border ${
                   categoryId === c.id
                     ? "bg-trust-600 border-trust-500 text-white"
-                    : "bg-ink-800 border-ink-700 text-ink-300 hover:text-white hover:border-ink-600"
+                    : "bg-ink-800 border-ink-700 text-ink-300 hover:text-ink-50 hover:border-ink-600"
                 }`}
               >
                 {c.label}

@@ -5,6 +5,7 @@ import { Providers } from "@/components/Providers";
 import { AppShell } from "@/components/AppShell";
 import { ConfigWarning } from "@/components/ConfigWarning";
 import { Toaster } from "@/components/Toaster";
+import { ThemeProvider } from "@/lib/theme";
 
 const manrope = Manrope({
   variable: "--font-manrope",
@@ -38,13 +39,18 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
+  // No hardcoded `dark` class here — ThemeProvider applies the resolved
+  // theme (dark default, data-theme="light" for light) on mount so the
+  // server render stays dark and there is no flash of the wrong theme.
   return (
-    <html lang="en" className={`dark ${manrope.variable} ${chakraPetch.variable} ${jetbrainsMono.variable} h-full antialiased`}>
+    <html lang="en" className={`${manrope.variable} ${chakraPetch.variable} ${jetbrainsMono.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col bg-ink-950 text-ink-100">
         <Providers>
-          <ConfigWarning />
-          <AppShell>{children}</AppShell>
-          <Toaster />
+          <ThemeProvider>
+            <ConfigWarning />
+            <AppShell>{children}</AppShell>
+            <Toaster />
+          </ThemeProvider>
         </Providers>
       </body>
     </html>

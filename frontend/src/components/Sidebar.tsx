@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useAccount, useReadContract } from "wagmi";
 import { addresses, isLendingConfigured } from "@/lib/addresses";
 import { escrowFactoryAbi } from "@/generated/contracts";
-import { HomeIcon, MarketplaceIcon, EscrowIcon, LendingIcon, FaucetIcon, SwapIcon, ArbitrageIcon, AdminIcon } from "@/components/ui/icons";
+import { HomeIcon, MarketplaceIcon, EscrowIcon, LendingIcon, FaucetIcon, SwapIcon, ArbitrageIcon, AdminIcon, SettingsIcon } from "@/components/ui/icons";
 
 const NAV = [
   { href: "/", label: "Dashboard", icon: HomeIcon },
@@ -15,6 +15,7 @@ const NAV = [
   { href: "/arbitrage", label: "Arbitrage", icon: ArbitrageIcon },
   { href: "/faucet", label: "Faucet", icon: FaucetIcon },
   { href: "/swap", label: "Swap", icon: SwapIcon },
+  { href: "/settings", label: "Settings", icon: SettingsIcon },
 ];
 
 function ChevronIcon({ className, flipped }: { className?: string; flipped: boolean }) {
@@ -81,8 +82,8 @@ export function Sidebar({
           <Link href="/" onClick={onCloseMobile} aria-label="PLEDGON home" className="flex items-center gap-2.5">
             {/* eslint-disable-next-line @next/next/no-img-element -- fixed local brand asset */}
             <img src="/logo-mark.png" alt="" width={29} height={32} className="h-8 w-auto" />
-            {/* Wordmark when expanded (always, in the mobile drawer); icon-only in the collapsed rail. */}
-            <span className={`font-display text-white text-xl leading-none ${labelClass}`}>PLEDGON</span>
+            {/* Wordmark when expanded (always, in the mobile drawer); icon-only in the collapsed rail. text-ink-50 (not hardcoded white) so the light theme flips it. */}
+            <span className={`font-display text-ink-50 text-xl leading-none ${labelClass}`}>PLEDGON</span>
           </Link>
         </div>
 
@@ -101,10 +102,10 @@ export function Sidebar({
                   collapsed ? "lg:justify-center lg:px-0" : ""
                 } ${
                   active
-                    ? "bg-ink-800 text-white"
+                    ? "bg-ink-800 text-ink-50"
                     : disabled
                       ? "text-ink-600"
-                      : "text-ink-300 hover:bg-ink-900 hover:text-white"
+                      : "text-ink-300 hover:bg-ink-900 hover:text-ink-50"
                 }`}
               >
                 {active && <span className="absolute left-0 top-2 bottom-2 w-0.5 rounded-full bg-trust-500" />}
@@ -121,7 +122,7 @@ export function Sidebar({
             onClick={onToggleCollapsed}
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
             title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-ink-400 transition-colors hover:bg-ink-900 hover:text-white ${
+            className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-ink-400 transition-colors hover:bg-ink-900 hover:text-ink-50 ${
               collapsed ? "justify-center px-0" : ""
             }`}
           >

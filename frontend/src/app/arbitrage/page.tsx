@@ -66,7 +66,7 @@ export default function ArbitragePage() {
   return (
     <div className="fade-in max-w-3xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-3xl font-display text-white">Arbitrage Bots</h1>
+        <h1 className="text-3xl font-display text-ink-50">Arbitrage Bots</h1>
         <p className="text-ink-400 mt-1">
           Deploy and run user-owned FlashArbV3 bots. PLEDGON never holds your funds or keys.
         </p>
@@ -79,7 +79,7 @@ export default function ArbitragePage() {
             onClick={() => setActiveTab(tab)}
             className={`px-4 py-2.5 text-sm font-semibold capitalize border-b-2 transition-colors ${
               activeTab === tab
-                ? "text-white border-trust-500"
+                ? "text-ink-50 border-trust-500"
                 : "text-ink-400 border-transparent hover:text-ink-200"
             }`}
           >
@@ -105,7 +105,7 @@ export default function ArbitragePage() {
                   className="group flex items-center justify-between p-4 rounded-xl bg-ink-900 border border-ink-800 hover:border-trust-500/50 transition-colors"
                 >
                   <div>
-                    <p className="font-mono text-sm text-white">{formatAddress(bot.bot_address)}</p>
+                    <p className="font-mono text-sm text-ink-50">{formatAddress(bot.bot_address)}</p>
                     <p className="text-xs text-ink-500 mt-1">
                       Deployed {new Date(bot.deployed_at).toLocaleDateString()}
                     </p>
@@ -132,7 +132,7 @@ export default function ArbitragePage() {
 
       {activeTab === "deploy" && (
         <div className="p-6 rounded-xl bg-ink-900 border border-ink-800">
-          <h2 className="font-semibold text-white mb-2">Deploy a new FlashArbV3 bot</h2>
+          <h2 className="font-semibold text-ink-50 mb-2">Deploy a new FlashArbV3 bot</h2>
           <p className="text-sm text-ink-400 mb-6">
             This deploys a fresh bot contract owned by your connected wallet. The bot is ready for mainnet
             Aave/Uniswap/SushiSwap constants; on Sepolia it will deploy but cannot execute real arbitrage.
@@ -171,7 +171,7 @@ export default function ArbitragePage() {
 
       {activeTab === "register" && (
         <form onSubmit={handleRegister} className="p-6 rounded-xl bg-ink-900 border border-ink-800">
-          <h2 className="font-semibold text-white mb-2">Register an existing bot</h2>
+          <h2 className="font-semibold text-ink-50 mb-2">Register an existing bot</h2>
           <p className="text-sm text-ink-400 mb-6">
             If you deployed a bot elsewhere (e.g. via Foundry), paste its address here and sign a message proving
             ownership. PLEDGON will record it in the discovery index.

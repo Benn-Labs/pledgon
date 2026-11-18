@@ -48,7 +48,7 @@ export function BondPanel({
   if (bondDeposited) {
     return (
       <div className="bg-ink-900 border border-ink-800 rounded-xl p-6 mb-6">
-        <h2 className="font-semibold mb-2 text-white">Seller Bond</h2>
+        <h2 className="font-semibold mb-2 text-ink-50">Seller Bond</h2>
         <p className="text-sm text-success-400">Bond deposited ({formatToken(bondAmount, decimals, symbol)}).</p>
       </div>
     );
@@ -81,7 +81,7 @@ export function BondPanel({
 
   return (
     <div className="bg-ink-900 border border-ink-800 rounded-xl p-6 mb-6">
-      <h2 className="font-semibold mb-4 text-white">Deposit Seller Bond</h2>
+      <h2 className="font-semibold mb-4 text-ink-50">Deposit Seller Bond</h2>
       <div className="p-4 rounded-lg bg-warning-500/10 border border-warning-500/30 mb-4">
         <div className="flex items-center justify-between">
           <span className="text-sm text-ink-300">Bond amount</span>

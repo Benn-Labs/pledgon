@@ -68,7 +68,7 @@ export default function CompliancePage() {
   return (
     <div className="fade-in max-w-3xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-3xl font-display text-white">Compliance Status</h1>
+        <h1 className="text-3xl font-display text-ink-50">Compliance Status</h1>
         <p className="text-ink-400 mt-1">Your on-chain KYC tier, as reported by the compliance-check CRE workflow.</p>
       </div>
 
@@ -79,7 +79,7 @@ export default function CompliancePage() {
               <ShieldAlertIcon className="w-5 h-5 text-trust-400" />
             </div>
             <div>
-              <h2 className="font-semibold text-white">Current Tier</h2>
+              <h2 className="font-semibold text-ink-50">Current Tier</h2>
               <p className="text-sm text-ink-400 font-mono">
                 {account?.slice(0, 6)}…{account?.slice(-4)}
               </p>
@@ -134,13 +134,13 @@ export default function CompliancePage() {
       </div>
 
       <div className="bg-ink-900 border border-ink-800 rounded-xl p-6 mb-6">
-        <h2 className="font-semibold text-white mb-2">Your Rolling Volume</h2>
+        <h2 className="font-semibold text-ink-50 mb-2">Your Rolling Volume</h2>
         <p className="text-sm text-ink-400 mb-3">
           What EscrowFactory has recorded against you in the current 30-day bucket — checked against your tier's cap
           every time you call <code className="text-trust-400">fund()</code>.
         </p>
         <div className="p-4 rounded-lg bg-ink-950/60 border border-ink-800 shadow-[inset_0_1px_2px_rgba(0,0,0,0.3)]">
-          <div className="text-2xl font-bold font-mono text-white">{periodVolume?.toString() ?? "…"}</div>
+          <div className="text-2xl font-bold font-mono text-ink-50">{periodVolume?.toString() ?? "…"}</div>
           <div className="text-xs text-ink-500 mt-1">
             Raw token units, summed across every escrow token you&apos;ve funded with this period — not USD, and not
             comparable across different tokens or decimals. Meaningful only if you consistently trade one stablecoin.
@@ -149,7 +149,7 @@ export default function CompliancePage() {
       </div>
 
       <div className="bg-ink-900 border border-warning-500/30 rounded-xl p-6">
-        <h2 className="font-semibold text-white mb-2">Why this is (usually) Tier 0</h2>
+        <h2 className="font-semibold text-ink-50 mb-2">Why this is (usually) Tier 0</h2>
         <p className="text-sm text-ink-400">
           Tier is set exclusively by <code className="text-trust-400">ComplianceConsumer.onReport()</code>, which
           only accepts calls from the real Chainlink KeystoneForwarder relaying a live compliance-check CRE

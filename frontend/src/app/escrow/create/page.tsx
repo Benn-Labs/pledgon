@@ -319,7 +319,7 @@ export default function CreateEscrowPage() {
   return (
     <div className="fade-in max-w-3xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-3xl font-display text-white">Create Escrow</h1>
+        <h1 className="text-3xl font-display text-ink-50">Create Escrow</h1>
         <p className="text-ink-400 mt-1">
           Set up a direct milestone escrow with a counterparty you already know — no marketplace listing needed.
         </p>
@@ -337,7 +337,7 @@ export default function CreateEscrowPage() {
                 className={`px-3 py-2.5 rounded-lg text-sm font-medium border ${
                   categoryId === c.id
                     ? "bg-trust-600 border-trust-500 text-white"
-                    : "bg-ink-800 border-ink-700 text-ink-300 hover:text-white hover:border-ink-600"
+                    : "bg-ink-800 border-ink-700 text-ink-300 hover:text-ink-50 hover:border-ink-600"
                 }`}
               >
                 {c.label}
@@ -373,7 +373,7 @@ export default function CreateEscrowPage() {
               className={`px-3 py-2.5 rounded-lg text-sm font-medium border ${
                 myRole === "buyer"
                   ? "bg-trust-600 border-trust-500 text-white"
-                  : "bg-ink-800 border-ink-700 text-ink-300 hover:text-white hover:border-ink-600"
+                  : "bg-ink-800 border-ink-700 text-ink-300 hover:text-ink-50 hover:border-ink-600"
               }`}
             >
               I&apos;m the Buyer
@@ -384,7 +384,7 @@ export default function CreateEscrowPage() {
               className={`px-3 py-2.5 rounded-lg text-sm font-medium border ${
                 myRole === "seller"
                   ? "bg-success-600 border-success-500 text-white"
-                  : "bg-ink-800 border-ink-700 text-ink-300 hover:text-white hover:border-ink-600"
+                  : "bg-ink-800 border-ink-700 text-ink-300 hover:text-ink-50 hover:border-ink-600"
               }`}
             >
               I&apos;m the Seller

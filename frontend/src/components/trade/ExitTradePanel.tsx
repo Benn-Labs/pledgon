@@ -61,7 +61,7 @@ export function ExitTradePanel({
   if (!funded) {
     return (
       <div className="bg-ink-900 border border-ink-800 rounded-xl p-6 mb-6">
-        <h2 className="font-semibold mb-2 text-white">Cancel Trade</h2>
+        <h2 className="font-semibold mb-2 text-ink-50">Cancel Trade</h2>
         <p className="text-sm text-ink-400 mb-4">
           Either party can walk away before funding — the seller's bond (if deposited) refunds automatically.
         </p>
@@ -96,7 +96,7 @@ export function ExitTradePanel({
 
   return (
     <div className="bg-ink-900 border border-ink-800 rounded-xl p-6 mb-6">
-      <h2 className="font-semibold mb-2 text-white">Exit Trade</h2>
+      <h2 className="font-semibold mb-2 text-ink-50">Exit Trade</h2>
       <p className="text-sm text-ink-400 mb-4">
         If this trade is stuck — no DON, no agreement milestone-by-milestone — either party can propose winding it
         down entirely. Once the other side accepts, every still-open milestone refunds to the buyer and any
@@ -126,7 +126,7 @@ export function ExitTradePanel({
               <button
                 onClick={() => writeContract({ address: vault, abi: escrowVaultAbi, functionName: "cancelTradeExitProposal" })}
                 disabled={isPending || isConfirming}
-                className="btn-press px-4 py-2 rounded-lg border border-ink-700 text-ink-400 hover:text-white text-sm font-medium"
+                className="btn-press px-4 py-2 rounded-lg border border-ink-700 text-ink-400 hover:text-ink-50 text-sm font-medium"
               >
                 Withdraw Proposal
               </button>

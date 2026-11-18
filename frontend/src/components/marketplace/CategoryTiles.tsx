@@ -73,7 +73,7 @@ export function CategoryTiles({
                 <img src={thumbnail} alt="" className="category-tile-art h-full w-full object-cover" />
               ) : (
                 <div className={`category-tile-art flex h-full w-full items-center justify-center bg-gradient-to-br ${TINTS[id] ?? TINTS.custom}`}>
-                  <Icon className={`h-9 w-9 transition-colors ${active ? "text-trust-300" : "text-ink-300 group-hover:text-white"}`} />
+                  <Icon className={`h-9 w-9 transition-colors ${active ? "text-trust-300" : "text-ink-300 group-hover:text-ink-50"}`} />
                 </div>
               )}
               <div className="absolute inset-0 bg-gradient-to-t from-ink-950/80 to-transparent" />
@@ -81,7 +81,7 @@ export function CategoryTiles({
                 {count}
               </span>
             </div>
-            <div className={`flex flex-1 items-center px-3 py-2.5 text-sm font-semibold leading-tight ${active ? "bg-ink-800 text-white" : "bg-ink-900 text-ink-200"}`}>
+            <div className={`flex flex-1 items-center px-3 py-2.5 text-sm font-semibold leading-tight ${active ? "bg-ink-800 text-ink-50" : "bg-ink-900 text-ink-200"}`}>
               {label}
             </div>
           </button>

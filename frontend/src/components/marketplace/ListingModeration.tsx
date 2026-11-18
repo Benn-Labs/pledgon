@@ -86,7 +86,7 @@ export function ListingModeration() {
 
   return (
     <div className="bg-ink-900 border border-danger-500/30 rounded-xl p-6 mb-6">
-      <h2 className="font-semibold text-white mb-1">Marketplace Moderation</h2>
+      <h2 className="font-semibold text-ink-50 mb-1">Marketplace Moderation</h2>
       <p className="text-xs text-ink-500 mb-4">
         Take down a listing that breaches the platform&apos;s terms (malicious, fraudulent, inappropriate). This only stops
         new purchases — escrow trades already opened from the listing are separate contracts and are not touched. The
@@ -105,7 +105,7 @@ export function ListingModeration() {
               <li key={id.toString()} className="flex items-center gap-3 p-3">
                 <span className="font-mono text-xs text-ink-500 shrink-0">#{id.toString()}</span>
                 <div className="min-w-0 flex-1">
-                  <Link href={`/marketplace/${id}`} className="block truncate text-sm text-white hover:text-trust-400">
+                  <Link href={`/marketplace/${id}`} className="block truncate text-sm text-ink-50 hover:text-trust-400">
                     {title}
                   </Link>
                   <span className="font-mono text-xs text-ink-500">
@@ -132,7 +132,7 @@ export function ListingModeration() {
       {target && !isSuccess && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" role="dialog" aria-modal="true">
           <div className="w-full max-w-md rounded-xl border border-ink-700 bg-ink-900 p-6 shadow-2xl">
-            <h3 className="font-semibold text-white">Take down listing #{target.id.toString()}?</h3>
+            <h3 className="font-semibold text-ink-50">Take down listing #{target.id.toString()}?</h3>
             <p className="mt-1 truncate text-sm text-ink-400">{target.title}</p>
             <label className="mt-4 block text-xs font-medium text-ink-300" htmlFor="takedown-reason">
               Reason (published on-chain)
@@ -154,7 +154,7 @@ export function ListingModeration() {
               <button
                 onClick={() => setTarget(null)}
                 disabled={busy}
-                className="btn-press flex-1 rounded-lg border border-ink-700 bg-ink-800 py-2.5 text-sm font-semibold text-white hover:bg-ink-700 disabled:opacity-50"
+                className="btn-press flex-1 rounded-lg border border-ink-700 bg-ink-800 py-2.5 text-sm font-semibold text-ink-50 hover:bg-ink-700 disabled:opacity-50"
               >
                 Cancel
               </button>

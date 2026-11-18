@@ -55,7 +55,7 @@ export default function SwapPage() {
   return (
     <div className="fade-in max-w-2xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-3xl font-display text-white">Swap</h1>
+        <h1 className="text-3xl font-display text-ink-50">Swap</h1>
         <p className="text-ink-400 mt-1">
           Cross-chain swaps and bridging via Rango, aggregating real liquidity across DEXs and bridges.
         </p>

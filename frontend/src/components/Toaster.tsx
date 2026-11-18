@@ -27,7 +27,7 @@ export function Toaster() {
       {toasts.map((t) => (
         <div
           key={t.id}
-          className={`fade-in px-4 py-3 rounded-lg border text-white text-sm font-medium shadow-lg max-w-sm ${STYLES[t.type]}`}
+          className={`fade-in px-4 py-3 rounded-lg border text-ink-50 text-sm font-medium shadow-lg max-w-sm ${STYLES[t.type]}`}
         >
           {t.message}
         </div>

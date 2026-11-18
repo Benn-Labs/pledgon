@@ -11,7 +11,7 @@ export function TokenAmount({
   decimals,
   symbol,
   maxDecimals,
-  className = "text-lg font-bold text-white",
+  className = "text-lg font-bold text-ink-50",
   unitClassName = "text-xs font-normal text-ink-400 ml-1",
 }: {
   amount: bigint;

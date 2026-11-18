@@ -89,7 +89,7 @@ export function LenderRewardsPanel() {
 
   return (
     <div className="bg-ink-900 border border-trust-500/30 rounded-xl p-6 mb-6">
-      <h3 className="font-semibold text-white mb-1">Lender Rewards</h3>
+      <h3 className="font-semibold text-ink-50 mb-1">Lender Rewards</h3>
       <p className="text-xs text-ink-500 mb-4">
         Share part of the platform fees with the people who supply liquidity. Rewards go into the pool as {symbol ?? "the debt token"}
         and are split pro rata among <strong>current</strong> lenders — anyone who supplies afterwards doesn&apos;t get them.

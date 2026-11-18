@@ -25,14 +25,14 @@ import { DownloadContractButton } from "@/components/trade/DownloadContractButto
 function TradeNotFound({ address }: { address?: string }) {
   return (
     <div className="fade-in max-w-5xl mx-auto">
-      <Link href="/escrow" className="flex items-center gap-2 text-ink-400 hover:text-white mb-6 w-fit">
+      <Link href="/escrow" className="flex items-center gap-2 text-ink-400 hover:text-ink-50 mb-6 w-fit">
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
         </svg>
         Back to Escrow
       </Link>
       <div className="p-8 rounded-xl bg-ink-900 border border-ink-800 text-center">
-        <h1 className="text-xl font-display text-white mb-2">Trade not found</h1>
+        <h1 className="text-xl font-display text-ink-50 mb-2">Trade not found</h1>
         <p className="text-sm text-ink-400">
           {address ? (
             <>
@@ -237,7 +237,7 @@ export default function TradePage() {
 
   return (
     <div className="fade-in max-w-5xl mx-auto">
-      <Link href="/escrow" className="flex items-center gap-2 text-ink-400 hover:text-white mb-6 w-fit">
+      <Link href="/escrow" className="flex items-center gap-2 text-ink-400 hover:text-ink-50 mb-6 w-fit">
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
         </svg>
@@ -248,7 +248,7 @@ export default function TradePage() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <div>
             <div className="flex items-center gap-3 mb-2 flex-wrap">
-              <h1 className="text-3xl font-display text-white">Trade</h1>
+              <h1 className="text-3xl font-display text-ink-50">Trade</h1>
               {lifecycleStatus && <TradeStatusBadge status={lifecycleStatus} />}
               {role && <RoleBadge role={role} />}
               {currentDeadline && <CountdownBadge deadline={currentDeadline.deadline} label={currentDeadline.label} />}
@@ -264,7 +264,7 @@ export default function TradePage() {
           </div>
           {tokenReady && decimals !== undefined && (
             <div className="text-right">
-              <div className="text-2xl font-bold font-mono text-white">{formatToken(totalAmount ?? 0n, decimals, symbol)}</div>
+              <div className="text-2xl font-bold font-mono text-ink-50">{formatToken(totalAmount ?? 0n, decimals, symbol)}</div>
               <div className="text-sm text-ink-400">Total Value</div>
               {symbol && lifecycleStatus && (
                 <DownloadContractButton
@@ -356,7 +356,7 @@ export default function TradePage() {
           />
 
           <div className="bg-ink-900 border border-ink-800 rounded-xl p-6 mb-6">
-            <h2 className="font-semibold mb-6 text-white">Milestones</h2>
+            <h2 className="font-semibold mb-6 text-ink-50">Milestones</h2>
             <div className="space-y-4">
               {milestones.map((m) => (
                 <MilestoneRow

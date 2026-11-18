@@ -134,7 +134,7 @@ export function TxProgressModal({
       <div className="relative w-full max-w-md bg-ink-900 border border-ink-800 rounded-xl p-6 shadow-2xl overflow-hidden">
         {phase === "done" && <Confetti />}
 
-        <h3 className="font-semibold text-white text-lg mb-1">{title}</h3>
+        <h3 className="font-semibold text-ink-50 text-lg mb-1">{title}</h3>
         <p className="text-xs text-ink-500 mb-5">
           Step {phase === "done" ? steps.length : Math.min(index + 1, steps.length)} of {steps.length}
         </p>
@@ -149,7 +149,7 @@ export function TxProgressModal({
                   <div className="flex items-baseline justify-between gap-3">
                     <span
                       className={`text-sm font-semibold ${
-                        status === "queued" ? "text-ink-500" : status === "failed" ? "text-danger-400" : "text-white"
+                        status === "queued" ? "text-ink-500" : status === "failed" ? "text-danger-400" : "text-ink-50"
                       }`}
                     >
                       {i + 1}. {step.title}
@@ -198,7 +198,7 @@ export function TxProgressModal({
             </p>
             <button
               onClick={onClose}
-              className="btn-press w-full py-2.5 rounded-lg bg-ink-800 hover:bg-ink-700 border border-ink-700 text-white font-semibold"
+              className="btn-press w-full py-2.5 rounded-lg bg-ink-800 hover:bg-ink-700 border border-ink-700 text-ink-50 font-semibold"
             >
               Close
             </button>

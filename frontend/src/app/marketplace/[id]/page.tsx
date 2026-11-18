@@ -169,14 +169,14 @@ export default function ListingDetailPage() {
   if (listingId === undefined) {
     return (
       <div className="fade-in max-w-lg mx-auto text-center py-16">
-        <h1 className="text-xl font-display text-white mb-2">Listing not found</h1>
+        <h1 className="text-xl font-display text-ink-50 mb-2">Listing not found</h1>
         <p className="text-sm text-ink-400 mb-6">
           <code className="font-mono text-xs">{id}</code> isn&apos;t a valid listing ID — listings are numbered, so the
           URL should look like <code className="font-mono text-xs">/marketplace/1</code>.
         </p>
         <Link
           href="/marketplace"
-          className="btn-press inline-block px-4 py-2.5 rounded-lg bg-ink-800 hover:bg-ink-700 border border-ink-700 text-white text-sm font-semibold"
+          className="btn-press inline-block px-4 py-2.5 rounded-lg bg-ink-800 hover:bg-ink-700 border border-ink-700 text-ink-50 text-sm font-semibold"
         >
           Back to Marketplace
         </Link>
@@ -193,7 +193,7 @@ export default function ListingDetailPage() {
 
   return (
     <div className="fade-in max-w-4xl mx-auto">
-      <Link href="/marketplace" className="flex items-center gap-2 text-ink-400 hover:text-white mb-6 w-fit">
+      <Link href="/marketplace" className="flex items-center gap-2 text-ink-400 hover:text-ink-50 mb-6 w-fit">
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
         </svg>
@@ -209,7 +209,7 @@ export default function ListingDetailPage() {
               <StatusBadge status={LISTING_STATUS[status ?? 0]} />
               <span className="text-sm text-ink-500 font-mono">Listing #{id}</span>
             </div>
-            <h1 className="text-3xl font-display mb-2 text-white">{metadata.title || metadataURI || `Listing #${id}`}</h1>
+            <h1 className="text-3xl font-display mb-2 text-ink-50">{metadata.title || metadataURI || `Listing #${id}`}</h1>
             {metadata.description && <p className="text-sm text-ink-300 mb-4">{metadata.description}</p>}
             {(metadata.terms.category || metadata.terms.location || metadata.terms.conditionNotes) && (
               <div className="flex flex-wrap gap-2 mb-4">
@@ -317,7 +317,7 @@ export default function ListingDetailPage() {
 
             {milestoneBps && milestoneBps.length > 0 && (
               <>
-                <h3 className="font-semibold mb-4 text-white">Milestone Payout Split</h3>
+                <h3 className="font-semibold mb-4 text-ink-50">Milestone Payout Split</h3>
                 <p className="text-xs text-ink-500 -mt-2 mb-4">
                   Percentages of whatever your purchase totals — pick a quantity in the panel to see the actual
                   amounts.
@@ -349,7 +349,7 @@ export default function ListingDetailPage() {
 
             {vaults.length > 0 && (
               <div className="mt-6 pt-6 border-t border-ink-800">
-                <h3 className="font-semibold mb-3 text-white">Trades From This Listing ({vaults.length})</h3>
+                <h3 className="font-semibold mb-3 text-ink-50">Trades From This Listing ({vaults.length})</h3>
                 <div className="space-y-2">
                   {vaults.map((v) => (
                     <Link
@@ -394,7 +394,7 @@ export default function ListingDetailPage() {
             {tokenReady && decimals !== undefined && (
               <>
                 <div className="text-center mb-6">
-                  <div className="text-3xl font-bold font-mono text-white">
+                  <div className="text-3xl font-bold font-mono text-ink-50">
                     {previewTotal !== undefined ? formatToken(previewTotal, decimals) : "—"}
                   </div>
                   <div className="text-ink-400">{symbol}</div>

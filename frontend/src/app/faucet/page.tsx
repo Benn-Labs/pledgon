@@ -78,7 +78,7 @@ export default function FaucetPage() {
   return (
     <div className="fade-in max-w-2xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-3xl font-display text-white">Faucet</h1>
+        <h1 className="text-3xl font-display text-ink-50">Faucet</h1>
         <p className="text-ink-400 mt-1">
           Mint any of this deployment&apos;s test tokens directly to your wallet — no swap needed, since they&apos;re
           all freely mintable by design.
@@ -98,7 +98,7 @@ export default function FaucetPage() {
                 className={`px-3 py-2.5 rounded-lg text-sm font-medium border text-left ${
                   t.address && tokenInput.toLowerCase() === t.address.toLowerCase()
                     ? "bg-trust-600 border-trust-500 text-white"
-                    : "bg-ink-800 border-ink-700 text-ink-300 hover:text-white hover:border-ink-600 disabled:opacity-40 disabled:cursor-not-allowed"
+                    : "bg-ink-800 border-ink-700 text-ink-300 hover:text-ink-50 hover:border-ink-600 disabled:opacity-40 disabled:cursor-not-allowed"
                 }`}
               >
                 {t.label}

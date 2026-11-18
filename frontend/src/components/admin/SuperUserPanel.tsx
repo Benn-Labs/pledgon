@@ -55,7 +55,7 @@ export function SuperUserPanel() {
 
   return (
     <div className="bg-ink-900 border border-warning-500/30 rounded-xl p-6 mb-6">
-      <h3 className="font-semibold text-white mb-1">Verified (admin) Wallets</h3>
+      <h3 className="font-semibold text-ink-50 mb-1">Verified (admin) Wallets</h3>
       <p className="text-xs text-ink-500 mb-4">
         A wallet marked verified (admin) is treated as top-tier (uncapped) when funding a trade. This is an admin decision, not a KYC
         result — it does not change the wallet&apos;s on-chain KYC tier. Their volume is not recorded. Applies at
@@ -90,7 +90,7 @@ export function SuperUserPanel() {
         <button
           onClick={() => set(false)}
           disabled={!target || busy || isSuper === false}
-          className="btn-press py-2.5 rounded-lg bg-ink-800 hover:bg-ink-700 border border-ink-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold"
+          className="btn-press py-2.5 rounded-lg bg-ink-800 hover:bg-ink-700 border border-ink-700 disabled:opacity-50 disabled:cursor-not-allowed text-ink-50 font-semibold"
         >
           Revoke
         </button>

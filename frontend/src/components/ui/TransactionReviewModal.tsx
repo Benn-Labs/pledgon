@@ -64,7 +64,7 @@ export function TransactionReviewModal({
       onClick={isSubmitting ? undefined : onCancel}
     >
       <div className="w-full max-w-md bg-ink-900 border border-ink-800 rounded-xl p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-        <h3 className="font-semibold text-white text-lg mb-4">{title}</h3>
+        <h3 className="font-semibold text-ink-50 text-lg mb-4">{title}</h3>
 
         <div className="space-y-2 mb-4">
           {lineItems.map((item, i) => (
@@ -88,7 +88,7 @@ export function TransactionReviewModal({
           </div>
           <div className="flex justify-between items-baseline text-sm pt-1 border-t border-ink-800/60">
             <span className="text-ink-300 font-medium">Total from wallet</span>
-            <span className="font-mono text-white font-semibold">{totalFromWallet !== undefined ? `~${formatEther(totalFromWallet)} ETH` : "…"}</span>
+            <span className="font-mono text-ink-50 font-semibold">{totalFromWallet !== undefined ? `~${formatEther(totalFromWallet)} ETH` : "…"}</span>
           </div>
         </div>
 
@@ -98,7 +98,7 @@ export function TransactionReviewModal({
           <button
             onClick={onCancel}
             disabled={isSubmitting}
-            className="btn-press flex-1 py-2.5 rounded-lg bg-ink-800 hover:bg-ink-700 border border-ink-700 text-white font-semibold disabled:opacity-50"
+            className="btn-press flex-1 py-2.5 rounded-lg bg-ink-800 hover:bg-ink-700 border border-ink-700 text-ink-50 font-semibold disabled:opacity-50"
           >
             Cancel
           </button>

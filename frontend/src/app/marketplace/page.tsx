@@ -133,7 +133,7 @@ export default function BrowsePage() {
     <div className="fade-in">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-3xl font-display text-white">Marketplace</h1>
+          <h1 className="text-3xl font-display text-ink-50">Marketplace</h1>
           <p className="text-ink-400 mt-1">Browse active escrow listings with milestone-based payments</p>
         </div>
         <Link
@@ -196,7 +196,7 @@ export default function BrowsePage() {
                   <StatusBadge status={LISTING_STATUS[status]} />
                   <span className="text-xs text-ink-500 font-mono">#{id.toString()}</span>
                 </div>
-                <h3 className="font-semibold text-lg mb-2 line-clamp-2 text-white">
+                <h3 className="font-semibold text-lg mb-2 line-clamp-2 text-ink-50">
                   {meta?.title || metadataURI || `Listing #${id}`}
                 </h3>
                 {meta?.terms.category && (
@@ -206,7 +206,7 @@ export default function BrowsePage() {
                 )}
                 {meta?.description && <p className="text-sm text-ink-400 mb-4 line-clamp-2">{meta.description}</p>}
                 <div className="flex items-center gap-2 mb-4">
-                  <div className="w-6 h-6 rounded-full bg-gradient-to-br from-trust-500 to-trust-700 flex items-center justify-center text-xs font-bold text-white shrink-0">
+                  <div className="w-6 h-6 rounded-full bg-gradient-to-br from-trust-500 to-trust-700 flex items-center justify-center text-xs font-bold text-ink-50 shrink-0">
                     {seller.slice(2, 4).toUpperCase()}
                   </div>
                   <span className="addr text-ink-400 font-mono text-xs">

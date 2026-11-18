@@ -29,7 +29,7 @@ export function Header({ onOpenMenu }: { onOpenMenu: () => void }) {
             type="button"
             onClick={onOpenMenu}
             aria-label="Open menu"
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-ink-300 hover:bg-ink-800 hover:text-white"
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-ink-300 hover:bg-ink-800 hover:text-ink-50"
           >
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h10" />
@@ -39,7 +39,7 @@ export function Header({ onOpenMenu }: { onOpenMenu: () => void }) {
             {/* eslint-disable-next-line @next/next/no-img-element -- fixed local brand asset */}
             <img src="/logo-mark.png" alt="" width={21} height={24} className="h-6 w-auto" />
             {/* Mark only on the narrowest screens (fold cover) to leave room for the wallet controls. */}
-            <span className="font-display text-white text-lg leading-none hidden min-[380px]:inline">PLEDGON</span>
+            <span className="font-display text-ink-50 text-lg leading-none hidden min-[380px]:inline">PLEDGON</span>
           </Link>
         </div>
 

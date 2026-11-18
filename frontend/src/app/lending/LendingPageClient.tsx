@@ -61,7 +61,7 @@ function NotConfiguredFallback() {
   return (
     <div className="fade-in max-w-lg mx-auto text-center py-16">
       <LendingIcon className="w-10 h-10 text-ink-600 mx-auto mb-4" />
-      <h1 className="text-xl font-display text-white mb-2">Lending isn&apos;t deployed on this network</h1>
+      <h1 className="text-xl font-display text-ink-50 mb-2">Lending isn&apos;t deployed on this network</h1>
       <p className="text-sm text-ink-400">
         Set the <code className="font-mono text-xs">NEXT_PUBLIC_XSTOCKS_*</code> and{" "}
         <code className="font-mono text-xs">NEXT_PUBLIC_SUSDE_*</code> env vars, then restart the dev server.
@@ -170,7 +170,7 @@ function ActionPanel({
   const overLimit = limit !== undefined && parsed !== undefined && parsed > limit;
   return (
     <div className="bg-ink-900 border border-ink-800 rounded-xl p-6">
-      <h3 className="font-semibold text-white mb-3">{title}</h3>
+      <h3 className="font-semibold text-ink-50 mb-3">{title}</h3>
       <div className="relative mb-2">
         <input
           className="w-full bg-ink-800 border border-ink-700 rounded-lg px-4 py-3 pr-20 text-ink-200 font-mono focus:outline-none focus:border-trust-500"
@@ -703,14 +703,14 @@ function LendingPageContent() {
     <div className="fade-in max-w-4xl mx-auto">
       <div className="flex items-start justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-3xl font-display text-white">Lending</h1>
+          <h1 className="text-3xl font-display text-ink-50">Lending</h1>
           <p className="text-ink-400 mt-1">
             Deposit collateral, borrow against it, with DON-corroborated liquidation protection
           </p>
         </div>
         <Link
           href="/faucet"
-          className="btn-press px-4 py-2.5 rounded-lg bg-ink-800 hover:bg-ink-700 border border-ink-700 text-white text-sm font-semibold shrink-0"
+          className="btn-press px-4 py-2.5 rounded-lg bg-ink-800 hover:bg-ink-700 border border-ink-700 text-ink-50 text-sm font-semibold shrink-0"
         >
           Need test tokens?
         </Link>
@@ -757,7 +757,7 @@ function LendingPageContent() {
       )}
 
       <div className="bg-ink-900 border border-ink-800 rounded-xl p-6 mb-6">
-        <h2 className="font-semibold text-white mb-1">Lend &amp; Earn Interest</h2>
+        <h2 className="font-semibold text-ink-50 mb-1">Lend &amp; Earn Interest</h2>
         <p className="text-xs text-ink-500 mb-4">
           Supplied {debtSymbol} earns a fixed rate, paid by borrowers as their debt accrues — your share of the pool
           grows in place, nothing to claim separately.
@@ -856,7 +856,7 @@ function LendingPageContent() {
       </div>
 
       <div className="bg-ink-900 border border-ink-800 rounded-xl p-6 mb-6">
-        <h2 className="font-semibold text-white mb-4">Your Position</h2>
+        <h2 className="font-semibold text-ink-50 mb-4">Your Position</h2>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="p-4 rounded-lg bg-ink-950/60 border border-ink-800 shadow-[inset_0_1px_2px_rgba(0,0,0,0.3)]">
             <div className="text-xs text-ink-400 mb-1">Collateral Deposited</div>
@@ -988,7 +988,7 @@ function LendingPageContent() {
       </div>
 
       <div className="bg-ink-900 border border-ink-800 rounded-xl p-6 mb-6">
-        <h3 className="font-semibold text-white mb-1">Positions at Risk</h3>
+        <h3 className="font-semibold text-ink-50 mb-1">Positions at Risk</h3>
         <p className="text-xs text-ink-500 mb-4">
           Every wallet that has ever deposited collateral, ranked by current LTV — pure discovery, always re-checked
           live on-chain before anything acts on it. Click a row to load it below.
@@ -1043,7 +1043,7 @@ function LendingPageContent() {
       </div>
 
       <div className="bg-ink-900 border border-ink-800 rounded-xl p-6">
-        <h3 className="font-semibold text-white mb-3">Liquidate a Position</h3>
+        <h3 className="font-semibold text-ink-50 mb-3">Liquidate a Position</h3>
         <input
           className="w-full bg-ink-800 border border-ink-700 rounded-lg px-4 py-3 text-ink-200 font-mono mb-3 focus:outline-none focus:border-trust-500"
           placeholder="Borrower address (0x…)"
