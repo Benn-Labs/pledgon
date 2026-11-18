@@ -1,0 +1,13 @@
+{
+  "schedule": "0 7 * * * *",
+  "chainSelectorName": "ethereum-mainnet",
+  "lendingPoolAddress": "0x0000000000000000000000000000000000000000",
+  "borrowers": [],
+  "verificationUrl": "https://api.example-provider.com/v1/prices/collateral",
+  "secretId": "REBALANCING_PRICE_API_TOKEN",
+  "responsePricePath": "data.price",
+  "priceDecimals": 8,
+  "rebalanceTargetBps": 7000,
+  "consumerAddress": "0x0000000000000000000000000000000000000000",
+  "gasLimitWei": 3000000
+}

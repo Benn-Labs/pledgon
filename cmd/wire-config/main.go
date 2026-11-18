@@ -36,6 +36,8 @@ var wirings = []wiring{
 	{workflow: "compliance-check", configField: "consumerAddress", deploymentKey: "complianceConsumer"},
 	{workflow: "liquidation-protection", configField: "lendingPoolAddress", deploymentKey: "lendingPool"},
 	{workflow: "liquidation-protection", configField: "consumerAddress", deploymentKey: "liquidationConsumer"},
+	{workflow: "portfolio-rebalancing", configField: "lendingPoolAddress", deploymentKey: "lendingPool"},
+	{workflow: "portfolio-rebalancing", configField: "consumerAddress", deploymentKey: "rebalancingConsumer"},
 	{workflow: "lending-oracle", configField: "consumerAddress", deploymentKey: "lendingOracleConsumer"},
 	{workflow: "trade-expiry", configField: "escrowFactoryAddress", deploymentKey: "escrowFactory"},
 	{workflow: "trade-expiry", configField: "keeperAddress", deploymentKey: "tradeExpiryKeeper"},

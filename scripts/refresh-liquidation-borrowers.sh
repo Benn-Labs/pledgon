@@ -46,7 +46,8 @@ echo
 echo "==> resulting config diff:"
 git diff --stat -- \
   "workflows/liquidation-protection/config.${TARGET}.json" \
-  "workflows/liquidation-protection/config.${TARGET}-safe.json" || true
+  "workflows/liquidation-protection/config.${TARGET}-safe.json" \
+  "workflows/portfolio-rebalancing/config.${TARGET}.json" || true
 
 printf '\nRedeploy + activate %s workflows now? [y/N] ' "$TARGET"
 read -r answer
@@ -56,6 +57,8 @@ if [[ ! "$answer" =~ ^[Yy]$ ]]; then
   echo "  cre -e .env workflow activate workflows/liquidation-protection --target ${TARGET}-settings"
   echo "  cre -e .env workflow deploy   workflows/liquidation-protection --target ${TARGET}-safe-settings"
   echo "  cre -e .env workflow activate workflows/liquidation-protection --target ${TARGET}-safe-settings"
+  echo "  cre -e .env workflow deploy   workflows/portfolio-rebalancing --target ${TARGET}-settings"
+  echo "  cre -e .env workflow activate workflows/portfolio-rebalancing --target ${TARGET}-settings"
   exit 0
 fi
 
@@ -63,6 +66,8 @@ cre -e .env workflow deploy   workflows/liquidation-protection --target "${TARGE
 cre -e .env workflow activate workflows/liquidation-protection --target "${TARGET}-settings"
 cre -e .env workflow deploy   workflows/liquidation-protection --target "${TARGET}-safe-settings"
 cre -e .env workflow activate workflows/liquidation-protection --target "${TARGET}-safe-settings"
+cre -e .env workflow deploy   workflows/portfolio-rebalancing --target "${TARGET}-settings"
+cre -e .env workflow activate workflows/portfolio-rebalancing --target "${TARGET}-settings"
 
 echo
 echo "==> done. Redeploys change workflow IDs (config bytes hash into the ID) —"

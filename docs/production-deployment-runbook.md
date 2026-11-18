@@ -35,11 +35,138 @@ fork-test deployments below when returning to mainnet deployment.
   | SPYx | `0x90A2a4c76b5D8c0bc892A69EA28Aa775a8f2dD48` | USDC | `SPYx/USD` | 56% (5500 bps) | 90% | 900 s mainnet, 0 fork |
   | sUSDe | `0x9D39A5DE30e57443BfF2A8317A24eA28fD4C351f` | USDC | `sUSDe/USD` | 69% (6900 bps) | 90% | 900 s mainnet, 0 fork |
 
+- **Borrow rate:** 5% fixed (500 bps) on the live Sepolia v1 pool — a
+  stopgap, not the end state. Lender APR is `rate × utilization` (~4.5% best
+  case at 90% utilization), which underprices the risk lenders carry. Mainnet
+  pools deploy with the kinked model below.
+
 - **Implementation note:** `LendingPool.collateralValueInDebtUnits` now converts
   between collateral and debt `decimals()`, so 18-decimal collateral against
   6-decimal USDC prices correctly.
 
+## Kinked interest-rate model (v2 spec, recorded 2026-11-18)
+
+Replaces the v1 fixed `borrowRateBps` with an Aave-style two-slope
+utilization curve. **Spec only — nothing here touches the live Sepolia v1
+pool** (its rate is immutable at 5%; the model applies to mainnet pool
+deployments and any future Sepolia redeploy).
+
+**Why:** a fixed rate sits in a narrow band — below sUSDe's own ~5% native
+yield it attracts no lenders; above it, carry-driven borrow demand thins. A
+kinked curve lets the market clear: cheap borrowing when liquidity is ample,
+lender yields that compensate for illiquidity exactly when utilization (and
+withdrawal risk) is high, and a steep upper slope that repels marginal
+borrowers before the pool slams into the 90% hard cap.
+
+### Curve parameters (mainnet defaults)
+
+| Parameter | Value | Meaning |
+|---|---|---|
+| `baseRateBps` | 200 | 2% floor — borrow is never free |
+| `kinkUtilizationBps` | 8000 | 80% optimal utilization — deliberately **below** the 9000 hard cap so slope-2 bites before the wall |
+| `slope1Bps` | 700 | 7% added linearly from 0 → kink (rate at kink = 9%) |
+| `slope2Bps` | 3000 | 30% added linearly from kink → 100% |
+
+```
+rate(U) = base                                            U = 0
+        = base + (U / kink) * slope1                      0 < U ≤ kink
+        = base + slope1 + ((U - kink) / (10000 - kink)) * slope2    U > kink
+```
+
+| Utilization | Borrow APR | Lender APR (= rate × U) |
+|---|---|---|
+| 0% | 2.00% | 0% |
+| 25% | 4.19% | 1.05% |
+| 50% | 6.38% | 3.19% |
+| 65% | 7.69% | 5.00% |
+| 80% (kink) | 9.00% | 7.20% |
+| 85% | 16.50% | 14.03% |
+| 90% (hard cap) | 24.00% | 21.60% |
+| 100% | 39.00% | 39.00% — only reachable if `MAX_UTILIZATION_BPS` is ever raised to 10000 |
+
+Design intent: lenders earn ≥ sUSDe's own yield from ~65% utilization and
+7.2% at the kink; anything past 80% gets expensive fast for borrowers, which
+is the economic force that keeps the pool liquid below the on-chain wall.
+
+### Contract changes — `LendingPool.sol`
+
+- [ ] **Immutables:** replace `borrowRateBps` with `baseRateBps`,
+      `kinkUtilizationBps`, `slope1Bps`, `slope2Bps` (still immutable — no
+      governance surface; retuning means a new pool, same trade-off as today).
+- [ ] **New views:**
+      - `totalSupply() → uint256` = `debtToken.balanceOf(this) + totalBorrows`
+        (same denominator the `maxUtilization` check already uses);
+      - `utilizationBps() → uint256` = 0 if supply is 0, else
+        `totalBorrows * 10_000 / totalSupply()`;
+      - `borrowRateAt(uint256 utilizationBps) → uint256` (pure, piecewise above);
+      - `currentBorrowRate() → uint256` = `borrowRateAt(utilizationBps())`;
+      - `rateModel() → (uint256, uint256, uint256, uint256)` for config display.
+- [ ] **`_interestSince`:** one-line change — compute
+      `uint256 rate = currentBorrowRate()` and use `rate` in place of
+      `borrowRateBps` in the existing formula. **Exactness argument:** every
+      state-changing function accrues first, so utilization — hence the rate —
+      is constant between accruals; per-interval simple-interest accrual
+      therefore integrates the piecewise curve *exactly*. No `borrowIndex`
+      math changes, no approximation drift (this is the payoff for the
+      accrue-at-top-of-everything discipline the pool already has).
+- [ ] **Constructor validation:** revert `InvalidRateModel()` unless
+      `kinkUtilizationBps ≤ 10_000` and each rate component ≤ 20_000 bps;
+      `kink < maxUtilizationBps` is a deploy-time warning, not a revert (a
+      kink at/above the cap just means slope-2 rarely engages).
+- [ ] **Events/errors:** add `error InvalidRateModel()`; no new events —
+      rate moves implicitly with utilization each block, and off-chain
+      indexers can derive history from `utilizationBps()` snapshots.
+- [ ] **Gas/overflow:** three extra immutables (same cost class as today);
+      `_interestSince` magnitudes grow ≤ 8× (39% vs 5% peak rate) — still
+      ≤ ~1e45, far from uint256 limits.
+
+### Deploy scripts
+
+- [ ] `DeployLending.s.sol` + `Deploy.s.sol`: replace `BORROW_RATE_BPS` with
+      `BASE_RATE_BPS` / `KINK_UTILIZATION_BPS` / `SLOPE1_BPS` / `SLOPE2_BPS`
+      (`vm.envOr` defaults = the mainnet table above).
+- [ ] Record the four values per market in the worksheet below — rate models
+      become a per-market deployment decision.
+
+### Frontend
+
+- [ ] `wagmi generate` to pick up the new ABI functions.
+- [ ] `LendingPageClient.tsx`: replace the single `borrowRateBps()` read with
+      a multicall trying `currentBorrowRate()` + `utilizationBps()` +
+      `rateModel()`; on v1 pools (Sepolia) those calls revert per-item —
+      detect the failure and fall back to `borrowRateBps()` so both pool
+      generations render. wagmi's multicall returns per-call status, so this
+      is a render-branch, not an error path.
+- [ ] Tiles: "Fixed Rate (APR)" becomes **Borrow APR** (live
+      `currentBorrowRate`), plus a **Utilization** tile with the kink marker
+      at 80%, plus **Lender APR** (`currentBorrowRate × utilization / 10_000`).
+      Same `refetchInterval` pattern as the other pool stats.
+- [ ] Health-factor / LTV math is untouched (interest-agnostic inputs).
+
+### Tests — `contracts/evm/test/lending/LendingPool.t.sol`
+
+- [ ] Curve unit tests: exact values at 0 / kink±1 / 10_000, monotonicity,
+      kink continuity (rate at kink from both branches = base+slope1).
+- [ ] Interval-exactness test: accrue at U=50% over T₁, drive U to 85%,
+      accrue over T₂ — assert total interest equals the piecewise-exact sum
+      (compare against per-second integration in the test; tolerance must be
+      0, that is the design property).
+- [ ] Interaction with `maxUtilizationBps=9000`: borrow to the cap → rate is
+      24%, no overflow; supply=0 → utilization 0, interest 0.
+- [ ] Deploy-script validation reverts (kink > 10_000, absurd slopes).
+
+### Migration / compatibility
+
+- Existing pools (live Sepolia sUSDe at 5%, retired mCOL) keep their fixed
+  rate forever — immutables. The frontend fallback above handles them.
+- Do **not** redeploy the live Sepolia pool to adopt this — zero economic
+  benefit on testnet, real churn risk. Sepolia picks the model up on its next
+  natural redeploy.
+
+---
+
 ## Phase 0 — Go/No-Go gates (blockers)
+
 
 - [ ] **KYC provider integration built.** The compliance webhook flow requires the
       provider's `caseId`, obtained by the frontend integrating with the provider
@@ -173,8 +300,8 @@ fork-test deployments below when returning to mainnet deployment.
 - [ ] Simulate each workflow first: `cre workflow simulate <dir> --target
       production-settings --non-interactive --trigger-index 0`.
 - [ ] Deploy: `cre workflow deploy <dir> --target production-settings --yes` for
-      `lending-oracle`, `liquidation-protection` (+`-safe` if used), `trade-expiry`,
-      then `escrow-confirmation`/`compliance-check` once Phase 0 items land.
+      `lending-oracle`, `liquidation-protection` (+`-safe` if used), `portfolio-rebalancing`,
+      `trade-expiry`, then `escrow-confirmation`/`compliance-check` once Phase 0 items land.
 - [ ] Confirm IDs from deploy output match the Phase-3 hashes; record actuals.
 - [ ] Activation: deployments start paused on a fresh name; `cre workflow activate
       <dir> --target production-settings --yes` (mainnet registry tx) — or verify
@@ -312,6 +439,7 @@ Test forwarder (Anvil account 0, not real Keystone): `0xf39Fd6e51aad88F6F4ce6aB8
 | lending-oracle-production | | |
 | liquidation-protection-production | | |
 | liquidation-protection-production-safe | | |
+| portfolio-rebalancing-production | | |
 | trade-expiry-production | | |
 | escrow-confirmation-production | | |
 | compliance-check-production | | |

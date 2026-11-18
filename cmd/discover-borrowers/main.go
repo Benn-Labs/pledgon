@@ -150,6 +150,17 @@ func run(root, chainID, target, rpcURL string, fromBlock, chunkBlocks, ltvMargin
 		return fmt.Errorf("patch %s: %w", safeConfigPath, err)
 	}
 	fmt.Printf("wrote %d safe borrower(s) to %s\n", len(safe), safeConfigPath)
+
+	// portfolio-rebalancing monitors the same borrower universe (its verdict
+	// band sits just below liquidation, so everyone in the close-watch tier
+	// plus healthy-but-drifting positions matter) at its own slower cadence —
+	// it has no safe/close-watch split, so it takes the full discovered list.
+	rebalancingConfigPath := filepath.Join(root, "workflows", "portfolio-rebalancing", fmt.Sprintf("config.%s.json", target))
+	all := append(append([]string{}, closeWatch...), safe...)
+	if err := patchBorrowers(rebalancingConfigPath, all); err != nil {
+		return fmt.Errorf("patch %s: %w", rebalancingConfigPath, err)
+	}
+	fmt.Printf("wrote %d borrower(s) to %s\n", len(all), rebalancingConfigPath)
 	return nil
 }
 
