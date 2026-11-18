@@ -23,8 +23,8 @@ export function Header({ onOpenMenu }: { onOpenMenu: () => void }) {
 
   return (
     <header className="sticky top-0 z-20 border-b border-ink-800 bg-ink-950/80 backdrop-blur-xl">
-      <div className="flex h-16 items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center gap-3 lg:hidden">
+      <div className="flex h-16 items-center justify-between gap-2 px-3 sm:gap-3 sm:px-6 lg:px-8">
+        <div className="flex items-center gap-2 sm:gap-3 lg:hidden">
           <button
             type="button"
             onClick={onOpenMenu}
@@ -38,13 +38,17 @@ export function Header({ onOpenMenu }: { onOpenMenu: () => void }) {
           <Link href="/" aria-label="PLEDGON home" className="flex items-center gap-2">
             {/* eslint-disable-next-line @next/next/no-img-element -- fixed local brand asset */}
             <img src="/logo-mark.png" alt="" width={21} height={24} className="h-6 w-auto" />
-            <span className="font-display text-white text-lg leading-none">PLEDGON</span>
+            {/* Mark only on the narrowest screens (fold cover) to leave room for the wallet controls. */}
+            <span className="font-display text-white text-lg leading-none hidden min-[380px]:inline">PLEDGON</span>
           </Link>
         </div>
 
-        <div className="ml-auto flex shrink-0 items-center gap-3">
+        <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">
           <NotificationBell />
-          <HeaderComplianceStatus />
+          {/* Tier badge is the widest header chip — drop it on fold-cover widths. */}
+          <div className="hidden min-[420px]:block">
+            <HeaderComplianceStatus />
+          </div>
           {/* Mainnet gets a trusted-green badge; testnets render in amber so a
               leftover testnet config can never masquerade as the live chain. */}
           <div

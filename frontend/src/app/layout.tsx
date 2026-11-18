@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Manrope, Chakra_Petch, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/Providers";
@@ -26,6 +26,15 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "PLEDGON",
   description: "Marketplace, milestone escrow, and compliance-gated trades on Chainlink CRE",
+};
+
+// Lock the layout on mobile: no pinch-zoom / gesture scaling — the app is
+// designed to fit phone and narrow fold-cover widths as-is.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

@@ -139,6 +139,9 @@
 body {
   background: var(--color-ink-950);
   color: var(--color-ink-100);
+  /* No double-tap-to-zoom gesture (viewport meta already disables pinch-zoom) —
+     panning and scrolling stay enabled. */
+  touch-action: manipulation;
 }
 
 /* Marketplace category picker tiles. */

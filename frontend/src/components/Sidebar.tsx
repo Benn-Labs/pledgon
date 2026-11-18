@@ -83,8 +83,6 @@ export function Sidebar({
             <img src="/logo-mark.png" alt="" width={29} height={32} className="h-8 w-auto" />
             {/* Wordmark when expanded (always, in the mobile drawer); icon-only in the collapsed rail. */}
             <span className={`font-display text-white text-xl leading-none ${labelClass}`}>PLEDGON</span>
-            {/* eslint-disable-next-line @next/next/no-img-element -- fixed local brand asset */}
-            <img src="/logo-mark.png" alt="" width={29} height={32} className={`h-8 w-auto ${collapsed ? "hidden lg:block" : "hidden"}`} />
           </Link>
         </div>
 
