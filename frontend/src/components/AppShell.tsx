@@ -2,17 +2,14 @@
 
 import { useCallback, useState, useSyncExternalStore, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
-import { useChainId } from "wagmi";
 import { Header } from "@/components/Header";
 import { Sidebar } from "@/components/Sidebar";
 
 const STORAGE_KEY = "pledgon.sidebar.collapsed";
 
-// Footer network label — wagmi.ts configures mainnet + Sepolia.
-const CHAIN_LABELS: Record<number, string> = {
-  1: "Ethereum mainnet",
-  11155111: "Sepolia testnet",
-};
+// Footer network label — the protocol is deployed on Sepolia only right now,
+// so the footer always says Sepolia rather than mirroring the wallet's chain.
+const FOOTER_NETWORK_LABEL = "Sepolia testnet";
 
 const listeners = new Set<() => void>();
 
@@ -31,8 +28,6 @@ function readCollapsed() {
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const chainId = useChainId();
-  const chainLabel = CHAIN_LABELS[chainId] ?? `Chain ${chainId}`;
   // Persisted preference read via an external-store subscription so server
   // and first client render agree (server snapshot = expanded).
   const collapsed = useSyncExternalStore(subscribeCollapsed, readCollapsed, () => false);
@@ -63,7 +58,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 text-sm text-ink-500 flex items-center gap-2">
             <span>PLEDGON Protocol</span>
             <span className="text-ink-700">·</span>
-            <span className="font-mono text-xs">{chainLabel}</span>
+            <span className="font-mono text-xs">{FOOTER_NETWORK_LABEL}</span>
           </div>
         </footer>
       </div>
