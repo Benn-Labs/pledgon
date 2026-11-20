@@ -4,6 +4,7 @@ import "@rainbow-me/rainbowkit/styles.css";
 import { RainbowKitProvider, darkTheme } from "@rainbow-me/rainbowkit";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { WagmiProvider } from "wagmi";
+import { sepolia } from "wagmi/chains";
 import { useState, type ReactNode } from "react";
 import { wagmiConfig } from "@/lib/wagmi";
 
@@ -20,7 +21,9 @@ export function Providers({ children }: { children: ReactNode }) {
   return (
     <WagmiProvider config={wagmiConfig}>
       <QueryClientProvider client={queryClient}>
-        <RainbowKitProvider theme={rainbowKitTheme}>{children}</RainbowKitProvider>
+        <RainbowKitProvider initialChain={sepolia} theme={rainbowKitTheme}>
+          {children}
+        </RainbowKitProvider>
       </QueryClientProvider>
     </WagmiProvider>
   );
